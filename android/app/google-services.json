@@ -1,0 +1,49 @@
+{
+  "project_info": {
+    "project_number": "964118470426",
+    "firebase_url": "https://arroz-17a52-default-rtdb.firebaseio.com",
+    "project_id": "arroz-17a52",
+    "storage_bucket": "arroz-17a52.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:964118470426:android:1fda2a8819112741df56a3",
+        "android_client_info": {
+          "package_name": "com.example.arroz"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDL1ljqVqOUuFKgoREGgcvqYiy1Q3ThKd4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:964118470426:android:c52846e252100bccdf56a3",
+        "android_client_info": {
+          "package_name": "com.example.arroz_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDL1ljqVqOUuFKgoREGgcvqYiy1Q3ThKd4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
