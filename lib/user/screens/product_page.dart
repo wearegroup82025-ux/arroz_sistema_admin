@@ -42,7 +42,7 @@ class ProductPage extends StatelessWidget {
               final doc = docs[index];
               final product = doc.data() as Map<String, dynamic>;
               final String imageUrl = product['imageUrl'] ?? '';
-              final int deliveryDays = product['deliveryDays'] ?? 3; 
+              final int deliveryDays = product['deliveryDays'] ?? 3;
 
               return GestureDetector(
                 onTap: () {
@@ -67,9 +67,9 @@ class ProductPage extends StatelessWidget {
                           ),
                           child: imageUrl.isNotEmpty
                               ? ClipRRect(
-                                  borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                                  child: Image.network(imageUrl, fit: BoxFit.cover),
-                                )
+                            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                            child: Image.network(imageUrl, fit: BoxFit.cover),
+                          )
                               : const Icon(Icons.image, size: 50, color: Colors.grey),
                         ),
                       ),
@@ -137,13 +137,16 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         builder: (_) => const Center(
           child: Card(
             margin: EdgeInsets.symmetric(horizontal: 40),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(color: Colors.green),
-                SizedBox(height: 15),
-                Text("Initializing secure checkout...", style: TextStyle(fontWeight: FontWeight.bold)),
-              ],
+            child: Padding(
+              padding: EdgeInsets.all(20.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(color: Colors.green),
+                  SizedBox(height: 15),
+                  Text("Initializing secure checkout...", style: TextStyle(fontWeight: FontWeight.bold)),
+                ],
+              ),
             ),
           ),
         ),
@@ -178,9 +181,19 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         );
 
         if (navContext.mounted && result == "SUCCESS") {
+          // 🟢 AUTOMATICALLY MARK AS PAID PARA DIRETSO AGAD SA 'TO SHIP'
+          await orderRef.update({
+            'isPaid': true,
+            'orderStatus': 'Paid',
+            'prepareToShip': true,
+            'paidAt': FieldValue.serverTimestamp(),
+          });
+
+          if (!navContext.mounted) return;
+
           ScaffoldMessenger.of(navContext).showSnackBar(
             const SnackBar(
-              content: Text("Payment Successful! Your order has been placed."),
+              content: Text("Payment Successful! Your order has been placed under To Ship."),
               backgroundColor: Colors.green,
             ),
           );
@@ -200,7 +213,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       }
     } catch (e) {
       if (navContext.mounted) {
-        Navigator.of(navContext, rootNavigator: true).pop(); 
+        Navigator.of(navContext, rootNavigator: true).pop();
         ScaffoldMessenger.of(navContext).showSnackBar(
           SnackBar(content: Text("Network/Server Error: $e"), backgroundColor: Colors.red),
         );
@@ -260,7 +273,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                             .collection("cart")
                             .doc("${currentUser.uid}_${widget.productId}")
                             .set({
-                          "userId": currentUser.uid, 
+                          "userId": currentUser.uid,
                           "productId": widget.productId,
                           "name": widget.product["name"],
                           "price": widget.product["price"],
@@ -274,7 +287,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                             const SnackBar(content: Text("Added to Cart Successfully!"), backgroundColor: Colors.orange),
                           );
                           Navigator.of(pageContext).push(
-                            MaterialPageRoute(builder: (_) => const CartPage()), 
+                            MaterialPageRoute(builder: (_) => const CartPage()),
                           );
                         }
                       },
@@ -343,13 +356,12 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                       onPressed: maxStock == 0 ? null : () {
                         if (currentUser == null) return;
-                        Navigator.pop(sheetContext); // Isara ang bottom sheet
+                        Navigator.pop(sheetContext);
 
-                        // 🟢 DIRETSO NA SA CHECKOUT / ORDER REVIEW PAGE
                         Navigator.of(pageContext).push(
                           MaterialPageRoute(
                             builder: (_) => CheckoutPage(
-                              initialAddress: null, // Pwedeng pumili o magdagdag ng address sa loob ng Checkout Page
+                              initialAddress: null,
                               orderItems: [
                                 {
                                   "productId": widget.productId,
@@ -625,7 +637,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
               Expanded(
                 child: OutlinedButton(
                   style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.orange, width: 2), padding: const EdgeInsets.symmetric(vertical: 15)),
-                  onPressed: () => _showAddToCartSheet(context), 
+                  onPressed: () => _showAddToCartSheet(context),
                   child: const Text("Add to Cart", style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
                 ),
               ),
@@ -633,7 +645,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
               Expanded(
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(vertical: 15)),
-                  onPressed: () => _showPaymentSheet(context, 1), 
+                  onPressed: () => _showPaymentSheet(context, 1),
                   child: const Text("Buy Now", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                 ),
               ),

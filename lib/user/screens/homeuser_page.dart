@@ -17,10 +17,10 @@ class AppLocalizations {
   String get cart => language == AppLanguage.english ? "Cart" : "Kariton";
   String get orders => language == AppLanguage.english ? "Orders" : "Mga Order";
   String get profile => language == AppLanguage.english ? "Profile" : "Profile";
-  
+
   String get welcome => language == AppLanguage.english ? "Welcome back" : "Maligayang pagbabalik";
   String get specsTitle => language == AppLanguage.english ? "Product Specifications" : "Tungkol sa Ating Palay";
-  String get specsDesc => language == AppLanguage.english 
+  String get specsDesc => language == AppLanguage.english
       ? "Our premium palay is directly sourced and harvested from the rich agricultural fields of Kapalangan, Pampanga."
       : "Ang ating de-kalidad na palay ay direktang nagmula at inani sa mayayamang sakahan ng Kapalangan, Pampanga.";
 
@@ -28,7 +28,7 @@ class AppLocalizations {
   String get recommended => language == AppLanguage.english ? "👍 Recommended for You" : "👍 Rekomendado sa Iyo";
   String get viewAll => language == AppLanguage.english ? "See All" : "Tingnan Lahat";
   String get noItems => language == AppLanguage.english ? "No items posted yet" : "Wala pang naka-post";
-  
+
   String get activeOrders => language == AppLanguage.english ? "Active Orders" : "Mga Aktibong Order";
   String get myCart => language == AppLanguage.english ? "My Cart" : "Aking Kariton";
   String get favorites => language == AppLanguage.english ? "Favorites" : "Mga Paborito";
@@ -37,14 +37,14 @@ class AppLocalizations {
   String get notifTitle => language == AppLanguage.english ? "Notifications" : "Mga Abiso";
   String get noNotif => language == AppLanguage.english ? "No new updates right now." : "Walang bagong balita sa ngayon.";
 
+  String get chatTitle => language == AppLanguage.english ? "Chat Support / Admin" : "Sulat sa Admin";
+  String get chatHint => language == AppLanguage.english ? "Ask about your order or product..." : "Magtanong tungkol sa order o produkto...";
+  String get send => language == AppLanguage.english ? "Send" : "Ipadala";
+
   String get orderNow => language == AppLanguage.english ? "Order Now" : "Bumili Na";
-  String get actionDesc => language == AppLanguage.english 
+  String get actionDesc => language == AppLanguage.english
       ? "Ready to secure your high-recovery palay supply? Tap below to start browsing."
       : "Handa nang kumuha ng de-kalidad na supply ng palay? Pindutin sa ibaba para makapili.";
-
-  String get messagesTitle => language == AppLanguage.english ? "Admin Support" : "Kausapin ang Admin";
-  String get typeMessage => language == AppLanguage.english ? "Aa" : "Mag-type ng mensahe...";
-  String get noMessages => language == AppLanguage.english ? "Start a conversation with Admin" : "Simulan ang pakikipag-usap sa Admin";
 }
 
 class HomeUserPage extends StatefulWidget {
@@ -108,7 +108,7 @@ class _HomeUserPageState extends State<HomeUserPage> {
   }
 }
 
-class _DashboardView extends StatefulWidget {
+class _DashboardView extends StatelessWidget {
   final AppLanguage language;
   final VoidCallback onLanguageToggle;
   final VoidCallback onNavigateToProducts;
@@ -123,96 +123,70 @@ class _DashboardView extends StatefulWidget {
     required this.onNavigateToOrders,
   });
 
-  @override
-  State<_DashboardView> createState() => _DashboardViewState();
-}
-
-class _DashboardViewState extends State<_DashboardView> {
-  final TextEditingController _messageController = TextEditingController();
-
-  @override
-  void dispose() {
-    _messageController.dispose();
-    super.dispose();
-  }
-
   String _getTimeGreeting() {
     final hour = DateTime.now().hour;
-    if (hour < 12) return widget.language == AppLanguage.english ? "Good Morning! 🌾" : "Magandang Umaga! 🌾";
-    if (hour < 18) return widget.language == AppLanguage.english ? "Good Afternoon! ☀️" : "Magandang Hapon! ☀️";
-    return widget.language == AppLanguage.english ? "Good Evening! 🌙" : "Magandang Gabi! 🌙";
+    if (hour < 12) return language == AppLanguage.english ? "Good Morning! 🌾" : "Magandang Umaga! 🌾";
+    if (hour < 18) return language == AppLanguage.english ? "Good Afternoon! ☀️" : "Magandang Hapon! ☀️";
+    return language == AppLanguage.english ? "Good Evening! 🌙" : "Magandang Gabi! 🌙";
   }
 
-  // --- MESSENGER-STYLE CHAT INTERFACE ---
-  void _showMessengerChat(BuildContext context, AppLocalizations local, String userId, String userName) {
+  // DIALOG / BOTTOM SHEET PARA SA CHAT SA ADMIN
+  void _showAdminChatPanel(BuildContext context, AppLocalizations local, String userId) {
+    final messageController = TextEditingController();
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
         return Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+          ),
           child: Container(
-            height: MediaQuery.of(context).size.height * 0.85,
+            height: MediaQuery.of(context).size.height * 0.7,
+            padding: const EdgeInsets.all(16.0),
             child: Column(
               children: [
-                // MESSENGER HEADER
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))],
-                  ),
-                  child: Row(
-                    children: [
-                      Stack(
+                // Header
+                Row(
+                  children: [
+                    CircleAvatar(
+                      backgroundColor: Colors.green[100],
+                      child: Icon(Icons.support_agent_rounded, color: Colors.green[800]),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          CircleAvatar(
-                            backgroundColor: Colors.green[700],
-                            child: const Icon(Icons.admin_panel_settings, color: Colors.white),
+                          Text(
+                            local.chatTitle,
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                           ),
-                          Positioned(
-                            right: 0,
-                            bottom: 0,
-                            child: Container(
-                              width: 12,
-                              height: 12,
-                              decoration: BoxDecoration(
-                                color: Colors.green,
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white, width: 2),
-                              ),
-                            ),
-                          )
+                          Text(
+                            language == AppLanguage.english ? "Active • Support Team" : "Aktibo • Suporta sa Mamimili",
+                            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                          ),
                         ],
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(local.messagesTitle, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                            Text("Active now", style: TextStyle(color: Colors.grey[500], fontSize: 12)),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close, color: Colors.grey),
-                        onPressed: () => Navigator.pop(context),
-                      )
-                    ],
-                  ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    )
+                  ],
                 ),
+                const Divider(),
 
-                // MESSENGER CONVERSATION BODY
+                // Chat Stream
                 Expanded(
                   child: StreamBuilder<QuerySnapshot>(
                     stream: FirebaseFirestore.instance
                         .collection('chats')
                         .doc(userId)
                         .collection('messages')
-                        .orderBy('createdAt', descending: true)
+                        .orderBy('timestamp', descending: true)
                         .snapshots(),
                     builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting) {
@@ -225,9 +199,14 @@ class _DashboardViewState extends State<_DashboardView> {
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.chat_bubble_outline, size: 60, color: Colors.grey[300]),
+                              Icon(Icons.chat_bubble_outline, size: 48, color: Colors.grey[400]),
                               const SizedBox(height: 8),
-                              Text(local.noMessages, style: TextStyle(color: Colors.grey[500], fontSize: 14)),
+                              Text(
+                                language == AppLanguage.english
+                                    ? "No messages yet. Send a message to Admin!"
+                                    : "Wala pang mensahe. Mag-iwan ng tanong sa Admin!",
+                                style: TextStyle(color: Colors.grey[500], fontSize: 13),
+                              ),
                             ],
                           ),
                         );
@@ -235,54 +214,32 @@ class _DashboardViewState extends State<_DashboardView> {
 
                       return ListView.builder(
                         reverse: true,
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                         itemCount: docs.length,
                         itemBuilder: (context, index) {
-                          final data = docs[index].data() as Map<String, dynamic>;
-                          final String senderRole = data['senderRole'] ?? 'user';
-                          final bool isMe = senderRole == 'user';
+                          final msg = docs[index].data() as Map<String, dynamic>;
+                          final bool isMe = msg['senderId'] == userId;
 
-                          // Automatically mark admin replies as read when user opens the chat
-                          if (!isMe && (data['isRead'] == false)) {
-                            docs[index].reference.update({'isRead': true});
-                          }
-
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 3),
-                            child: Row(
-                              mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                if (!isMe) ...[
-                                  CircleAvatar(
-                                    radius: 14,
-                                    backgroundColor: Colors.green[700],
-                                    child: const Icon(Icons.person, size: 16, color: Colors.white),
-                                  ),
-                                  const SizedBox(width: 8),
-                                ],
-                                Flexible(
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                                    decoration: BoxDecoration(
-                                      color: isMe ? const Color(0xFF0084FF) : const Color(0xFFE4E6EB), // Messenger Colors (Blue & Light Gray)
-                                      borderRadius: BorderRadius.only(
-                                        topLeft: const Radius.circular(18),
-                                        topRight: const Radius.circular(18),
-                                        bottomLeft: Radius.circular(isMe ? 18 : 4),
-                                        bottomRight: Radius.circular(isMe ? 4 : 18),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      data['text'] ?? '',
-                                      style: TextStyle(
-                                        color: isMe ? Colors.white : Colors.black,
-                                        fontSize: 15,
-                                      ),
-                                    ),
-                                  ),
+                          return Align(
+                            alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                            child: Container(
+                              margin: const EdgeInsets.symmetric(vertical: 4),
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: isMe ? Colors.green[700] : Colors.grey[200],
+                                borderRadius: BorderRadius.only(
+                                  topLeft: const Radius.circular(14),
+                                  topRight: const Radius.circular(14),
+                                  bottomLeft: Radius.circular(isMe ? 14 : 0),
+                                  bottomRight: Radius.circular(isMe ? 0 : 14),
                                 ),
-                              ],
+                              ),
+                              child: Text(
+                                msg['text'] ?? '',
+                                style: TextStyle(
+                                  color: isMe ? Colors.white : Colors.black87,
+                                  fontSize: 13.5,
+                                ),
+                              ),
                             ),
                           );
                         },
@@ -291,67 +248,60 @@ class _DashboardViewState extends State<_DashboardView> {
                   ),
                 ),
 
-                // MESSENGER INPUT BAR
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    border: Border(top: BorderSide(color: Colors.grey[200]!)),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF0F2F5),
+                // Input Bar
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: messageController,
+                        decoration: InputDecoration(
+                          hintText: local.chatHint,
+                          hintStyle: const TextStyle(fontSize: 13),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          filled: true,
+                          fillColor: Colors.grey[100],
+                          border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(24),
-                          ),
-                          child: TextField(
-                            controller: _messageController,
-                            textCapitalization: TextCapitalization.sentences,
-                            decoration: InputDecoration(
-                              hintText: local.typeMessage,
-                              hintStyle: TextStyle(color: Colors.grey[500]),
-                              border: InputBorder.none,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                            ),
+                            borderSide: BorderSide.none,
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        icon: const Icon(Icons.send_rounded, color: Color(0xFF0084FF)),
-                        onPressed: () async {
-                          final text = _messageController.text.trim();
-                          if (text.isEmpty) return;
-
-                          _messageController.clear();
-
-                          // Push message matching Admin Firestore structure
-                          await FirebaseFirestore.instance
-                              .collection('chats')
-                              .doc(userId)
-                              .collection('messages')
-                              .add({
-                            'text': text,
-                            'senderId': userId,
-                            'senderRole': 'user', // Match with Admin app filter
-                            'createdAt': FieldValue.serverTimestamp(),
-                            'isRead': false,
-                          });
-
-                          // Update main document for Admin chat list preview
-                          await FirebaseFirestore.instance.collection('chats').doc(userId).set({
-                            'lastMessage': text,
-                            'updatedAt': FieldValue.serverTimestamp(),
-                            'userId': userId,
-                            'userName': userName,
-                            'unreadByAdmin': true,
-                          }, SetOptions(merge: true));
-                        },
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton.filled(
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.green[700],
                       ),
-                    ],
-                  ),
+                      icon: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                      onPressed: () async {
+                        final text = messageController.text.trim();
+                        if (text.isEmpty) return;
+
+                        messageController.clear();
+
+                        // Save message to user's chat subcollection
+                        final ref = FirebaseFirestore.instance
+                            .collection('chats')
+                            .doc(userId)
+                            .collection('messages');
+
+                        await ref.add({
+                          'senderId': userId,
+                          'text': text,
+                          'timestamp': FieldValue.serverTimestamp(),
+                        });
+
+                        // Update metadata for Admin View
+                        await FirebaseFirestore.instance.collection('chats').doc(userId).set({
+                          'lastMessage': text,
+                          'lastUpdated': FieldValue.serverTimestamp(),
+                          'userId': userId,
+                          'unreadByAdmin': true,
+                        }, SetOptions(merge: true));
+                      },
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -469,13 +419,13 @@ class _DashboardViewState extends State<_DashboardView> {
                                   docs[index].reference.update({'isRead': true});
                                   if (type == 'ORDER_UPDATE') {
                                     Navigator.pop(context);
-                                    widget.onNavigateToOrders();
+                                    onNavigateToOrders();
                                   } else if (type == 'CART_NUDGE') {
                                     Navigator.pop(context);
-                                    widget.onNavigateToCart();
+                                    onNavigateToCart();
                                   } else if (type == 'RESTOCK_ALERT') {
                                     Navigator.pop(context);
-                                    widget.onNavigateToProducts();
+                                    onNavigateToProducts();
                                   }
                                 },
                               ),
@@ -541,7 +491,7 @@ class _DashboardViewState extends State<_DashboardView> {
 
   @override
   Widget build(BuildContext context) {
-    final local = AppLocalizations(widget.language);
+    final local = AppLocalizations(language);
     final currentUser = FirebaseAuth.instance.currentUser;
 
     return CustomScrollView(
@@ -555,73 +505,47 @@ class _DashboardViewState extends State<_DashboardView> {
           scrolledUnderElevation: 2,
           backgroundColor: Colors.green[700],
           actions: [
+            // LANGUAGE TOGGLE
             TextButton.icon(
               style: TextButton.styleFrom(foregroundColor: Colors.white.withOpacity(0.9)),
-              onPressed: widget.onLanguageToggle,
+              onPressed: onLanguageToggle,
               icon: const Icon(Icons.translate, size: 16),
-              label: Text(widget.language == AppLanguage.tagalog ? "EN" : "TAG", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              label: Text(language == AppLanguage.tagalog ? "EN" : "TAG", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
             ),
 
-            // 💬 MESSENGER ICON & UNREAD BADGE COUNTER
+            // CHAT WITH ADMIN BUTTON (BAGONG DAGDAG)
             if (currentUser != null)
-              StreamBuilder<DocumentSnapshot>(
-                stream: FirebaseFirestore.instance.collection('users').doc(currentUser.uid).snapshots(),
-                builder: (context, userSnap) {
-                  String currentName = "User";
-                  if (userSnap.hasData && userSnap.data!.exists) {
-                    final uData = userSnap.data!.data() as Map<String, dynamic>;
-                    currentName = uData['firstName'] ?? uData['name'] ?? "User";
-                  }
-
-                  return StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('chats')
-                        .doc(currentUser.uid)
-                        .collection('messages')
-                        .where('senderRole', isEqualTo: 'admin')
-                        .where('isRead', isEqualTo: false)
-                        .snapshots(),
-                    builder: (context, snapshot) {
-                      final unreadCount = snapshot.hasData ? snapshot.data!.docs.length : 0;
-                      return IconButton(
-                        icon: Badge(
-                          label: Text("$unreadCount", style: const TextStyle(fontSize: 10, color: Colors.white)),
-                          backgroundColor: Colors.red,
-                          isLabelVisible: unreadCount > 0,
-                          child: const Icon(Icons.chat_bubble_outline, color: Colors.white),
-                        ),
-                        onPressed: () => _showMessengerChat(context, local, currentUser.uid, currentName),
-                      );
-                    },
-                  );
-                },
+              IconButton(
+                icon: const Icon(Icons.chat_outlined, color: Colors.white),
+                tooltip: "Kausapin ang Admin",
+                onPressed: () => _showAdminChatPanel(context, local, currentUser.uid),
               ),
 
-            // NOTIFICATIONS
+            // NOTIFICATIONS BUTTON WITH BADGE
             Padding(
               padding: const EdgeInsets.only(right: 12.0),
               child: currentUser == null
                   ? const SizedBox.shrink()
                   : StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance
-                          .collection('users')
-                          .doc(currentUser.uid)
-                          .collection('notifications')
-                          .where('isRead', isEqualTo: false)
-                          .snapshots(),
-                      builder: (context, snapshot) {
-                        final unreadCount = snapshot.hasData ? snapshot.data!.docs.length : 0;
-                        return IconButton(
-                          icon: Badge(
-                            label: Text("$unreadCount", style: const TextStyle(fontSize: 10, color: Colors.white)),
-                            backgroundColor: Colors.red,
-                            isLabelVisible: unreadCount > 0,
-                            child: const Icon(Icons.notifications_none_outlined, color: Colors.white),
-                          ),
-                          onPressed: () => _showNotificationPanel(context, local, currentUser.uid),
-                        );
-                      },
+                stream: FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(currentUser.uid)
+                    .collection('notifications')
+                    .where('isRead', isEqualTo: false)
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  final unreadCount = snapshot.hasData ? snapshot.data!.docs.length : 0;
+                  return IconButton(
+                    icon: Badge(
+                      label: Text("$unreadCount", style: const TextStyle(fontSize: 10, color: Colors.white)),
+                      backgroundColor: Colors.red,
+                      isLabelVisible: unreadCount > 0,
+                      child: const Icon(Icons.notifications_none_outlined, color: Colors.white),
                     ),
+                    onPressed: () => _showNotificationPanel(context, local, currentUser.uid),
+                  );
+                },
+              ),
             ),
           ],
           flexibleSpace: FlexibleSpaceBar(
@@ -645,11 +569,11 @@ class _DashboardViewState extends State<_DashboardView> {
                         Text(_getTimeGreeting(), style: TextStyle(color: Colors.green[100], fontSize: 13, fontWeight: FontWeight.w500)),
                         const SizedBox(height: 2),
                         StreamBuilder<DocumentSnapshot>(
-                          stream: currentUser != null 
+                          stream: currentUser != null
                               ? FirebaseFirestore.instance.collection('users').doc(currentUser.uid).snapshots()
                               : const Stream.empty(),
                           builder: (context, snapshot) {
-                            String name = widget.language == AppLanguage.english ? "Buyer" : "Mamimili";
+                            String name = language == AppLanguage.english ? "Buyer" : "Mamimili";
                             if (snapshot.hasData && snapshot.data!.exists) {
                               final data = snapshot.data!.data() as Map<String, dynamic>;
                               name = data['firstName'] ?? data['name'] ?? name;
@@ -672,16 +596,16 @@ class _DashboardViewState extends State<_DashboardView> {
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: currentUser == null 
+            child: currentUser == null
                 ? const SizedBox.shrink()
                 : _DashboardCardGrid(
-                    userId: currentUser.uid, 
-                    local: local,
-                    onOrdersTap: widget.onNavigateToOrders,
-                    onCartTap: widget.onNavigateToCart,
-                    onFavoritesTap: () => _showFavoritesPanel(context, local, currentUser.uid),
-                    onProductsTap: widget.onNavigateToProducts,
-                  ),
+              userId: currentUser.uid,
+              local: local,
+              onOrdersTap: onNavigateToOrders,
+              onCartTap: onNavigateToCart,
+              onFavoritesTap: () => _showFavoritesPanel(context, local, currentUser.uid),
+              onProductsTap: onNavigateToProducts,
+            ),
           ),
         ),
 
@@ -740,7 +664,7 @@ class _DashboardViewState extends State<_DashboardView> {
                               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                             ),
-                            onPressed: widget.onNavigateToProducts,
+                            onPressed: onNavigateToProducts,
                             icon: const Icon(Icons.shopping_basket_outlined, size: 16),
                             label: Text(local.orderNow, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                           ),
@@ -756,8 +680,8 @@ class _DashboardViewState extends State<_DashboardView> {
           ),
         ),
 
-        SliverToBoxAdapter(child: _HorizontalProductSection(local: local, title: local.bestSeller, categoryFilter: 'best_seller', onSeeAll: widget.onNavigateToProducts)),
-        SliverToBoxAdapter(child: _HorizontalProductSection(local: local, title: local.recommended, categoryFilter: 'recommended', onSeeAll: widget.onNavigateToProducts)),
+        SliverToBoxAdapter(child: _HorizontalProductSection(local: local, title: local.bestSeller, categoryFilter: 'best_seller', onSeeAll: onNavigateToProducts)),
+        SliverToBoxAdapter(child: _HorizontalProductSection(local: local, title: local.recommended, categoryFilter: 'recommended', onSeeAll: onNavigateToProducts)),
         const SliverToBoxAdapter(child: SizedBox(height: 32)),
       ],
     );
@@ -773,7 +697,7 @@ class _DashboardCardGrid extends StatelessWidget {
   final VoidCallback onProductsTap;
 
   const _DashboardCardGrid({
-    required this.userId, 
+    required this.userId,
     required this.local,
     required this.onOrdersTap,
     required this.onCartTap,
@@ -797,7 +721,7 @@ class _DashboardCardGrid extends StatelessWidget {
           onTap: onOrdersTap,
         ),
         _buildMetricCard(
-          stream: FirebaseFirestore.instance.collection('cart').where('userId', isEqualTo: userId).snapshots(), 
+          stream: FirebaseFirestore.instance.collection('cart').where('userId', isEqualTo: userId).snapshots(),
           label: local.myCart, icon: Icons.shopping_bag_outlined, color: Colors.orange,
           onTap: onCartTap,
         ),
@@ -816,9 +740,9 @@ class _DashboardCardGrid extends StatelessWidget {
   }
 
   Widget _buildMetricCard({
-    required Stream<QuerySnapshot> stream, 
-    required String label, 
-    required IconData icon, 
+    required Stream<QuerySnapshot> stream,
+    required String label,
+    required IconData icon,
     required Color color,
     required VoidCallback onTap,
   }) {
@@ -869,9 +793,9 @@ class _HorizontalProductSection extends StatelessWidget {
   final VoidCallback onSeeAll;
 
   const _HorizontalProductSection({
-    required this.local, 
-    required this.title, 
-    required this.categoryFilter, 
+    required this.local,
+    required this.title,
+    required this.categoryFilter,
     required this.onSeeAll
   });
 
@@ -889,9 +813,9 @@ class _HorizontalProductSection extends StatelessWidget {
               TextButton(
                 onPressed: onSeeAll,
                 style: TextButton.styleFrom(
-                  padding: EdgeInsets.zero, 
-                  minimumSize: const Size(50, 30), 
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap
+                    padding: EdgeInsets.zero,
+                    minimumSize: const Size(50, 30),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap
                 ),
                 child: Text(local.viewAll, style: TextStyle(color: Colors.green[700], fontSize: 13, fontWeight: FontWeight.bold)),
               )
@@ -905,17 +829,17 @@ class _HorizontalProductSection extends StatelessWidget {
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(
-                  child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.green))
+                    child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.green))
                 );
               }
-              
+
               final docs = snapshot.data?.docs ?? [];
               if (docs.isEmpty) {
                 return Padding(
                   padding: const EdgeInsets.only(left: 20.0),
                   child: Align(
-                    alignment: Alignment.centerLeft, 
-                    child: Text(local.noItems, style: TextStyle(color: Colors.grey[400], fontSize: 12))
+                      alignment: Alignment.centerLeft,
+                      child: Text(local.noItems, style: TextStyle(color: Colors.grey[400], fontSize: 12))
                   ),
                 );
               }
@@ -940,22 +864,22 @@ class _HorizontalProductSection extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Container(
-                            height: 55, 
+                            height: 55,
                             width: double.infinity,
                             decoration: BoxDecoration(color: Colors.amber[50], borderRadius: BorderRadius.circular(8)),
                             child: Icon(Icons.grain, color: Colors.amber[800], size: 28),
                           ),
                           const Spacer(),
                           Text(
-                            prod['name'] ?? 'Palay Bag', 
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold), 
-                            maxLines: 1, 
-                            overflow: TextOverflow.ellipsis
+                              prod['name'] ?? 'Palay Bag',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            "₱${prod['price'] ?? 0}", 
-                            style: const TextStyle(color: Colors.green, fontSize: 13, fontWeight: FontWeight.bold)
+                              "₱${prod['price'] ?? 0}",
+                              style: const TextStyle(color: Colors.green, fontSize: 13, fontWeight: FontWeight.bold)
                           ),
                         ],
                       ),
