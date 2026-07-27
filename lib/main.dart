@@ -1,40 +1,72 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'firebase_options.dart';
-import 'notification_service.dart'; // IMPORT NG REALTIME NOTIFICATION SERVICE
+import 'notification_service.dart';
 
 import 'user/screens/login_page.dart';
 import 'user/screens/homeuser_page.dart';
 
-// IMPORT LANG ITO KUNG GUSTO MONG ADMIN
 import 'admin/screens/login_page.dart' as admin;
 import 'admin/screens/dashboard_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1. Initialize Firebase
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // 2. Initialize Realtime Notifications & Push Sound Listener
-await NotificationService().initialize();
+  await NotificationService().initialize();
 
   runApp(const MyApp());
 }
 
 // ==============================
-// CHANGE THIS ONLY
 // true  = Admin App
 // false = User App
 // ==============================
-const bool isAdminApp = true;
+const bool isAdminApp = false;
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    // Binu-build ang observer para mabantayan kapag isinarado o inalis sa recent apps
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    // Kapag detatached (lubusang inalis sa recent apps / pinatay ang app)
+    // O kapag hidden/paused (depende kung gusto mong mag-logout din pag-minimize)
+    if (state == AppLifecycleState.detached) {
+      _logoutOnExit();
+    }
+  }
+
+  void _logoutOnExit() {
+    if (isAdminApp && FirebaseAuth.instance.currentUser != null) {
+      FirebaseAuth.instance.signOut();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -60,14 +92,12 @@ class MyApp extends StatelessWidget {
             );
           }
 
-          // Kapag may active session
           if (snapshot.hasData) {
             return isAdminApp
                 ? const DashboardPage()
                 : const HomeUserPage();
           }
 
-          // Kapag wala pang login
           return isAdminApp
               ? const admin.LoginPage()
               : const LoginUserPage();
@@ -75,4 +105,4 @@ class MyApp extends StatelessWidget {
       ),
     );
   }
-} // 👈 INAYOS DITO (Tinanggal ang comma bago ang '}')
+}

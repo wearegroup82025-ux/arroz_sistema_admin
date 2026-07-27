@@ -639,7 +639,7 @@ class _InventoryPageState extends State<InventoryPage> {
                       const Text("Product Variety Name", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xff334155))),
                       const SizedBox(height: 6),
                       DropdownButtonFormField<String>(
-                        initialValue: selectedName,
+                        value: selectedName,
                         decoration: _inputDecoration(""),
                         items: (selectedType == ProductType.rice ? _riceVarieties : _palayVarieties).map((String name) {
                           return DropdownMenuItem(value: name, child: Text(name, style: const TextStyle(fontSize: 13)));
@@ -653,7 +653,7 @@ class _InventoryPageState extends State<InventoryPage> {
                         const Text("Category Tag", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xff334155))),
                         const SizedBox(height: 6),
                         DropdownButtonFormField<String>(
-                          initialValue: selectedCategory,
+                          value: selectedCategory,
                           decoration: _inputDecoration(""),
                           items: _categories.map((String cat) {
                             return DropdownMenuItem(value: cat, child: Text(cat, style: const TextStyle(fontSize: 13)));
@@ -664,7 +664,7 @@ class _InventoryPageState extends State<InventoryPage> {
                         const Text("Quality Metric Spec", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xff334155))),
                         const SizedBox(height: 6),
                         DropdownButtonFormField<String>(
-                          initialValue: selectedMetric,
+                          value: selectedMetric,
                           decoration: _inputDecoration(""),
                           items: _metricSpecs.map((String spec) {
                             return DropdownMenuItem(value: spec, child: Text(spec, style: const TextStyle(fontSize: 13)));
@@ -681,7 +681,7 @@ class _InventoryPageState extends State<InventoryPage> {
                                   const Text("Category Tag", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xff334155))),
                                   const SizedBox(height: 6),
                                   DropdownButtonFormField<String>(
-                                    initialValue: selectedCategory,
+                                    value: selectedCategory,
                                     decoration: _inputDecoration(""),
                                     items: _categories.map((String cat) {
                                       return DropdownMenuItem(value: cat, child: Text(cat, style: const TextStyle(fontSize: 13)));
@@ -699,7 +699,7 @@ class _InventoryPageState extends State<InventoryPage> {
                                   const Text("Quality Metric Spec", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xff334155))),
                                   const SizedBox(height: 6),
                                   DropdownButtonFormField<String>(
-                                    initialValue: selectedMetric,
+                                    value: selectedMetric,
                                     decoration: _inputDecoration(""),
                                     items: _metricSpecs.map((String spec) {
                                       return DropdownMenuItem(value: spec, child: Text(spec, style: const TextStyle(fontSize: 13)));
@@ -758,7 +758,7 @@ class _InventoryPageState extends State<InventoryPage> {
                       const Text("Low Stock Warning Level", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xff334155))),
                       const SizedBox(height: 6),
                       DropdownButtonFormField<int>(
-                        initialValue: selectedThreshold,
+                        value: selectedThreshold,
                         decoration: _inputDecoration(""),
                         items: _thresholdOptions.map((int value) {
                           return DropdownMenuItem(value: value, child: Text("$value Sacks Limit", style: const TextStyle(fontSize: 13)));
@@ -799,7 +799,7 @@ class _InventoryPageState extends State<InventoryPage> {
                                   Navigator.pop(context);
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
-                                      content: Text("🚀 Stock Item Added Successfully!"), 
+                                      content: Text("Stock Item Added Successfully!"), 
                                       backgroundColor: _primaryGreen, 
                                       behavior: SnackBarBehavior.floating
                                     ),

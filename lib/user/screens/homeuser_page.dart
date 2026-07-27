@@ -41,6 +41,10 @@ class AppLocalizations {
   String get actionDesc => language == AppLanguage.english 
       ? "Ready to secure your high-recovery palay supply? Tap below to start browsing."
       : "Handa nang kumuha ng de-kalidad na supply ng palay? Pindutin sa ibaba para makapili.";
+
+  String get messagesTitle => language == AppLanguage.english ? "Admin Support" : "Kausapin ang Admin";
+  String get typeMessage => language == AppLanguage.english ? "Aa" : "Mag-type ng mensahe...";
+  String get noMessages => language == AppLanguage.english ? "Start a conversation with Admin" : "Simulan ang pakikipag-usap sa Admin";
 }
 
 class HomeUserPage extends StatefulWidget {
@@ -104,7 +108,7 @@ class _HomeUserPageState extends State<HomeUserPage> {
   }
 }
 
-class _DashboardView extends StatelessWidget {
+class _DashboardView extends StatefulWidget {
   final AppLanguage language;
   final VoidCallback onLanguageToggle;
   final VoidCallback onNavigateToProducts;
@@ -119,11 +123,242 @@ class _DashboardView extends StatelessWidget {
     required this.onNavigateToOrders,
   });
 
+  @override
+  State<_DashboardView> createState() => _DashboardViewState();
+}
+
+class _DashboardViewState extends State<_DashboardView> {
+  final TextEditingController _messageController = TextEditingController();
+
+  @override
+  void dispose() {
+    _messageController.dispose();
+    super.dispose();
+  }
+
   String _getTimeGreeting() {
     final hour = DateTime.now().hour;
-    if (hour < 12) return language == AppLanguage.english ? "Good Morning! 🌾" : "Magandang Umaga! 🌾";
-    if (hour < 18) return language == AppLanguage.english ? "Good Afternoon! ☀️" : "Magandang Hapon! ☀️";
-    return language == AppLanguage.english ? "Good Evening! 🌙" : "Magandang Gabi! 🌙";
+    if (hour < 12) return widget.language == AppLanguage.english ? "Good Morning! 🌾" : "Magandang Umaga! 🌾";
+    if (hour < 18) return widget.language == AppLanguage.english ? "Good Afternoon! ☀️" : "Magandang Hapon! ☀️";
+    return widget.language == AppLanguage.english ? "Good Evening! 🌙" : "Magandang Gabi! 🌙";
+  }
+
+  // --- MESSENGER-STYLE CHAT INTERFACE ---
+  void _showMessengerChat(BuildContext context, AppLocalizations local, String userId, String userName) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+          child: Container(
+            height: MediaQuery.of(context).size.height * 0.85,
+            child: Column(
+              children: [
+                // MESSENGER HEADER
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))],
+                  ),
+                  child: Row(
+                    children: [
+                      Stack(
+                        children: [
+                          CircleAvatar(
+                            backgroundColor: Colors.green[700],
+                            child: const Icon(Icons.admin_panel_settings, color: Colors.white),
+                          ),
+                          Positioned(
+                            right: 0,
+                            bottom: 0,
+                            child: Container(
+                              width: 12,
+                              height: 12,
+                              decoration: BoxDecoration(
+                                color: Colors.green,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 2),
+                              ),
+                            ),
+                          )
+                        ],
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(local.messagesTitle, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                            Text("Active now", style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.grey),
+                        onPressed: () => Navigator.pop(context),
+                      )
+                    ],
+                  ),
+                ),
+
+                // MESSENGER CONVERSATION BODY
+                Expanded(
+                  child: StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('chats')
+                        .doc(userId)
+                        .collection('messages')
+                        .orderBy('createdAt', descending: true)
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+
+                      final docs = snapshot.data?.docs ?? [];
+                      if (docs.isEmpty) {
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.chat_bubble_outline, size: 60, color: Colors.grey[300]),
+                              const SizedBox(height: 8),
+                              Text(local.noMessages, style: TextStyle(color: Colors.grey[500], fontSize: 14)),
+                            ],
+                          ),
+                        );
+                      }
+
+                      return ListView.builder(
+                        reverse: true,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        itemCount: docs.length,
+                        itemBuilder: (context, index) {
+                          final data = docs[index].data() as Map<String, dynamic>;
+                          final String senderRole = data['senderRole'] ?? 'user';
+                          final bool isMe = senderRole == 'user';
+
+                          // Automatically mark admin replies as read when user opens the chat
+                          if (!isMe && (data['isRead'] == false)) {
+                            docs[index].reference.update({'isRead': true});
+                          }
+
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 3),
+                            child: Row(
+                              mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                if (!isMe) ...[
+                                  CircleAvatar(
+                                    radius: 14,
+                                    backgroundColor: Colors.green[700],
+                                    child: const Icon(Icons.person, size: 16, color: Colors.white),
+                                  ),
+                                  const SizedBox(width: 8),
+                                ],
+                                Flexible(
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                    decoration: BoxDecoration(
+                                      color: isMe ? const Color(0xFF0084FF) : const Color(0xFFE4E6EB), // Messenger Colors (Blue & Light Gray)
+                                      borderRadius: BorderRadius.only(
+                                        topLeft: const Radius.circular(18),
+                                        topRight: const Radius.circular(18),
+                                        bottomLeft: Radius.circular(isMe ? 18 : 4),
+                                        bottomRight: Radius.circular(isMe ? 4 : 18),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      data['text'] ?? '',
+                                      style: TextStyle(
+                                        color: isMe ? Colors.white : Colors.black,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+
+                // MESSENGER INPUT BAR
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border(top: BorderSide(color: Colors.grey[200]!)),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF0F2F5),
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                          child: TextField(
+                            controller: _messageController,
+                            textCapitalization: TextCapitalization.sentences,
+                            decoration: InputDecoration(
+                              hintText: local.typeMessage,
+                              hintStyle: TextStyle(color: Colors.grey[500]),
+                              border: InputBorder.none,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        icon: const Icon(Icons.send_rounded, color: Color(0xFF0084FF)),
+                        onPressed: () async {
+                          final text = _messageController.text.trim();
+                          if (text.isEmpty) return;
+
+                          _messageController.clear();
+
+                          // Push message matching Admin Firestore structure
+                          await FirebaseFirestore.instance
+                              .collection('chats')
+                              .doc(userId)
+                              .collection('messages')
+                              .add({
+                            'text': text,
+                            'senderId': userId,
+                            'senderRole': 'user', // Match with Admin app filter
+                            'createdAt': FieldValue.serverTimestamp(),
+                            'isRead': false,
+                          });
+
+                          // Update main document for Admin chat list preview
+                          await FirebaseFirestore.instance.collection('chats').doc(userId).set({
+                            'lastMessage': text,
+                            'updatedAt': FieldValue.serverTimestamp(),
+                            'userId': userId,
+                            'userName': userName,
+                            'unreadByAdmin': true,
+                          }, SetOptions(merge: true));
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _showNotificationPanel(BuildContext context, AppLocalizations local, String userId) {
@@ -234,13 +469,13 @@ class _DashboardView extends StatelessWidget {
                                   docs[index].reference.update({'isRead': true});
                                   if (type == 'ORDER_UPDATE') {
                                     Navigator.pop(context);
-                                    onNavigateToOrders();
+                                    widget.onNavigateToOrders();
                                   } else if (type == 'CART_NUDGE') {
                                     Navigator.pop(context);
-                                    onNavigateToCart();
+                                    widget.onNavigateToCart();
                                   } else if (type == 'RESTOCK_ALERT') {
                                     Navigator.pop(context);
-                                    onNavigateToProducts();
+                                    widget.onNavigateToProducts();
                                   }
                                 },
                               ),
@@ -306,7 +541,7 @@ class _DashboardView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final local = AppLocalizations(language);
+    final local = AppLocalizations(widget.language);
     final currentUser = FirebaseAuth.instance.currentUser;
 
     return CustomScrollView(
@@ -322,10 +557,47 @@ class _DashboardView extends StatelessWidget {
           actions: [
             TextButton.icon(
               style: TextButton.styleFrom(foregroundColor: Colors.white.withOpacity(0.9)),
-              onPressed: onLanguageToggle,
+              onPressed: widget.onLanguageToggle,
               icon: const Icon(Icons.translate, size: 16),
-              label: Text(language == AppLanguage.tagalog ? "EN" : "TAG", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              label: Text(widget.language == AppLanguage.tagalog ? "EN" : "TAG", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
             ),
+
+            // 💬 MESSENGER ICON & UNREAD BADGE COUNTER
+            if (currentUser != null)
+              StreamBuilder<DocumentSnapshot>(
+                stream: FirebaseFirestore.instance.collection('users').doc(currentUser.uid).snapshots(),
+                builder: (context, userSnap) {
+                  String currentName = "User";
+                  if (userSnap.hasData && userSnap.data!.exists) {
+                    final uData = userSnap.data!.data() as Map<String, dynamic>;
+                    currentName = uData['firstName'] ?? uData['name'] ?? "User";
+                  }
+
+                  return StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('chats')
+                        .doc(currentUser.uid)
+                        .collection('messages')
+                        .where('senderRole', isEqualTo: 'admin')
+                        .where('isRead', isEqualTo: false)
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      final unreadCount = snapshot.hasData ? snapshot.data!.docs.length : 0;
+                      return IconButton(
+                        icon: Badge(
+                          label: Text("$unreadCount", style: const TextStyle(fontSize: 10, color: Colors.white)),
+                          backgroundColor: Colors.red,
+                          isLabelVisible: unreadCount > 0,
+                          child: const Icon(Icons.chat_bubble_outline, color: Colors.white),
+                        ),
+                        onPressed: () => _showMessengerChat(context, local, currentUser.uid, currentName),
+                      );
+                    },
+                  );
+                },
+              ),
+
+            // NOTIFICATIONS
             Padding(
               padding: const EdgeInsets.only(right: 12.0),
               child: currentUser == null
@@ -377,7 +649,7 @@ class _DashboardView extends StatelessWidget {
                               ? FirebaseFirestore.instance.collection('users').doc(currentUser.uid).snapshots()
                               : const Stream.empty(),
                           builder: (context, snapshot) {
-                            String name = language == AppLanguage.english ? "Buyer" : "Mamimili";
+                            String name = widget.language == AppLanguage.english ? "Buyer" : "Mamimili";
                             if (snapshot.hasData && snapshot.data!.exists) {
                               final data = snapshot.data!.data() as Map<String, dynamic>;
                               name = data['firstName'] ?? data['name'] ?? name;
@@ -405,10 +677,10 @@ class _DashboardView extends StatelessWidget {
                 : _DashboardCardGrid(
                     userId: currentUser.uid, 
                     local: local,
-                    onOrdersTap: onNavigateToOrders,
-                    onCartTap: onNavigateToCart,
+                    onOrdersTap: widget.onNavigateToOrders,
+                    onCartTap: widget.onNavigateToCart,
                     onFavoritesTap: () => _showFavoritesPanel(context, local, currentUser.uid),
-                    onProductsTap: onNavigateToProducts,
+                    onProductsTap: widget.onNavigateToProducts,
                   ),
           ),
         ),
@@ -468,7 +740,7 @@ class _DashboardView extends StatelessWidget {
                               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                             ),
-                            onPressed: onNavigateToProducts,
+                            onPressed: widget.onNavigateToProducts,
                             icon: const Icon(Icons.shopping_basket_outlined, size: 16),
                             label: Text(local.orderNow, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                           ),
@@ -484,8 +756,8 @@ class _DashboardView extends StatelessWidget {
           ),
         ),
 
-        SliverToBoxAdapter(child: _HorizontalProductSection(local: local, title: local.bestSeller, categoryFilter: 'best_seller', onSeeAll: onNavigateToProducts)),
-        SliverToBoxAdapter(child: _HorizontalProductSection(local: local, title: local.recommended, categoryFilter: 'recommended', onSeeAll: onNavigateToProducts)),
+        SliverToBoxAdapter(child: _HorizontalProductSection(local: local, title: local.bestSeller, categoryFilter: 'best_seller', onSeeAll: widget.onNavigateToProducts)),
+        SliverToBoxAdapter(child: _HorizontalProductSection(local: local, title: local.recommended, categoryFilter: 'recommended', onSeeAll: widget.onNavigateToProducts)),
         const SliverToBoxAdapter(child: SizedBox(height: 32)),
       ],
     );

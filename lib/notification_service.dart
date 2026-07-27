@@ -5,22 +5,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
-// 🔴 TOP-LEVEL BACKGROUND HANDLER
-// Tumatakbo ito sa background o kapag patay/terminated ang app.
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
-  debugPrint("Background Notification Received: ${message.messageId}");
+  debugPrint("Background Notification: ${message.messageId}");
 }
 
 class NotificationService {
-  // ===========================================================================
-  // 🔘 TOGGLE SWITCH (TRUE / FALSE)
-  // Gawing 'true' para sa active notifications, o 'false' kung ayaw mong gumana.
-  // ===========================================================================
-  static bool enableNotifications = true;
-
-  // Singleton Instance
   static final NotificationService _instance = NotificationService._internal();
   factory NotificationService() => _instance;
   NotificationService._internal();
@@ -28,63 +19,35 @@ class NotificationService {
   final FirebaseMessaging _fcm = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _localNotifs = FlutterLocalNotificationsPlugin();
 
-  // ===========================================================================
-  // 🟢 STATIC WRAPPERS (Para sa dashboard_page.dart at main.dart compatibility)
-  // ===========================================================================
-  
-  /// Tinatawag ng main.dart
+  static const String channelAlerts = 'stock_alerts_channel';
+  static const String channelOrders = 'orders_channel';
+  static const String channelUsers = 'users_channel';
+  static const String channelWeather = 'weather_channel';
+  static const String channelTyphoonSOS = 'typhoon_sos_channel';
+
   static Future<void> initNotification() async {
-    if (!enableNotifications) return;
     await NotificationService().initialize();
   }
 
-  /// Tinatawag ng dashboard_page.dart
-  /// May optional 'id' parameter na ngayon para HINDI MAG-ERROR kahit mag-pasa ng 'id' ang dashboard.
-  static Future<void> showNotification({
-    int? id,
-    required String title,
-    required String body,
-    String? payload,
-  }) async {
-    if (!enableNotifications) return;
-
-    final int targetId = id ?? (DateTime.now().millisecondsSinceEpoch ~/ 1000);
-
-    await NotificationService().displayLocalNotification(
-      id: targetId,
-      title: title,
-      body: body,
-      payload: payload,
-    );
-  }
-
-  // ===========================================================================
-  // ⚙️ CORE NOTIFICATION LOGIC
-  // ===========================================================================
-
   Future<void> initialize() async {
-    // 1. Notification Permission Request
-    NotificationSettings settings = await _fcm.requestPermission(
+    await _fcm.requestPermission(
       alert: true,
       badge: true,
       sound: true,
+      criticalAlert: true,
     );
 
-    if (settings.authorizationStatus == AuthorizationStatus.denied) {
-      debugPrint('User denied notification permissions');
-      return;
-    }
-
-    // 2. Set Background Messaging Handler
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-    // 3. Local Notifications Config
     const AndroidInitializationSettings androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
 
     const InitializationSettings initSettings = InitializationSettings(
       android: androidSettings,
-      iOS: DarwinInitializationSettings(),
+      iOS: DarwinInitializationSettings(
+        requestCriticalPermission: true,
+        requestSoundPermission: true,
+      ),
     );
 
     await _localNotifs.initialize(
@@ -94,82 +57,85 @@ class NotificationService {
       },
     );
 
-    // Android High Importance Channel Setup
-    const AndroidNotificationChannel channel = AndroidNotificationChannel(
-      'high_importance_channel',
-      'High Importance Notifications',
-      description: 'Used for important notifications and alerts.',
-      importance: Importance.high,
+    await _createChannel(channelAlerts, 'Inventory Alerts', 'Stock warnings', Importance.high);
+    await _createChannel(channelOrders, 'Orders & Cancellations', 'Realtime client orders', Importance.high);
+    await _createChannel(channelUsers, 'New User Registrations', 'New user accounts created', Importance.defaultImportance);
+    await _createChannel(channelWeather, 'Weather Updates', 'Daily forecast alerts', Importance.defaultImportance);
+
+    // 🚨 Emergency Siren Channel
+    const AndroidNotificationChannel sosChannel = AndroidNotificationChannel(
+      channelTyphoonSOS,
+      '🚨 EMERGENCY TYPHOON ALERTS',
+      description: 'Critical disaster warnings with continuous siren sound',
+      importance: Importance.max,
+      playSound: true,
+      enableVibration: true,
+      sound: RawResourceAndroidNotificationSound('typhoon_siren'),
+    );
+
+    await _localNotifs
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(sosChannel);
+  }
+
+  Future<void> _createChannel(String id, String name, String desc, Importance importance) async {
+    final AndroidNotificationChannel channel = AndroidNotificationChannel(
+      id,
+      name,
+      description: desc,
+      importance: importance,
+      playSound: true,
+      enableVibration: true,
     );
 
     await _localNotifs
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(channel);
-
-    // 4. Listen sa Foreground Messages (kapag bukas ang app)
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      if (!enableNotifications) return;
-
-      RemoteNotification? notification = message.notification;
-      AndroidNotification? android = message.notification?.android;
-
-      if (notification != null && android != null) {
-        displayLocalNotification(
-          id: notification.hashCode,
-          title: notification.title ?? '',
-          body: notification.body ?? '',
-          payload: message.data['type'],
-        );
-      }
-    });
-
-    // 5. Save FCM Token sa Database
-    await saveDeviceToken();
   }
 
-  Future<void> saveDeviceToken() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    String? token = await _fcm.getToken();
-    if (token != null) {
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-        'fcmToken': token,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-    }
-
-    _fcm.onTokenRefresh.listen((newToken) async {
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-        'fcmToken': newToken,
-      }, SetOptions(merge: true));
-    });
-  }
-
-  Future<void> displayLocalNotification({
-    required int id,
+  static Future<void> showNotification({
+    int? id,
     required String title,
     required String body,
     String? payload,
+    String channelId = channelAlerts,
+    bool isOngoing = false,
   }) async {
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'high_importance_channel',
-      'High Importance Notifications',
-      importance: Importance.max,
-      priority: Priority.high,
+    final int targetId = id ?? (DateTime.now().millisecondsSinceEpoch ~/ 1000);
+    final bool isSOS = channelId == channelTyphoonSOS;
+
+    AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      channelId,
+      isSOS ? '🚨 EMERGENCY ALERTS' : 'ArrozSistema System',
+      importance: isSOS ? Importance.max : Importance.high,
+      priority: isSOS ? Priority.max : Priority.high,
       icon: '@mipmap/ic_launcher',
+      styleInformation: BigTextStyleInformation(body),
+      ongoing: isOngoing || isSOS,
+      autoCancel: !isSOS,
+      fullScreenIntent: isSOS,
+      sound: isSOS ? const RawResourceAndroidNotificationSound('typhoon_siren') : null,
     );
 
-    const NotificationDetails platformDetails = NotificationDetails(
+    NotificationDetails platformDetails = NotificationDetails(
       android: androidDetails,
-      iOS: DarwinNotificationDetails(),
+      iOS: DarwinNotificationDetails(
+        presentSound: true,
+        presentBanner: true,
+        presentList: true,
+        interruptionLevel: isSOS ? InterruptionLevel.critical : InterruptionLevel.active,
+      ),
     );
 
-    await _localNotifs.show(id, title, body, platformDetails, payload: payload);
+    await NotificationService()._localNotifs.show(targetId, title, body, platformDetails, payload: payload);
+  }
+
+  static Future<void> dismissNotification(int id) async {
+    await NotificationService()._localNotifs.cancel(id);
   }
 
   void _handleNotificationClick(String? payload) {
     if (payload == null) return;
-    debugPrint("Notification clicked with payload: $payload");
+    debugPrint("Clicked notification payload: $payload");
   }
 }

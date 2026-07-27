@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'order_page.dart'; // Ensure correct path for OrderModel
+import 'order_page.dart'; // Siguraduhing tama ang path ng OrderModel mo
 
 class ReportsPage extends StatefulWidget {
   const ReportsPage({super.key});
@@ -118,7 +118,7 @@ class _ReportsPageState extends State<ReportsPage> {
                         ),
                       ] else ...[
                         SizedBox(
-                          height: 500, // Fixed dynamic height for desktop views
+                          height: 520, // Clean dynamic view height desktop
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -320,7 +320,7 @@ class _MetricCard extends StatelessWidget {
       child: Row(
         children: [
           CircleAvatar(
-            backgroundColor: color.withOpacity(0.1),
+            backgroundColor: color.withValues(alpha: 0.1), // Fixed Deprecated method
             radius: 20,
             child: Icon(icon, color: color, size: 20),
           ),

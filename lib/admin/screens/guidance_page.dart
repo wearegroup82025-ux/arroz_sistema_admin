@@ -1,4 +1,4 @@
-import 'dart:convert'; 
+import 'dart:convert';   
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -199,7 +199,6 @@ class _GuidancePageState extends State<GuidancePage> {
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _plantingDate ?? now,
-      // Input Validation Limits: Hindi pwedeng lumagpas sa 150 days ang nakalipas o pumunta sa hinaharap
       firstDate: now.subtract(const Duration(days: 150)),
       lastDate: now,
       helpText: 'PILIIN ANG PETSA NG PAGTATANIM',
@@ -344,34 +343,34 @@ class _GuidancePageState extends State<GuidancePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 🚀 HERO CALL-TO-ACTION BANNER
+              // HERO CALL-TO-ACTION BANNER
               _buildHeroPlantingBanner(context, estimatedHarvestDate),
 
               const SizedBox(height: 14),
 
-              // ⚙️ CROP CONFIGURATION (VARIETY & METHOD SELECTOR)
+              // CROP CONFIGURATION (VARIETY & METHOD SELECTOR)
               _buildCropConfigurationCard(),
 
               const SizedBox(height: 14),
 
-              // 💡 REAL-TIME WEATHER & AGRI ADVISORY BANNER
+              // REAL-TIME WEATHER & AGRI ADVISORY BANNER
               _buildRealtimeAdvisoryBanner(),
 
               const SizedBox(height: 16),
 
-              // 📅 STAGE TRACKER & SELECTOR
+              // STAGE TRACKER & SELECTOR
               const Text("Mga Yugto ng Pagtatanim (Rice Stages)", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF334155))),
               const SizedBox(height: 8),
               _buildStageSelector(),
 
               const SizedBox(height: 20),
 
-              // 📋 INTERACTIVE STEP-BY-STEP CHECKLIST FOR CURRENT STAGE
+              // INTERACTIVE STEP-BY-STEP CHECKLIST FOR CURRENT STAGE
               _buildInteractiveTaskChecklist(),
 
               const SizedBox(height: 20),
 
-              // 🎓 PHILRICE SCIENTIFIC CARDS & GUIDELINES
+              // PHILRICE SCIENTIFIC CARDS & GUIDELINES
               const Text("Siyentipikong Gabay at Pamantayan", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF334155))),
               const SizedBox(height: 10),
               ..._buildExpertGuidanceCards(_selectedStage),
@@ -435,7 +434,7 @@ class _GuidancePageState extends State<GuidancePage> {
           if (_plantingDate == null)
             const Text(
               "I-click ang button sa itaas para ilagay kung kailan ka magtatanim. Tutulungan ka ng aming AI Agronomist na planuhin ang abono, patubig, at pangkalahatang alaga batay sa pamantayan ng PhilRice.",
-              style: TextStyle(color: Colors.white24, fontSize: 11, height: 1.4),
+              style: TextStyle(color: Colors.white70, fontSize: 11, height: 1.4),
             )
           else
             Row(
@@ -805,8 +804,8 @@ class _GuidancePageState extends State<GuidancePage> {
           _buildGuidanceCard(
             title: "Terminal Drainage at Pagpapatuyo",
             category: "PHILRICE KEY CHECK 5",
-            icon: Icons.grain_rounded, // ✅ Pinalitan ng tamang IconData
-            color: Colors.amber,        // ✅ Idinagdag ang nawawalang color parameter
+            icon: Icons.grain_rounded,
+            color: Colors.amber,
             bullets: [
               "Alisin ang tubig sa petak 7-10 araw bago ang target na ani para tumigas ang lupa at mabilis na makaikot ang harvester.",
               "Siguraduhing malinis ang paligid laban sa mga ibon at daga habang naghihintay ng pag-ani.",

@@ -9,7 +9,6 @@ class LoginPage extends StatefulWidget {
   State<LoginPage> createState() => _LoginPageState();
 }
 
-// Inalis ang getStarted sa AuthState enum
 enum AuthState { login, register }
 
 class _LoginPageState extends State<LoginPage> {
@@ -17,7 +16,6 @@ class _LoginPageState extends State<LoginPage> {
   final passwordController = TextEditingController();
   final confirmPasswordController = TextEditingController(); 
 
-  // Ginawang default screen ang Login Screen
   AuthState _currentScreen = AuthState.login;
   bool _isLoading = false;
 
@@ -111,16 +109,29 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _background,
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              child: _buildCurrentInterface(),
-            ),
-          ),
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: constraints.maxHeight - 32, // Para nakagitna pa rin sa matataas na screen
+                ),
+                child: IntrinsicHeight(
+                  child: Center(
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 420),
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 300),
+                        child: _buildCurrentInterface(),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
@@ -139,9 +150,9 @@ class _LoginPageState extends State<LoginPage> {
   Widget _buildLoginScreen() {
     return Column(
       key: const ValueKey('login'),
+      mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Inalis ang back button dito dahil ito na ang landing screen
         const Text("Welcome Back", style: TextStyle(color: _textPrimary, fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
         const SizedBox(height: 8),
         const Text("Log in to secure your agronomic dashboard data.", style: TextStyle(color: _textSecondary, fontSize: 14)),
@@ -176,13 +187,16 @@ class _LoginPageState extends State<LoginPage> {
   Widget _buildRegisterScreen() {
     return Column(
       key: const ValueKey('register'),
+      mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         IconButton(
+          padding: EdgeInsets.zero,
+          alignment: Alignment.centerLeft,
           icon: const Icon(Icons.arrow_back_ios_new_rounded, color: _textSecondary, size: 20),
           onPressed: () => setState(() => _currentScreen = AuthState.login),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 12),
         const Text("Create Account", style: TextStyle(color: _textPrimary, fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
         const SizedBox(height: 8),
         const Text("Join ArrozSistema to fully automate your warehouse logs.", style: TextStyle(color: _textSecondary, fontSize: 14)),
