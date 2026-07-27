@@ -5,15 +5,12 @@ import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
 
-
 /// Default [FirebaseOptions] for use with your Firebase apps.
 ///
 /// Example:
 /// ```dart
 /// import 'firebase_options.dart';
 /// // ...
-
-
 
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
@@ -42,47 +39,47 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyAGkhOP5Jkm89i0NwxUIn-OdHTdLUz1nHQ',
-    appId: '1:964118470426:web:078295984d7f7a28df56a3',
-    messagingSenderId: '964118470426',
-    projectId: 'arroz-17a52',
-    authDomain: 'arroz-17a52.firebaseapp.com',
-    storageBucket: 'arroz-17a52.firebasestorage.app',
+    apiKey: 'AIzaSyA4Th1ROW6cJM0sh20UwofWkag-divbKxQ',
+    appId: '1:861917748123:web:103f11eccc105c457b5f3e',
+    messagingSenderId: '861917748123',
+    projectId: 'arroz-sys',
+    authDomain: 'arroz-sys.firebaseapp.com',
+    storageBucket: 'arroz-sys.firebasestorage.app',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyDL1ljqVqOUuFKgoREGgcvqYiy1Q3ThKd4',
-    appId: '1:964118470426:android:c52846e252100bccdf56a3',
-    messagingSenderId: '964118470426',
-    projectId: 'arroz-17a52',
-    storageBucket: 'arroz-17a52.firebasestorage.app',
+    apiKey: 'AIzaSyDel4IU1Czb2h6KS5ttR_IHAJQ6GGn6e0E',
+    appId: '1:861917748123:android:9b078cdbcdacc8887b5f3e',
+    messagingSenderId: '861917748123',
+    projectId: 'arroz-sys',
+    storageBucket: 'arroz-sys.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyA6s6HCIkjoIOsj55uFCoV-ESo9mfmcf_0',
-    appId: '1:964118470426:ios:c92f0ee8c339db97df56a3',
-    messagingSenderId: '964118470426',
-    projectId: 'arroz-17a52',
-    storageBucket: 'arroz-17a52.firebasestorage.app',
+    apiKey: 'AIzaSyAhRPGkTgb4mB4vZeBw6DXEGvJlI5ibX1A',
+    appId: '1:861917748123:ios:a58db8f41663f64f7b5f3e',
+    messagingSenderId: '861917748123',
+    projectId: 'arroz-sys',
+    storageBucket: 'arroz-sys.firebasestorage.app',
     iosBundleId: 'com.example.arrozApp',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyA6s6HCIkjoIOsj55uFCoV-ESo9mfmcf_0',
-    appId: '1:964118470426:ios:c92f0ee8c339db97df56a3',
-    messagingSenderId: '964118470426',
-    projectId: 'arroz-17a52',
-    storageBucket: 'arroz-17a52.firebasestorage.app',
+    apiKey: 'AIzaSyAhRPGkTgb4mB4vZeBw6DXEGvJlI5ibX1A',
+    appId: '1:861917748123:ios:a58db8f41663f64f7b5f3e',
+    messagingSenderId: '861917748123',
+    projectId: 'arroz-sys',
+    storageBucket: 'arroz-sys.firebasestorage.app',
     iosBundleId: 'com.example.arrozApp',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyAGkhOP5Jkm89i0NwxUIn-OdHTdLUz1nHQ',
-    appId: '1:964118470426:web:e73e0dc2db81c872df56a3',
-    messagingSenderId: '964118470426',
-    projectId: 'arroz-17a52',
-    authDomain: 'arroz-17a52.firebaseapp.com',
-    storageBucket: 'arroz-17a52.firebasestorage.app',
+    apiKey: 'AIzaSyA4Th1ROW6cJM0sh20UwofWkag-divbKxQ',
+    appId: '1:861917748123:web:62b1769444b5eb247b5f3e',
+    messagingSenderId: '861917748123',
+    projectId: 'arroz-sys',
+    authDomain: 'arroz-sys.firebaseapp.com',
+    storageBucket: 'arroz-sys.firebasestorage.app',
   );
 
 }

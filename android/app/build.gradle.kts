@@ -9,23 +9,32 @@ plugins {
 
 android {
     namespace = "com.example.arroz_app"
-    compileSdk = flutter.compileSdkVersion
+    
+    // Naka-set sa 36 para sa geolocator at url_launcher
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // I-enable ang Core Library Desugaring para sa flutter_local_notifications
+        isCoreLibraryDesugaringEnabled = true
+
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.example.arroz_app"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
+
+        // Siguraduhing kahit papaano ay minSdk = 21 para sa MultiDex / Notifications
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
+        
+        // Naka-set sa 36 para maging tugma ang runtime behavior
+        targetSdk = 36
+
+        versionCode = 1
+        versionName = "1.0"
+
+        multiDexEnabled = true
     }
 
     buildTypes {
@@ -45,4 +54,9 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Kinakailangan para sa Desugaring support ng Java 8+ features sa Kotlin DSL
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }

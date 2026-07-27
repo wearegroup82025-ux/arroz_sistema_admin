@@ -1,28 +1,273 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
+import 'package:mailer/mailer.dart';
+import 'package:mailer/smtp_server.dart';
 
 class AuthService {
+  AuthService._privateConstructor();
+  static final AuthService instance = AuthService._privateConstructor();
+
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  Future<UserCredential> login(
-      String email,
-      String password,
-      ) async {
+  Stream<User?> get authStateChanges => _auth.authStateChanges();
+  User? get currentUser => _auth.currentUser;
 
-    return await _auth.signInWithEmailAndPassword(
-      email: email,
-      password: password,
-    );
+  http.Client _getHttpClient() {
+    if (kIsWeb) {
+      return http.Client();
+    }
+    final ioClient = HttpClient();
+    ioClient.badCertificateCallback = (X509Certificate cert, String host, int port) => true;
+    ioClient.connectionTimeout = const Duration(seconds: 15);
+    return IOClient(ioClient);
   }
 
-  Future<UserCredential> register(
-      String email,
-      String password,
-      ) async {
+  Future<bool> _isEmailDomainValid(String email) async {
+    try {
+      final parts = email.split('@');
+      if (parts.length != 2) return false;
+      final domain = parts[1].trim();
+      final result = await InternetAddress.lookup(domain);
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
 
-    return await _auth.createUserWithEmailAndPassword(
-      email: email,
-      password: password,
-    );
+  // --- PHONE OTP FUNCTIONS ---
+  Future<String> sendPhoneOTPWithTextBee({required String phoneNumber}) async {
+    try {
+      String cleanPhone = phoneNumber.trim();
+
+      // 1. DIRECT FIRESTORE CHECK: Titingnan kung nakarehistro na ang Phone Number
+      final existingUser = await _firestore
+          .collection('users')
+          .where('phone', isEqualTo: cleanPhone)
+          .limit(1)
+          .get();
+
+      if (existingUser.docs.isNotEmpty) {
+        throw Exception("May umiiral nang account gamit ang numerong ito.");
+      }
+
+      final random = Random();
+      String otp = List.generate(6, (_) => random.nextInt(10).toString()).join();
+
+      DateTime now = DateTime.now();
+      DateTime expirationTime = now.add(const Duration(minutes: 1));
+
+      await _firestore.collection('phone_otps').doc(cleanPhone).set({
+        'otp': otp,
+        'createdAt': FieldValue.serverTimestamp(),
+        'expiresAt': Timestamp.fromDate(expirationTime),
+      });
+
+      const String textBeeApiKey = '8e680a8f-af13-4c93-98c1-094982c6ee1f';
+      const String textBeeDeviceId = '6a644202ceb4314c6cb6d0ad';
+
+      final url = Uri.parse('https://api.textbee.dev/api/v1/gateway/devices/$textBeeDeviceId/send-sms');
+      final client = _getHttpClient();
+
+      try {
+        final response = await client.post(
+          url,
+          headers: {
+            'x-api-key': textBeeApiKey.trim(),
+            'apiKey': textBeeApiKey.trim(),
+            'Authorization': 'Bearer ${textBeeApiKey.trim()}',
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: jsonEncode({
+            'recipients': [cleanPhone],
+            'message': 'Your Arroz OTP code is: $otp. Valid for 1 minute only. Do not share.',
+          }),
+        );
+
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          return otp;
+        } else {
+          throw Exception("Hindi maipadala ang SMS. Pakisuri kung tama ang numero.");
+        }
+      } finally {
+        client.close();
+      }
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  Future<String> sendPhoneOTPWithSemaphore({required String phoneNumber}) async {
+    return await sendPhoneOTPWithTextBee(phoneNumber: phoneNumber);
+  }
+
+  Future<bool> verifyPhoneOTP({required String phoneNumber, required String typedOtp}) async {
+    try {
+      final doc = await _firestore.collection('phone_otps').doc(phoneNumber.trim()).get();
+      if (!doc.exists) return false;
+
+      final data = doc.data();
+      if (data == null) return false;
+
+      final String savedOtp = data['otp'] ?? '';
+      final Timestamp? expiresAtTimestamp = data['expiresAt'] as Timestamp?;
+
+      if (expiresAtTimestamp == null) return false;
+
+      DateTime expiresAt = expiresAtTimestamp.toDate();
+      if (DateTime.now().isAfter(expiresAt)) {
+        await _firestore.collection('phone_otps').doc(phoneNumber.trim()).delete();
+        return false; 
+      }
+
+      if (savedOtp == typedOtp.trim()) {
+        await _firestore.collection('phone_otps').doc(phoneNumber.trim()).delete();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<UserCredential> registerWithPhoneFakeEmail({required String phoneNumber}) async {
+    String fakeEmail = "${phoneNumber.replaceAll('+', '')}@carrotcarper.internal";
+    String fakePassword = "PhoneUserDefault123!";
+    
+    try {
+      return await _auth.signInWithEmailAndPassword(email: fakeEmail, password: fakePassword);
+    } catch (e) {
+      return await _auth.createUserWithEmailAndPassword(email: fakeEmail, password: fakePassword);
+    }
+  }
+
+  // --- EMAIL OTP GENERATOR WITH DIRECT FIRESTORE EXISTENCE CHECK ---
+  Future<String> generateAndSaveEmailOTP({
+    required String email, 
+    required String name,
+    String reason = "Registration",
+  }) async {
+    String cleanEmail = email.trim().toLowerCase();
+
+    // 1. Valid Format Check
+    final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+    if (!emailRegex.hasMatch(cleanEmail)) {
+      throw Exception("Maling format ng email address.");
+    }
+
+    // 2. Domain Check
+    bool isDomainExist = await _isEmailDomainValid(cleanEmail);
+    if (!isDomainExist) {
+      throw Exception("Hindi umiiral ang email domain na ito.");
+    }
+
+    // 3. DIRECT FIRESTORE CHECK: Titingnan sa 'users' collection kung may kaparehong email
+    if (reason == "Registration") {
+      final existingEmailDoc = await _firestore
+          .collection('users')
+          .where('email', isEqualTo: cleanEmail)
+          .limit(1)
+          .get();
+
+      if (existingEmailDoc.docs.isNotEmpty) {
+        throw Exception("May nakarehistro nang account gamit ang email na ito.");
+      }
+    }
+
+    final random = Random();
+    String otp = List.generate(6, (_) => random.nextInt(10).toString()).join();
+
+    String senderEmail = 'wearegroup82025@gmail.com'; 
+    String appPassword = 'ygyziuokfrdxqrfd'; 
+
+    final smtpServer = gmail(senderEmail, appPassword);
+    
+    String emailSubject = '[Arroz] OTP Code para sa Pagrehistro ng Account';
+    String badgeTitle = 'ACCOUNT REGISTRATION';
+    String emailDescription = 'Malugod ka naming tinatanggap sa Arroz! Gamitin ang OTP code sa ibaba upang makumpleto ang pagrehistro:';
+
+    final message = Message()
+      ..from = Address(senderEmail, 'Arroz Platform Support')
+      ..recipients.add(cleanEmail)
+      ..subject = emailSubject
+      ..text = 'Magandang araw $name,\n\nAng iyong verification code ay: $otp.\n\nExpire sa loob ng 1 minuto.'
+      ..html = """
+      <!DOCTYPE html>
+      <html>
+      <body style="font-family: Arial, sans-serif; background-color: #f4f6f8; padding: 20px;">
+        <div style="max-width: 500px; margin: 0 auto; background: #ffffff; padding: 20px; border-radius: 10px;">
+          <h2 style="color: #0F5132;">🌱 ARROZ Support</h2>
+          <p>$emailDescription</p>
+          <div style="background: #e8f5e9; padding: 15px; text-align: center; font-size: 28px; font-weight: bold; color: #0F5132; letter-spacing: 5px;">
+            $otp
+          </div>
+          <p style="font-size: 12px; color: #666; margin-top: 15px;">Valid for 1 minute only. Do not share.</p>
+        </div>
+      </body>
+      </html>
+      """;
+
+    try {
+      // Subukang magpadala via SMTP. Kapag mali ang mailbox, papasok ito sa Catch Block
+      await send(message, smtpServer);
+
+      DateTime now = DateTime.now();
+      DateTime expirationTime = now.add(const Duration(minutes: 1));
+
+      await _firestore.collection('email_otps').doc(cleanEmail).set({
+        'otp': otp,
+        'createdAt': FieldValue.serverTimestamp(),
+        'expiresAt': Timestamp.fromDate(expirationTime),
+      });
+
+      return otp;
+    } on MailerException catch (e) {
+      debugPrint("Mailer Error: $e");
+      throw Exception("Hindi maipadala ang email. Siguraduhing umiiral ang mailbox.");
+    } catch (e) {
+      debugPrint("Sending Exception: $e");
+      rethrow;
+    }
+  }
+
+  Future<bool> verifyEmailOTP({required String email, required String typedOtp}) async {
+    try {
+      final doc = await _firestore.collection('email_otps').doc(email.trim().toLowerCase()).get();
+      if (!doc.exists) return false;
+
+      final data = doc.data();
+      if (data == null) return false;
+
+      final String savedOtp = data['otp'] ?? '';
+      final Timestamp? expiresAtTimestamp = data['expiresAt'] as Timestamp?;
+
+      if (expiresAtTimestamp == null) return false;
+
+      DateTime expiresAt = expiresAtTimestamp.toDate();
+      if (DateTime.now().isAfter(expiresAt)) {
+        await _firestore.collection('email_otps').doc(email.trim().toLowerCase()).delete();
+        return false; 
+      }
+
+      if (savedOtp == typedOtp.trim()) {
+        await _firestore.collection('email_otps').doc(email.trim().toLowerCase()).delete();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<UserCredential> registerWithEmail({required String email, required String password}) async {
+    return await _auth.createUserWithEmailAndPassword(email: email.trim().toLowerCase(), password: password.trim());
   }
 
   Future<void> logout() async {

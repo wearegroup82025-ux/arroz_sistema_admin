@@ -1,0 +1,872 @@
+import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:geolocator/geolocator.dart';
+import '../../services/auth.service.dart';
+
+class GlobalAddressSelectionService {
+  static void showAddressPicker({
+    required BuildContext context,
+    required Function(Map<String, dynamic> selectedAddress) onAddressSelected,
+  }) {
+    final User? currentUser = FirebaseAuth.instance.currentUser; 
+    if (currentUser == null) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: DraggableScrollableSheet(
+            initialChildSize: 0.7,
+            maxChildSize: 0.95,
+            minChildSize: 0.4,
+            expand: false,
+            builder: (context, scrollController) {
+              return StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection("users")
+                    .doc(currentUser.uid)
+                    .collection("addresses")
+                    .orderBy('createdAt', descending: true)
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator(color: Colors.green));
+                  }
+                  final addressDocs = snapshot.data?.docs ?? [];
+
+                  return Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              "Pumili ng Delivery Address",
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: -0.5),
+                            ),
+                            TextButton.icon(
+                              onPressed: () {
+                                Navigator.pop(context);
+                                GlobalAddressSelectionService._showAddressFormSheet(
+                                  context: context, 
+                                  onAddressSaved: onAddressSelected,
+                                );
+                              },
+                              icon: const Icon(Icons.add_location_alt_outlined, color: Colors.green),
+                              label: const Text("Magdagdag", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                            ),
+                          ],
+                        ),
+                        const Divider(height: 20, thickness: 1),
+                        if (addressDocs.isEmpty)
+                          const Expanded(
+                            child: Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.location_off_outlined, size: 64, color: Colors.grey),
+                                  SizedBox(height: 16),
+                                  Text("Walang naka-save na address.", style: TextStyle(color: Colors.grey, fontSize: 15)),
+                                ],
+                              ),
+                            ),
+                          )
+                        else
+                          Expanded(
+                            child: ListView.builder(
+                              controller: scrollController,
+                              itemCount: addressDocs.length,
+                              itemBuilder: (context, index) {
+                                final doc = addressDocs[index];
+                                final data = doc.data() as Map<String, dynamic>;
+                                data['id'] = doc.id;
+
+                                // Kumuha sa alinmang key para hindi mag-N/A
+                                final String mobile = data['mobileNumber'] ?? data['phoneNumber'] ?? 'Walang Number';
+
+                                return Card(
+                                  elevation: 0,
+                                  margin: const EdgeInsets.symmetric(vertical: 6),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    side: BorderSide(color: Colors.grey.shade200),
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12.0),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            CircleAvatar(
+                                              radius: 18,
+                                              backgroundColor: Colors.green.withOpacity(0.1),
+                                              child: const Icon(Icons.location_on, color: Colors.green, size: 20),
+                                            ),
+                                            const SizedBox(width: 10),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    data['fullName'] ?? 'N/A',
+                                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                                                  ),
+                                                  const SizedBox(height: 2),
+                                                  Row(
+                                                    children: [
+                                                      const Icon(Icons.phone_android, size: 14, color: Colors.green),
+                                                      const SizedBox(width: 4),
+                                                      Text(
+                                                        mobile,
+                                                        style: const TextStyle(
+                                                          color: Colors.green, 
+                                                          fontWeight: FontWeight.bold, 
+                                                          fontSize: 13
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            IconButton(
+                                              icon: const Icon(Icons.edit_outlined, color: Colors.blue, size: 20),
+                                              tooltip: "I-edit",
+                                              onPressed: () {
+                                                Navigator.pop(context);
+                                                GlobalAddressSelectionService._showAddressFormSheet(
+                                                  context: context,
+                                                  onAddressSaved: onAddressSelected,
+                                                  addressToEdit: data,
+                                                  docId: doc.id,
+                                                );
+                                              },
+                                            ),
+                                            IconButton(
+                                              icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                                              tooltip: "Burahin",
+                                              onPressed: () => _confirmDeleteAddress(context, currentUser.uid, doc.id),
+                                            ),
+                                          ],
+                                        ),
+                                        const Divider(height: 16),
+                                        Text(
+                                          "${data['streetBuildingHouseNo'] ?? ''}, ${data['barangay'] ?? ''}, ${data['cityMunicipality'] ?? ''}, ${data['province'] ?? ''} ${data['postalCode'] != null ? '(${data['postalCode']})' : ''}",
+                                          style: TextStyle(color: Colors.grey.shade700, fontSize: 13, height: 1.3),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        SizedBox(
+                                          width: double.infinity,
+                                          height: 36,
+                                          child: ElevatedButton(
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: Colors.green.shade50,
+                                              foregroundColor: Colors.green.shade800,
+                                              elevation: 0,
+                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                            ),
+                                            onPressed: () {
+                                              Navigator.pop(context);
+                                              onAddressSelected(data);
+                                            },
+                                            child: const Text("Gamitin ang Address na Ito", style: TextStyle(fontWeight: FontWeight.bold)),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  static void _confirmDeleteAddress(BuildContext context, String userId, String docId) {
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text("Burahin ang Address?"),
+        content: const Text("Sigurado ka bang gusto mong burahin ang address na ito sa iyong account?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text("Kanselahin"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () async {
+              try {
+                await FirebaseFirestore.instance
+                    .collection("users")
+                    .doc(userId)
+                    .collection("addresses")
+                    .doc(docId)
+                    .delete();
+                if (dialogCtx.mounted) Navigator.pop(dialogCtx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Naisave ang pagbura ng address."), backgroundColor: Colors.green),
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text("Error sa pagbura: $e"), backgroundColor: Colors.red),
+                );
+              }
+            },
+            child: const Text("Oo, Burahin", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static void _showAddressFormSheet({
+    required BuildContext context,
+    required Function(Map<String, dynamic> selectedAddress) onAddressSaved,
+    Map<String, dynamic>? addressToEdit,
+    String? docId,
+  }) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: _ShopeeAddressForm(
+            onAddressSaved: onAddressSaved,
+            addressToEdit: addressToEdit,
+            docId: docId,
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ShopeeAddressForm extends StatefulWidget {
+  final Function(Map<String, dynamic> selectedAddress) onAddressSaved;
+  final Map<String, dynamic>? addressToEdit;
+  final String? docId;
+
+  const _ShopeeAddressForm({
+    required this.onAddressSaved,
+    this.addressToEdit,
+    this.docId,
+  });
+
+  @override
+  State<_ShopeeAddressForm> createState() => _ShopeeAddressFormState();
+}
+
+class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
+  final _formKey = GlobalKey<FormState>();
+  final User? currentUser = FirebaseAuth.instance.currentUser;
+
+  late TextEditingController _fnameController;
+  late TextEditingController _miController;
+  late TextEditingController _lnameController;
+  late TextEditingController _mobileController;
+  late TextEditingController _emailController;
+  late TextEditingController _areaSelectionController;
+  late TextEditingController _streetController;
+  late TextEditingController _postalController;
+
+  String fname = "", mi = "", lname = "", mobileNumber = "", emailAddress = "", streetBuildingHouseNo = "", postalCode = "";
+  String? selectedRegion, selectedProvince, selectedCity, selectedBarangay;
+
+  List<dynamic> currentLevelItems = [];
+  String currentFlowStep = "REGION"; 
+  bool isApiLoading = false;
+  bool isLocating = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final editData = widget.addressToEdit;
+
+    _fnameController = TextEditingController(text: editData?['firstName'] ?? editData?['fullName'] ?? '');
+    _miController = TextEditingController(text: editData?['middleInitial'] ?? '');
+    _lnameController = TextEditingController(text: editData?['lastName'] ?? '');
+    _mobileController = TextEditingController(text: editData?['mobileNumber'] ?? editData?['phoneNumber'] ?? '');
+    _emailController = TextEditingController(text: editData?['emailAddress'] ?? '');
+    _streetController = TextEditingController(text: editData?['streetBuildingHouseNo'] ?? '');
+    _postalController = TextEditingController(text: editData?['postalCode'] ?? '');
+
+    selectedRegion = editData?['region'];
+    selectedProvince = editData?['province'];
+    selectedCity = editData?['cityMunicipality'];
+    selectedBarangay = editData?['barangay'];
+
+    final initialAreaStr = [selectedRegion, selectedProvince, selectedCity, selectedBarangay]
+        .where((e) => e != null && e.isNotEmpty)
+        .join(', ');
+
+    _areaSelectionController = TextEditingController(text: initialAreaStr);
+
+    if (selectedBarangay != null) {
+      currentFlowStep = "DONE";
+    } else {
+      _fetchLocationData();
+    }
+  }
+
+  @override
+  void dispose() {
+    _fnameController.dispose();
+    _miController.dispose();
+    _lnameController.dispose();
+    _mobileController.dispose();
+    _emailController.dispose();
+    _areaSelectionController.dispose();
+    _streetController.dispose();
+    _postalController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetchLocationData() async {
+    if (!mounted) return;
+    setState(() => isApiLoading = true);
+    try {
+      if (currentFlowStep == "REGION") {
+        final res = await http.get(Uri.parse('https://psgc.gitlab.io/api/regions/'));
+        if (res.statusCode == 200 && mounted) {
+          currentLevelItems = jsonDecode(res.body);
+          currentLevelItems.sort((a, b) => a['name'].toString().compareTo(b['name'].toString()));
+        }
+      }
+    } catch (e) {
+      debugPrint("PSGC API Error: $e");
+    } finally {
+      if (mounted) setState(() => isApiLoading = false);
+    }
+  }
+
+  Future<void> _handleItemSelection(dynamic item) async {
+    if (!mounted) return;
+    setState(() => isApiLoading = true);
+    final String code = item['code'];
+    final String name = item['name'];
+
+    try {
+      if (currentFlowStep == "REGION") {
+        selectedRegion = name;
+        _areaSelectionController.text = name;
+        
+        final res = await http.get(Uri.parse('https://psgc.gitlab.io/api/regions/$code/provinces/'));
+        final distRes = await http.get(Uri.parse('https://psgc.gitlab.io/api/regions/$code/districts/'));
+        List<dynamic> combined = [];
+        if (res.statusCode == 200) combined.addAll(jsonDecode(res.body));
+        if (distRes.statusCode == 200) combined.addAll(jsonDecode(distRes.body));
+
+        if (combined.isEmpty) {
+          currentFlowStep = "CITY";
+          final ncrRes = await http.get(Uri.parse('https://psgc.gitlab.io/api/regions/$code/cities-municipalities/'));
+          if (ncrRes.statusCode == 200) {
+            currentLevelItems = jsonDecode(ncrRes.body);
+          }
+          selectedProvince = "NCR / Metro Manila";
+        } else {
+          currentFlowStep = "PROVINCE";
+          currentLevelItems = combined;
+        }
+      } else if (currentFlowStep == "PROVINCE") {
+        selectedProvince = name;
+        _areaSelectionController.text = "$selectedRegion, $name";
+        
+        final res = await http.get(Uri.parse('https://psgc.gitlab.io/api/provinces/$code/cities-municipalities/'));
+        final distRes = await http.get(Uri.parse('https://psgc.gitlab.io/api/districts/$code/cities-municipalities/'));
+        List<dynamic> combined = [];
+        if (res.statusCode == 200) combined.addAll(jsonDecode(res.body));
+        if (distRes.statusCode == 200) combined.addAll(jsonDecode(distRes.body));
+
+        currentFlowStep = "CITY";
+        currentLevelItems = combined;
+      } else if (currentFlowStep == "CITY") {
+        selectedCity = name;
+        _areaSelectionController.text = "$selectedRegion, $selectedProvince, $name";
+
+        final res = await http.get(Uri.parse('https://psgc.gitlab.io/api/cities-municipalities/$code/barangays/'));
+        if (res.statusCode == 200) {
+          currentFlowStep = "BARANGAY";
+          currentLevelItems = jsonDecode(res.body);
+        }
+      } else if (currentFlowStep == "BARANGAY") {
+        selectedBarangay = name;
+        _areaSelectionController.text = "$selectedRegion, $selectedProvince, $selectedCity, $name";
+        currentFlowStep = "DONE";
+        currentLevelItems = [];
+      }
+      
+      if (currentLevelItems.isNotEmpty) {
+        currentLevelItems.sort((a, b) => a['name'].toString().compareTo(b['name'].toString()));
+      }
+    } catch (e) {
+      debugPrint("Selection Flow Error: $e");
+    } finally {
+      if (mounted) setState(() => isApiLoading = false);
+    }
+  }
+
+  Future<void> _determineAndSetGPSLocation() async {
+    if (!mounted) return;
+    setState(() => isLocating = true);
+    
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) setState(() => isLocating = false);
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if (mounted) setState(() => isLocating = false);
+          return;
+        }
+      }
+
+      Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      final String url = "https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.latitude}&lon=${position.longitude}&addressdetails=1";
+
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {'User-Agent': 'ShopeeAddressApp_Flutter_Application_v1.0'}
+      );
+
+      if (response.statusCode == 200 && mounted) {
+        final data = jsonDecode(response.body);
+        final address = data['address'] ?? {};
+
+        String exactBarangay = address['quarter'] ?? address['suburb'] ?? address['village'] ?? "";
+        String exactCity = address['city'] ?? address['town'] ?? address['municipality'] ?? "";
+        String exactProvince = address['province'] ?? address['state'] ?? "";
+        String exactRegion = address['region'] ?? address['state'] ?? "";
+
+        setState(() {
+          selectedRegion = exactRegion;
+          selectedProvince = exactProvince;
+          selectedCity = exactCity;
+          selectedBarangay = exactBarangay; 
+
+          _areaSelectionController.text = "$selectedRegion, $selectedProvince, $selectedCity, $selectedBarangay";
+          _postalController.text = address['postcode'] ?? "";
+          currentFlowStep = "DONE";
+          currentLevelItems = [];
+        });
+      }
+    } catch (e) {
+      debugPrint("GPS Error: $e");
+    } finally {
+      if (mounted) setState(() => isLocating = false);
+    }
+  }
+
+  Future<void> _saveAddressToFirestore(Map<String, dynamic> addressMap) async {
+    if (currentUser == null) return;
+
+    if (widget.docId != null) {
+      await FirebaseFirestore.instance
+          .collection("users")
+          .doc(currentUser!.uid)
+          .collection("addresses")
+          .doc(widget.docId)
+          .update(addressMap);
+      addressMap['id'] = widget.docId;
+    } else {
+      final ref = await FirebaseFirestore.instance
+          .collection("users")
+          .doc(currentUser!.uid)
+          .collection("addresses")
+          .add(addressMap);
+      addressMap['id'] = ref.id;
+    }
+
+    widget.onAddressSaved(addressMap);
+  }
+
+  Future<void> _processSave() async {
+    final formattedMI = mi.trim().isNotEmpty ? "${mi.trim()}. " : "";
+    final String synthesizedFullName = "${fname.trim()} $formattedMI${lname.trim()}";
+
+    // SINU-SUPORTAHAN PAREHO ANG `mobileNumber` AT `phoneNumber` PARA HINDI MAG-N/A
+    final addressMap = {
+      'firstName': fname.trim(),
+      'middleInitial': mi.trim(),
+      'lastName': lname.trim(),
+      'fullName': synthesizedFullName.trim().isEmpty ? fname.trim() : synthesizedFullName.trim(),
+      'mobileNumber': mobileNumber.trim(),
+      'phoneNumber': mobileNumber.trim(), 
+      'emailAddress': emailAddress.trim(),
+      'region': selectedRegion ?? '',
+      'province': selectedProvince ?? '',
+      'cityMunicipality': selectedCity ?? '',
+      'barangay': selectedBarangay ?? '',
+      'streetBuildingHouseNo': streetBuildingHouseNo.trim(),
+      'postalCode': postalCode.trim(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+
+    if (widget.docId == null) {
+      addressMap['createdAt'] = FieldValue.serverTimestamp();
+      _verifyWithGmailOTP(addressMap);
+    } else {
+      try {
+        await _saveAddressToFirestore(addressMap);
+        if (mounted) {
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Matagumpay na na-update ang address!"), backgroundColor: Colors.green),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Pumalya sa pag-save: $e"), backgroundColor: Colors.red),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _verifyWithGmailOTP(Map<String, dynamic> addressMap) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator(color: Colors.green)),
+    );
+
+    try {
+      await AuthService.instance.generateAndSaveEmailOTP(
+        email: emailAddress.trim(),
+        name: addressMap['fullName'] ?? "User",
+        reason: "Address Verification",
+      );
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Pumalya sa pagpadala ng OTP: $e"), backgroundColor: Colors.red),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+    Navigator.pop(context);
+
+    final TextEditingController otpController = TextEditingController();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        String inlineError = ""; 
+        bool isVerifying = false;
+
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Row(
+                children: [
+                  Icon(Icons.security, color: Colors.green),
+                  SizedBox(width: 8),
+                  Text("I-verify ang Email"),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("Ipasok ang verification code na ipinadala sa:"),
+                  Text(emailAddress.trim(), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: otpController,
+                    keyboardType: TextInputType.number,
+                    maxLength: 6,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 4),
+                    decoration: const InputDecoration(counterText: "", border: OutlineInputBorder(), hintText: "000000"),
+                  ),
+                  if (inlineError.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(inlineError, style: const TextStyle(color: Colors.red, fontSize: 13)),
+                  ]
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isVerifying ? null : () => Navigator.pop(dialogContext), 
+                  child: const Text("I-cancel", style: TextStyle(color: Colors.grey))
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                  onPressed: isVerifying ? null : () async {
+                    final typedCode = otpController.text.trim();
+                    if (typedCode.length < 6) {
+                      setDialogState(() => inlineError = "Pakilagay ang kumpletong 6-digit code.");
+                      return;
+                    }
+
+                    setDialogState(() => isVerifying = true);
+
+                    bool isCorrect = await AuthService.instance.verifyEmailOTP(
+                      email: emailAddress.trim(),
+                      typedOtp: typedCode,
+                    );
+
+                    if (isCorrect) {
+                      Navigator.pop(dialogContext);
+                      await _saveAddressToFirestore(addressMap);
+                      if (mounted) Navigator.pop(context);
+                    } else {
+                      setDialogState(() {
+                        isVerifying = false;
+                        inlineError = "Maling code! Pakitingnan ang iyong email.";
+                      });
+                    }
+                  },
+                  child: isVerifying 
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Text("I-verify at I-save", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                )
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Container(
+        height: MediaQuery.of(context).size.height * 0.85,
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom, 
+          left: 20, 
+          right: 20, 
+          top: 20
+        ),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    widget.docId == null ? "Bagong Address" : "I-edit ang Address",
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+                ],
+              ),
+              const Divider(),
+              Expanded(
+                child: SingleChildScrollView(
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                  child: Column(
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            flex: 4,
+                            child: TextFormField(
+                              controller: _fnameController,
+                              decoration: const InputDecoration(labelText: "First Name", prefixIcon: Icon(Icons.person_outline)),
+                              validator: (v) => v!.trim().isEmpty ? "Kailangan" : null,
+                              onSaved: (v) => fname = v!,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            flex: 2,
+                            child: TextFormField(
+                              controller: _miController,
+                              maxLength: 2,
+                              decoration: const InputDecoration(labelText: "M.I.", counterText: ""),
+                              onSaved: (v) => mi = v!,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            flex: 4,
+                            child: TextFormField(
+                              controller: _lnameController,
+                              decoration: const InputDecoration(labelText: "Last Name"),
+                              validator: (v) => v!.trim().isEmpty ? "Kailangan" : null,
+                              onSaved: (v) => lname = v!,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      
+                      TextFormField(
+                        controller: _mobileController,
+                        keyboardType: TextInputType.phone,
+                        maxLength: 11,
+                        decoration: const InputDecoration(
+                          labelText: "Mobile Number (para sa Rider)", 
+                          prefixIcon: Icon(Icons.phone_android_outlined),
+                          hintText: "09XXXXXXXXX",
+                          counterText: "",
+                        ),
+                        validator: (v) {
+                          if (v!.trim().isEmpty) return "Kailangan ang mobile number";
+                          if (v.trim().length != 11) return "Dapat 11 digits (hal. 09123456789)";
+                          return null;
+                        },
+                        onSaved: (v) => mobileNumber = v!,
+                      ),
+                      const SizedBox(height: 12),
+                      
+                      TextFormField(
+                        controller: _emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: const InputDecoration(labelText: "Email Address", prefixIcon: Icon(Icons.email_outlined)),
+                        validator: (v) => v!.isEmpty ? "Kailangan ang email address" : null,
+                        onSaved: (v) => emailAddress = v!,
+                      ),
+                      const SizedBox(height: 12),
+
+                      TextFormField(
+                        controller: _areaSelectionController,
+                        readOnly: true,
+                        decoration: InputDecoration(
+                          labelText: "Rehiyon / Probinsya / Lungsod / Barangay",
+                          prefixIcon: const Icon(Icons.map_outlined),
+                          suffixIcon: currentFlowStep != "REGION" 
+                            ? IconButton(
+                                icon: const Icon(Icons.refresh, color: Colors.red),
+                                onPressed: () {
+                                  setState(() {
+                                    currentFlowStep = "REGION";
+                                    selectedRegion = null; selectedProvince = null; selectedCity = null; selectedBarangay = null;
+                                    _areaSelectionController.clear();
+                                    _streetController.clear();
+                                    _fetchLocationData();
+                                  });
+                                },
+                              )
+                            : null,
+                        ),
+                        validator: (v) => selectedBarangay == null ? "Pumili ng lokasyon" : null,
+                      ),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed: isLocating ? null : _determineAndSetGPSLocation,
+                          icon: isLocating 
+                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.green))
+                            : const Icon(Icons.my_location, color: Colors.green),
+                          label: Text(isLocating ? "Kinukuha..." : "Gamitin ang Aking Kasalukuyang Lokasyon", style: const TextStyle(color: Colors.green)),
+                        ),
+                      ),
+                      if (currentLevelItems.isNotEmpty) ...[
+                        Container(
+                          height: 180,
+                          margin: const EdgeInsets.symmetric(vertical: 8),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey.shade200),
+                            borderRadius: BorderRadius.circular(12),
+                            color: Colors.grey.shade50,
+                          ),
+                          child: isApiLoading 
+                            ? const Center(child: CircularProgressIndicator(color: Colors.green))
+                            : ListView.builder(
+                                itemCount: currentLevelItems.length,
+                                itemBuilder: (context, idx) {
+                                  final item = currentLevelItems[idx];
+                                  return ListTile(
+                                    title: Text(item['name'], style: const TextStyle(fontSize: 14)),
+                                    trailing: const Icon(Icons.chevron_right, size: 16),
+                                    onTap: () => _handleItemSelection(item),
+                                  );
+                                },
+                              ),
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _streetController,
+                        decoration: const InputDecoration(
+                          labelText: "Numero ng Bahay / Kalsada", 
+                          prefixIcon: Icon(Icons.home_outlined),
+                        ),
+                        validator: (v) => v!.isEmpty ? "Kailangan ang kalsada o numero ng bahay" : null,
+                        onSaved: (v) => streetBuildingHouseNo = v!,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _postalController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: "Postal Code", prefixIcon: Icon(Icons.local_post_office_outlined)),
+                        validator: (v) => v!.isEmpty ? "Kailangan ang postal code" : null,
+                        onSaved: (v) => postalCode = v!,
+                      ),
+                      const SizedBox(height: 30),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
+                          ),
+                          onPressed: () {
+                            if (_formKey.currentState!.validate()) {
+                              _formKey.currentState!.save();
+                              _processSave();
+                            }
+                          },
+                          child: Text(
+                            widget.docId == null ? "I-verify at I-save ang Address" : "I-update ang Address", 
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

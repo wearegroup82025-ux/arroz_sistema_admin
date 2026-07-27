@@ -220,7 +220,7 @@ class _LoginPageState extends State<LoginPage> {
         color: _surface,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
-          BoxShadow(color: const Color(0xff0F172A).withOpacity(0.015), blurRadius: 8, offset: const Offset(0, 2)),
+          BoxShadow(color: const Color(0xff0F172A).withValues(alpha: 0.015), blurRadius: 8, offset: const Offset(0, 2)),
         ],
       ),
       child: TextField(
@@ -230,7 +230,7 @@ class _LoginPageState extends State<LoginPage> {
         decoration: InputDecoration(
           labelText: label,
           labelStyle: const TextStyle(color: _textSecondary, fontSize: 14, fontWeight: FontWeight.w500),
-          prefixIcon: Icon(icon, color: _textSecondary.withOpacity(0.7), size: 22),
+          prefixIcon: Icon(icon, color: _textSecondary.withValues(alpha: 0.7), size: 22),
           floatingLabelStyle: const TextStyle(color: _primary, fontWeight: FontWeight.w700),
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: _border, width: 1.2)),
