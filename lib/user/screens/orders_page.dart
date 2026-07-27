@@ -51,7 +51,6 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Star Rating Selector
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: List.generate(5, (index) {
@@ -70,7 +69,6 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
                     }),
                   ),
                   const SizedBox(height: 10),
-                  // Comment Text Field
                   TextField(
                     controller: reviewController,
                     maxLines: 3,
@@ -100,7 +98,6 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
                       return;
                     }
 
-                    // I-save sa Firestore 'reviews' collection para lumabas sa Product Page
                     await FirebaseFirestore.instance.collection("reviews").add({
                       "productId": productId,
                       "userId": currentUser.uid,
@@ -157,7 +154,6 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
           );
         }
 
-        // Code-level sorting para sa pinakabagong order (Desc)
         final allOrders = snapshot.data!.docs;
         allOrders.sort((a, b) {
           final aData = a.data() as Map<String, dynamic>;
@@ -220,6 +216,12 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
       final String status = data['orderStatus'] ?? data['status'] ?? 'Pending';
       final bool isPaid = data['isPaid'] ?? false;
       final bool prepareToShip = data['prepareToShip'] ?? false;
+      final String method = (data['paymentMethod'] ?? '').toString().toLowerCase();
+
+      // BAGONG LOGIC: Pag GCash at bayad na, automatic na HINDI na lalabas sa 'To Pay'
+      if (method.contains('gcash') && (isPaid || prepareToShip || status == 'Paid')) {
+        return false;
+      }
 
       if (status == "Pending" || status == "Unpaid") {
         if (!isPaid && !prepareToShip) return true;
@@ -237,6 +239,12 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
       final String status = data['orderStatus'] ?? data['status'] ?? 'Pending';
       final bool isPaid = data['isPaid'] ?? false;
       final bool prepareToShip = data['prepareToShip'] ?? false;
+      final String method = (data['paymentMethod'] ?? '').toString().toLowerCase();
+
+      // BAGONG LOGIC: Kapag GCash at naging Paid/isPaid/prepareToShip, DERETSO AGAD SA TO SHIP!
+      if (method.contains('gcash') && (isPaid || prepareToShip || status == 'Paid' || status == 'Pending')) {
+        return true;
+      }
 
       return (status == "Pending" || status == "Paid") && (isPaid || prepareToShip);
     }).toList();
@@ -362,11 +370,11 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
   // ==================== LIST VIEW UI ====================
 
   Widget _buildListView(
-    List<QueryDocumentSnapshot> orders, {
-    bool canCancel = false,
-    bool buyAgain = false,
-    bool isCompletedTab = false,
-  }) {
+      List<QueryDocumentSnapshot> orders, {
+        bool canCancel = false,
+        bool buyAgain = false,
+        bool isCompletedTab = false,
+      }) {
     return ListView.builder(
       padding: const EdgeInsets.all(10),
       itemCount: orders.length,
@@ -410,7 +418,6 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
                     const Divider(),
                     const SizedBox(height: 5),
 
-                    // LIST OF PRODUCTS IN ORDER
                     ...itemsList.map((item) {
                       final String pId = item['productId'] ?? '';
                       final String pName = item['name'] ?? 'Unknown Item';
@@ -429,8 +436,7 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
                               ),
                             ),
                             Text("₱${(pPrice * pQty).toStringAsFixed(2)}", style: const TextStyle(fontWeight: FontWeight.bold)),
-                            
-                            // 🌟 RATE BUTTON PER PRODUCT IN COMPLETED TAB (Shopee Style)
+
                             if (isCompletedTab && pId.isNotEmpty) ...[
                               const SizedBox(width: 10),
                               OutlinedButton.icon(
@@ -453,7 +459,6 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
                     Text("Payment Method: $paymentMethod", style: const TextStyle(fontSize: 13, color: Colors.grey)),
                     const SizedBox(height: 15),
 
-                    // BOTTOM BAR ACTION
                     Wrap(
                       alignment: WrapAlignment.spaceBetween,
                       crossAxisAlignment: WrapCrossAlignment.center,
@@ -536,22 +541,25 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
   Widget _buildStatusBadge(String status, bool isPaid, String paymentMethod, bool prepareToShip) {
     Color badgeColor = Colors.grey;
     String text = status;
+    final String method = paymentMethod.toLowerCase();
 
     if (status == "Cancelled") {
       badgeColor = Colors.grey;
       text = "Cancelled";
+    } else if (method.contains('gcash') || (isPaid || prepareToShip) || status == "Paid") {
+      if (status == "Shipping" || status == "Delivered") {
+        badgeColor = Colors.blue.shade700;
+        text = "To Receive";
+      } else if (status == "Completed") {
+        badgeColor = Colors.green.shade700;
+        text = "Completed";
+      } else {
+        badgeColor = Colors.orange.shade700;
+        text = "To Ship";
+      }
     } else if (!isPaid && !prepareToShip && (status == "Pending" || status == "Unpaid")) {
       badgeColor = Colors.red.shade700;
       text = "To Pay";
-    } else if ((isPaid || prepareToShip) && (status == "Pending" || status == "Paid")) {
-      badgeColor = Colors.orange.shade700;
-      text = "To Ship";
-    } else if (status == "Shipping" || status == "Delivered") {
-      badgeColor = Colors.blue.shade700;
-      text = "To Receive";
-    } else if (status == "Completed") {
-      badgeColor = Colors.green.shade700;
-      text = "Completed";
     }
 
     return Container(

@@ -93,7 +93,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
           );
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (_) => const OrdersPage()),
-            (route) => route.isFirst,
+                (route) => route.isFirst,
           );
         } else if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -152,6 +152,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
         "totalAmount": widget.totalAmount,
         "paymentMethod": paymentMethod,
         "isPaid": false,
+        "prepareToShip": false,
         "orderStatus": isOnlinePayment ? "Unpaid" : "Pending",
         "createdAt": FieldValue.serverTimestamp(),
       });
@@ -161,24 +162,19 @@ class _CheckoutPageState extends State<CheckoutPage> {
         if (mounted) setState(() => isPlacingOrder = false);
         await _processOnlinePayment(orderRef, "gcash");
       } else {
+        // 🟢 PROSESO PARA SA CASH ON DELIVERY (COD):
         if (mounted) {
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (context) => AlertDialog(
-              title: const Text("Order Placed Successfully! 🎉"),
-              content: const Text("Salamat! Natanggap na namin ang iyong order at inihahanda na para sa delivery."),
-              actions: [
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                  onPressed: () {
-                    Navigator.pop(context);
-                    Navigator.pop(context);
-                  },
-                  child: const Text("OK", style: TextStyle(color: Colors.white)),
-                )
-              ],
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Order Placed Successfully! Natanggap na ang iyong COD Order."),
+              backgroundColor: Colors.green,
             ),
+          );
+
+          // DIRETSO AGAD SA ORDERS PAGE
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const OrdersPage()),
+                (route) => route.isFirst,
           );
         }
       }
@@ -235,8 +231,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                             );
                           },
                           child: Text(
-                            selectedAddress == null ? "+ Pumili / Magdagdag" : "Palitan", 
-                            style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)
+                              selectedAddress == null ? "+ Pumili / Magdagdag" : "Palitan",
+                              style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)
                           ),
                         )
                       ],
@@ -249,8 +245,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                       Text("Email: ${selectedAddress!['emailAddress'] ?? 'N/A'}"),
                       // INAYOS NA MAKUHA ANG PAGPIPILIAN NA FIELD KEY NG CONTACT NUMBER
                       Text(
-                        "Contact No: ${selectedAddress!['phoneNumber'] ?? selectedAddress!['mobileNumber'] ?? 'N/A'}", 
-                        style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)
+                          "Contact No: ${selectedAddress!['phoneNumber'] ?? selectedAddress!['mobileNumber'] ?? 'N/A'}",
+                          style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)
                       ),
                       const SizedBox(height: 6),
                       Text(
@@ -350,9 +346,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
             child: isPlacingOrder
                 ? const CircularProgressIndicator(color: Colors.white)
                 : Text(
-                    paymentMethod == "GCash / E-Wallet" ? "MAGBAYAD GAMIT ANG GCASH" : "PLACE ORDER NOW",
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
+              paymentMethod == "GCash / E-Wallet" ? "MAGBAYAD GAMIT ANG GCASH" : "PLACE ORDER NOW",
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+            ),
           ),
         ),
       ),

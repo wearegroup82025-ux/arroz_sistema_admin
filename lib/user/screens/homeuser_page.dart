@@ -17,10 +17,10 @@ class AppLocalizations {
   String get cart => language == AppLanguage.english ? "Cart" : "Kariton";
   String get orders => language == AppLanguage.english ? "Orders" : "Mga Order";
   String get profile => language == AppLanguage.english ? "Profile" : "Profile";
-  
+
   String get welcome => language == AppLanguage.english ? "Welcome back" : "Maligayang pagbabalik";
   String get specsTitle => language == AppLanguage.english ? "Product Specifications" : "Tungkol sa Ating Palay";
-  String get specsDesc => language == AppLanguage.english 
+  String get specsDesc => language == AppLanguage.english
       ? "Our premium palay is directly sourced and harvested from the rich agricultural fields of Kapalangan, Pampanga."
       : "Ang ating de-kalidad na palay ay direktang nagmula at inani sa mayayamang sakahan ng Kapalangan, Pampanga.";
 
@@ -28,7 +28,7 @@ class AppLocalizations {
   String get recommended => language == AppLanguage.english ? "👍 Recommended for You" : "👍 Rekomendado sa Iyo";
   String get viewAll => language == AppLanguage.english ? "See All" : "Tingnan Lahat";
   String get noItems => language == AppLanguage.english ? "No items posted yet" : "Wala pang naka-post";
-  
+
   String get activeOrders => language == AppLanguage.english ? "Active Orders" : "Mga Aktibong Order";
   String get myCart => language == AppLanguage.english ? "My Cart" : "Aking Kariton";
   String get favorites => language == AppLanguage.english ? "Favorites" : "Mga Paborito";
@@ -37,8 +37,12 @@ class AppLocalizations {
   String get notifTitle => language == AppLanguage.english ? "Notifications" : "Mga Abiso";
   String get noNotif => language == AppLanguage.english ? "No new updates right now." : "Walang bagong balita sa ngayon.";
 
+  String get chatTitle => language == AppLanguage.english ? "Chat Support / Admin" : "Sulat sa Admin";
+  String get chatHint => language == AppLanguage.english ? "Ask about your order or product..." : "Magtanong tungkol sa order o produkto...";
+  String get send => language == AppLanguage.english ? "Send" : "Ipadala";
+
   String get orderNow => language == AppLanguage.english ? "Order Now" : "Bumili Na";
-  String get actionDesc => language == AppLanguage.english 
+  String get actionDesc => language == AppLanguage.english
       ? "Ready to secure your high-recovery palay supply? Tap below to start browsing."
       : "Handa nang kumuha ng de-kalidad na supply ng palay? Pindutin sa ibaba para makapili.";
 }
@@ -124,6 +128,187 @@ class _DashboardView extends StatelessWidget {
     if (hour < 12) return language == AppLanguage.english ? "Good Morning! 🌾" : "Magandang Umaga! 🌾";
     if (hour < 18) return language == AppLanguage.english ? "Good Afternoon! ☀️" : "Magandang Hapon! ☀️";
     return language == AppLanguage.english ? "Good Evening! 🌙" : "Magandang Gabi! 🌙";
+  }
+
+  // DIALOG / BOTTOM SHEET PARA SA CHAT SA ADMIN
+  void _showAdminChatPanel(BuildContext context, AppLocalizations local, String userId) {
+    final messageController = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+          ),
+          child: Container(
+            height: MediaQuery.of(context).size.height * 0.7,
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              children: [
+                // Header
+                Row(
+                  children: [
+                    CircleAvatar(
+                      backgroundColor: Colors.green[100],
+                      child: Icon(Icons.support_agent_rounded, color: Colors.green[800]),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            local.chatTitle,
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
+                          Text(
+                            language == AppLanguage.english ? "Active • Support Team" : "Aktibo • Suporta sa Mamimili",
+                            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    )
+                  ],
+                ),
+                const Divider(),
+
+                // Chat Stream
+                Expanded(
+                  child: StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('chats')
+                        .doc(userId)
+                        .collection('messages')
+                        .orderBy('timestamp', descending: true)
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+
+                      final docs = snapshot.data?.docs ?? [];
+                      if (docs.isEmpty) {
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.chat_bubble_outline, size: 48, color: Colors.grey[400]),
+                              const SizedBox(height: 8),
+                              Text(
+                                language == AppLanguage.english
+                                    ? "No messages yet. Send a message to Admin!"
+                                    : "Wala pang mensahe. Mag-iwan ng tanong sa Admin!",
+                                style: TextStyle(color: Colors.grey[500], fontSize: 13),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+
+                      return ListView.builder(
+                        reverse: true,
+                        itemCount: docs.length,
+                        itemBuilder: (context, index) {
+                          final msg = docs[index].data() as Map<String, dynamic>;
+                          final bool isMe = msg['senderId'] == userId;
+
+                          return Align(
+                            alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                            child: Container(
+                              margin: const EdgeInsets.symmetric(vertical: 4),
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: isMe ? Colors.green[700] : Colors.grey[200],
+                                borderRadius: BorderRadius.only(
+                                  topLeft: const Radius.circular(14),
+                                  topRight: const Radius.circular(14),
+                                  bottomLeft: Radius.circular(isMe ? 14 : 0),
+                                  bottomRight: Radius.circular(isMe ? 0 : 14),
+                                ),
+                              ),
+                              child: Text(
+                                msg['text'] ?? '',
+                                style: TextStyle(
+                                  color: isMe ? Colors.white : Colors.black87,
+                                  fontSize: 13.5,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+
+                // Input Bar
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: messageController,
+                        decoration: InputDecoration(
+                          hintText: local.chatHint,
+                          hintStyle: const TextStyle(fontSize: 13),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          filled: true,
+                          fillColor: Colors.grey[100],
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton.filled(
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.green[700],
+                      ),
+                      icon: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                      onPressed: () async {
+                        final text = messageController.text.trim();
+                        if (text.isEmpty) return;
+
+                        messageController.clear();
+
+                        // Save message to user's chat subcollection
+                        final ref = FirebaseFirestore.instance
+                            .collection('chats')
+                            .doc(userId)
+                            .collection('messages');
+
+                        await ref.add({
+                          'senderId': userId,
+                          'text': text,
+                          'timestamp': FieldValue.serverTimestamp(),
+                        });
+
+                        // Update metadata for Admin View
+                        await FirebaseFirestore.instance.collection('chats').doc(userId).set({
+                          'lastMessage': text,
+                          'lastUpdated': FieldValue.serverTimestamp(),
+                          'userId': userId,
+                          'unreadByAdmin': true,
+                        }, SetOptions(merge: true));
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _showNotificationPanel(BuildContext context, AppLocalizations local, String userId) {
@@ -320,36 +505,47 @@ class _DashboardView extends StatelessWidget {
           scrolledUnderElevation: 2,
           backgroundColor: Colors.green[700],
           actions: [
+            // LANGUAGE TOGGLE
             TextButton.icon(
               style: TextButton.styleFrom(foregroundColor: Colors.white.withOpacity(0.9)),
               onPressed: onLanguageToggle,
               icon: const Icon(Icons.translate, size: 16),
               label: Text(language == AppLanguage.tagalog ? "EN" : "TAG", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
             ),
+
+            // CHAT WITH ADMIN BUTTON (BAGONG DAGDAG)
+            if (currentUser != null)
+              IconButton(
+                icon: const Icon(Icons.chat_outlined, color: Colors.white),
+                tooltip: "Kausapin ang Admin",
+                onPressed: () => _showAdminChatPanel(context, local, currentUser.uid),
+              ),
+
+            // NOTIFICATIONS BUTTON WITH BADGE
             Padding(
               padding: const EdgeInsets.only(right: 12.0),
               child: currentUser == null
                   ? const SizedBox.shrink()
                   : StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance
-                          .collection('users')
-                          .doc(currentUser.uid)
-                          .collection('notifications')
-                          .where('isRead', isEqualTo: false)
-                          .snapshots(),
-                      builder: (context, snapshot) {
-                        final unreadCount = snapshot.hasData ? snapshot.data!.docs.length : 0;
-                        return IconButton(
-                          icon: Badge(
-                            label: Text("$unreadCount", style: const TextStyle(fontSize: 10, color: Colors.white)),
-                            backgroundColor: Colors.red,
-                            isLabelVisible: unreadCount > 0,
-                            child: const Icon(Icons.notifications_none_outlined, color: Colors.white),
-                          ),
-                          onPressed: () => _showNotificationPanel(context, local, currentUser.uid),
-                        );
-                      },
+                stream: FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(currentUser.uid)
+                    .collection('notifications')
+                    .where('isRead', isEqualTo: false)
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  final unreadCount = snapshot.hasData ? snapshot.data!.docs.length : 0;
+                  return IconButton(
+                    icon: Badge(
+                      label: Text("$unreadCount", style: const TextStyle(fontSize: 10, color: Colors.white)),
+                      backgroundColor: Colors.red,
+                      isLabelVisible: unreadCount > 0,
+                      child: const Icon(Icons.notifications_none_outlined, color: Colors.white),
                     ),
+                    onPressed: () => _showNotificationPanel(context, local, currentUser.uid),
+                  );
+                },
+              ),
             ),
           ],
           flexibleSpace: FlexibleSpaceBar(
@@ -373,7 +569,7 @@ class _DashboardView extends StatelessWidget {
                         Text(_getTimeGreeting(), style: TextStyle(color: Colors.green[100], fontSize: 13, fontWeight: FontWeight.w500)),
                         const SizedBox(height: 2),
                         StreamBuilder<DocumentSnapshot>(
-                          stream: currentUser != null 
+                          stream: currentUser != null
                               ? FirebaseFirestore.instance.collection('users').doc(currentUser.uid).snapshots()
                               : const Stream.empty(),
                           builder: (context, snapshot) {
@@ -400,16 +596,16 @@ class _DashboardView extends StatelessWidget {
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: currentUser == null 
+            child: currentUser == null
                 ? const SizedBox.shrink()
                 : _DashboardCardGrid(
-                    userId: currentUser.uid, 
-                    local: local,
-                    onOrdersTap: onNavigateToOrders,
-                    onCartTap: onNavigateToCart,
-                    onFavoritesTap: () => _showFavoritesPanel(context, local, currentUser.uid),
-                    onProductsTap: onNavigateToProducts,
-                  ),
+              userId: currentUser.uid,
+              local: local,
+              onOrdersTap: onNavigateToOrders,
+              onCartTap: onNavigateToCart,
+              onFavoritesTap: () => _showFavoritesPanel(context, local, currentUser.uid),
+              onProductsTap: onNavigateToProducts,
+            ),
           ),
         ),
 
@@ -501,7 +697,7 @@ class _DashboardCardGrid extends StatelessWidget {
   final VoidCallback onProductsTap;
 
   const _DashboardCardGrid({
-    required this.userId, 
+    required this.userId,
     required this.local,
     required this.onOrdersTap,
     required this.onCartTap,
@@ -525,7 +721,7 @@ class _DashboardCardGrid extends StatelessWidget {
           onTap: onOrdersTap,
         ),
         _buildMetricCard(
-          stream: FirebaseFirestore.instance.collection('cart').where('userId', isEqualTo: userId).snapshots(), 
+          stream: FirebaseFirestore.instance.collection('cart').where('userId', isEqualTo: userId).snapshots(),
           label: local.myCart, icon: Icons.shopping_bag_outlined, color: Colors.orange,
           onTap: onCartTap,
         ),
@@ -544,9 +740,9 @@ class _DashboardCardGrid extends StatelessWidget {
   }
 
   Widget _buildMetricCard({
-    required Stream<QuerySnapshot> stream, 
-    required String label, 
-    required IconData icon, 
+    required Stream<QuerySnapshot> stream,
+    required String label,
+    required IconData icon,
     required Color color,
     required VoidCallback onTap,
   }) {
@@ -597,9 +793,9 @@ class _HorizontalProductSection extends StatelessWidget {
   final VoidCallback onSeeAll;
 
   const _HorizontalProductSection({
-    required this.local, 
-    required this.title, 
-    required this.categoryFilter, 
+    required this.local,
+    required this.title,
+    required this.categoryFilter,
     required this.onSeeAll
   });
 
@@ -617,9 +813,9 @@ class _HorizontalProductSection extends StatelessWidget {
               TextButton(
                 onPressed: onSeeAll,
                 style: TextButton.styleFrom(
-                  padding: EdgeInsets.zero, 
-                  minimumSize: const Size(50, 30), 
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap
+                    padding: EdgeInsets.zero,
+                    minimumSize: const Size(50, 30),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap
                 ),
                 child: Text(local.viewAll, style: TextStyle(color: Colors.green[700], fontSize: 13, fontWeight: FontWeight.bold)),
               )
@@ -633,17 +829,17 @@ class _HorizontalProductSection extends StatelessWidget {
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(
-                  child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.green))
+                    child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.green))
                 );
               }
-              
+
               final docs = snapshot.data?.docs ?? [];
               if (docs.isEmpty) {
                 return Padding(
                   padding: const EdgeInsets.only(left: 20.0),
                   child: Align(
-                    alignment: Alignment.centerLeft, 
-                    child: Text(local.noItems, style: TextStyle(color: Colors.grey[400], fontSize: 12))
+                      alignment: Alignment.centerLeft,
+                      child: Text(local.noItems, style: TextStyle(color: Colors.grey[400], fontSize: 12))
                   ),
                 );
               }
@@ -668,22 +864,22 @@ class _HorizontalProductSection extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Container(
-                            height: 55, 
+                            height: 55,
                             width: double.infinity,
                             decoration: BoxDecoration(color: Colors.amber[50], borderRadius: BorderRadius.circular(8)),
                             child: Icon(Icons.grain, color: Colors.amber[800], size: 28),
                           ),
                           const Spacer(),
                           Text(
-                            prod['name'] ?? 'Palay Bag', 
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold), 
-                            maxLines: 1, 
-                            overflow: TextOverflow.ellipsis
+                              prod['name'] ?? 'Palay Bag',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            "₱${prod['price'] ?? 0}", 
-                            style: const TextStyle(color: Colors.green, fontSize: 13, fontWeight: FontWeight.bold)
+                              "₱${prod['price'] ?? 0}",
+                              style: const TextStyle(color: Colors.green, fontSize: 13, fontWeight: FontWeight.bold)
                           ),
                         ],
                       ),

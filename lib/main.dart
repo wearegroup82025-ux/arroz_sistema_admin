@@ -31,7 +31,7 @@ await NotificationService().initialize();
 // true  = Admin App
 // false = User App
 // ==============================
-const bool isAdminApp = true;
+const bool isAdminApp = false;
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});

@@ -49,15 +49,16 @@ class _LoginUserPageState extends State<LoginUserPage> {
       'valEmail': 'Please enter a valid email address',
       'valPassword': 'Password is required',
       'forgotTitle': 'Reset Password',
-      'forgotSub': 'Enter your registered email address or mobile number.',
+      'forgotSub': 'Choose how you want to search and reset your account password:',
       'forgotSearch': 'SEARCH ACCOUNT',
       'lockoutMsg': 'Too many failed attempts. Try again in 2 minutes.',
       'errorAuth': 'Invalid email or password. Please check and try again.',
       'connErr': 'Unable to connect. Please check your internet.',
-      'searchHint': 'Email or Phone (e.g. 09123456789)',
+      'searchHintEmail': 'Enter registered Email Address',
+      'searchHintPhone': 'Enter registered Mobile Number (e.g. 09123456789)',
       'accNotFoundTitle': 'Account Not Found',
-      'accNotFoundSub': 'We couldn\'t find any Arroz account linked to that email or phone number.',
-      'emptySearchWarn': 'Please enter an email address or mobile number first.',
+      'accNotFoundSub': 'We couldn\'t find any Arroz account linked to that info.',
+      'emptySearchWarn': 'Please enter your registered email or mobile number.',
       'chooseMethod': 'How do you want to receive your OTP verification code?',
       'sendEmailLink': 'Send OTP to Email',
       'sendSmsOtp': 'Send OTP via SMS',
@@ -82,6 +83,8 @@ class _LoginUserPageState extends State<LoginUserPage> {
       'btnUnderstand': 'I Understand',
       'btnTryAgain': 'Try Again',
       'btnOk': 'OK',
+      'useEmailOption': 'Via Email Address',
+      'usePhoneOption': 'Via Mobile Number',
     },
     'Tagalog': {
       'subtitle': 'Sistema para sa Modernong Magsasaka',
@@ -94,15 +97,16 @@ class _LoginUserPageState extends State<LoginUserPage> {
       'valEmail': 'Ilagay ang iyong tamang email address',
       'valPassword': 'Kailangan ang password',
       'forgotTitle': 'I-reset ang Password',
-      'forgotSub': 'Ilagay ang nakarehistrong email address o numero ng cellphone.',
+      'forgotSub': 'Pumili ng paraan kung paano mo gustong hanapin at i-reset ang iyong password:',
       'forgotSearch': 'HANAPIN ANG ACCOUNT',
       'lockoutMsg': 'Masyadong maraming subok. Maghintay muna ng 2 minuto.',
       'errorAuth': 'Maling email o password. Pakisuri at subukan ulit.',
       'connErr': 'Hindi makakonekta sa internet sa kasalukuyan.',
-      'searchHint': 'Email o Cellphone (hal. 09123456789)',
+      'searchHintEmail': 'Ilagay ang nakarehistrong Email Address',
+      'searchHintPhone': 'Ilagay ang nakarehistrong Mobile Number (hal. 09123456789)',
       'accNotFoundTitle': 'Walang Nahanap na Account',
-      'accNotFoundSub': 'Walang nakatagong Arroz account na nakarehistro sa email o numero na ito.',
-      'emptySearchWarn': 'Mangyaring maglagay muna ng email address o numero ng cellphone.',
+      'accNotFoundSub': 'Walang nakatagong Arroz account na nakarehistro sa impormasyong ito.',
+      'emptySearchWarn': 'Mangyaring maglagay ng email address o numero ng cellphone.',
       'chooseMethod': 'Paano mo gustong matanggap ang iyong OTP verification code?',
       'sendEmailLink': 'Ipadala ang OTP sa Email',
       'sendSmsOtp': 'Ipadala ang OTP sa SMS',
@@ -127,6 +131,8 @@ class _LoginUserPageState extends State<LoginUserPage> {
       'btnUnderstand': 'Naintindihan Ko',
       'btnTryAgain': 'Subukang Muli',
       'btnOk': 'Sige',
+      'useEmailOption': 'Gamit ang Email Address',
+      'usePhoneOption': 'Gamit ang Mobile Number',
     }
   };
 
@@ -220,7 +226,7 @@ class _LoginUserPageState extends State<LoginUserPage> {
     final newPasswordController = TextEditingController();
     final confirmPasswordController = TextEditingController();
 
-    int currentStep = 1; 
+    int currentStep = 1;
     bool isProcessing = false;
     bool obscureNew = true;
     bool obscureConfirm = true;
@@ -236,7 +242,7 @@ class _LoginUserPageState extends State<LoginUserPage> {
     bool hasSpecial = false;
 
     Map<String, dynamic>? foundUserData;
-    String selectedMethod = 'email'; 
+    String selectedMethod = 'email'; // 'email' o 'sms'
     String targetAddress = '';
 
     final localized = _txt[_currentLanguage]!;
@@ -270,7 +276,6 @@ class _LoginUserPageState extends State<LoginUserPage> {
               });
             }
 
-            // RESEND OTP (TextBee para sa SMS o Gmail para sa Email)
             Future<void> resendOtpCode() async {
               setSheetState(() => isProcessing = true);
               try {
@@ -281,7 +286,6 @@ class _LoginUserPageState extends State<LoginUserPage> {
                     reason: "Password Reset",
                   );
                 } else {
-                  // Inayos para magpadala gamit ang TextBee.dev
                   await AuthService.instance.sendPhoneOTPWithTextBee(phoneNumber: targetAddress);
                 }
                 _showSnackBar(_currentLanguage == 'Tagalog' ? "Naipadala nang muli ang OTP code!" : "OTP code resent successfully!", Colors.green.shade700);
@@ -318,19 +322,102 @@ class _LoginUserPageState extends State<LoginUserPage> {
                       ),
                       const SizedBox(height: 16),
 
-                      // STEP 1: SEARCH ACCOUNT
+                      // STEP 1: MAMILI MUNA KUNG EMAIL O MOBILE NUMBER
                       if (currentStep == 1) ...[
                         Text(localized['forgotTitle']!, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: ArrozTheme.textMain)),
                         const SizedBox(height: 6),
                         Text(localized['forgotSub']!, style: const TextStyle(color: ArrozTheme.textMuted, fontSize: 13, height: 1.4)),
                         const SizedBox(height: 20),
+
+                        // Selection Switcher (Email vs Mobile)
+                        Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: ArrozTheme.bg,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.grey.shade200),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () {
+                                    setSheetState(() {
+                                      selectedMethod = 'email';
+                                      searchController.clear();
+                                    });
+                                  },
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 200),
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    decoration: BoxDecoration(
+                                      color: selectedMethod == 'email' ? ArrozTheme.primary : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.email_outlined, size: 18, color: selectedMethod == 'email' ? Colors.white : ArrozTheme.textMuted),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          localized['useEmailOption']!,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                            color: selectedMethod == 'email' ? Colors.white : ArrozTheme.textMuted,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () {
+                                    setSheetState(() {
+                                      selectedMethod = 'sms';
+                                      searchController.clear();
+                                    });
+                                  },
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 200),
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    decoration: BoxDecoration(
+                                      color: selectedMethod == 'sms' ? ArrozTheme.primary : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.phone_android_outlined, size: 18, color: selectedMethod == 'sms' ? Colors.white : ArrozTheme.textMuted),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          localized['usePhoneOption']!,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                            color: selectedMethod == 'sms' ? Colors.white : ArrozTheme.textMuted,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 16),
+
                         TextField(
                           controller: searchController,
-                          keyboardType: TextInputType.emailAddress,
+                          keyboardType: selectedMethod == 'email' ? TextInputType.emailAddress : TextInputType.phone,
                           decoration: InputDecoration(
-                            hintText: localized['searchHint'],
+                            hintText: selectedMethod == 'email' ? localized['searchHintEmail'] : localized['searchHintPhone'],
                             hintStyle: const TextStyle(fontSize: 13, color: ArrozTheme.textMuted),
-                            prefixIcon: const Icon(Icons.search_rounded, color: ArrozTheme.primary),
+                            prefixIcon: Icon(selectedMethod == 'email' ? Icons.email_outlined : Icons.phone_android_outlined, color: ArrozTheme.primary),
                             filled: true,
                             fillColor: ArrozTheme.bg,
                             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -345,7 +432,7 @@ class _LoginUserPageState extends State<LoginUserPage> {
                             style: ElevatedButton.styleFrom(backgroundColor: ArrozTheme.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
                             onPressed: isProcessing ? null : () async {
                               final query = searchController.text.trim();
-                              
+
                               if (query.isEmpty) {
                                 _showCustomWarningDialog(
                                   context: context,
@@ -361,15 +448,19 @@ class _LoginUserPageState extends State<LoginUserPage> {
                               setSheetState(() => isProcessing = true);
 
                               try {
-                                final normalizedPhone = _normalizePhoneNumber(query);
-                                final emailQuery = await FirebaseFirestore.instance.collection('users').where('email', isEqualTo: query).get();
-                                final phoneQuery = await FirebaseFirestore.instance.collection('users').where('phone', isEqualTo: query).get();
-                                final normPhoneQuery = await FirebaseFirestore.instance.collection('users').where('phone', isEqualTo: normalizedPhone).get();
-
                                 DocumentSnapshot? userDoc;
-                                if (emailQuery.docs.isNotEmpty) userDoc = emailQuery.docs.first;
-                                else if (phoneQuery.docs.isNotEmpty) userDoc = phoneQuery.docs.first;
-                                else if (normPhoneQuery.docs.isNotEmpty) userDoc = normPhoneQuery.docs.first;
+
+                                if (selectedMethod == 'email') {
+                                  final emailQuery = await FirebaseFirestore.instance.collection('users').where('email', isEqualTo: query).get();
+                                  if (emailQuery.docs.isNotEmpty) userDoc = emailQuery.docs.first;
+                                } else {
+                                  final normalizedPhone = _normalizePhoneNumber(query);
+                                  final phoneQuery = await FirebaseFirestore.instance.collection('users').where('phone', isEqualTo: query).get();
+                                  final normPhoneQuery = await FirebaseFirestore.instance.collection('users').where('phone', isEqualTo: normalizedPhone).get();
+
+                                  if (phoneQuery.docs.isNotEmpty) userDoc = phoneQuery.docs.first;
+                                  else if (normPhoneQuery.docs.isNotEmpty) userDoc = normPhoneQuery.docs.first;
+                                }
 
                                 if (userDoc == null || !userDoc.exists) {
                                   if (context.mounted) {
@@ -383,10 +474,24 @@ class _LoginUserPageState extends State<LoginUserPage> {
                                     );
                                   }
                                 } else {
+                                  foundUserData = userDoc.data() as Map<String, dynamic>;
+
+                                  if (selectedMethod == 'email') {
+                                    targetAddress = foundUserData!['email'] ?? '';
+                                    await AuthService.instance.generateAndSaveEmailOTP(
+                                      email: targetAddress,
+                                      name: foundUserData!['name'] ?? 'User',
+                                      reason: "Password Reset",
+                                    );
+                                  } else {
+                                    targetAddress = _normalizePhoneNumber(foundUserData!['phone'] ?? '');
+                                    await AuthService.instance.sendPhoneOTPWithTextBee(phoneNumber: targetAddress);
+                                  }
+
                                   setSheetState(() {
-                                    foundUserData = userDoc!.data() as Map<String, dynamic>;
-                                    currentStep = 2;
+                                    currentStep = 3; // Diretso agad sa OTP Verification
                                   });
+                                  startResendTimer();
                                 }
                               } catch (e) {
                                 if (context.mounted) _showSnackBar(localized['connErr']!, ArrozTheme.error);
@@ -401,90 +506,11 @@ class _LoginUserPageState extends State<LoginUserPage> {
                         ),
                       ]
 
-                      // STEP 2: CHOOSE OTP METHOD (Email or TextBee SMS)
-                      else if (currentStep == 2) ...[
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(color: ArrozTheme.bg, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
-                          child: Row(
-                            children: [
-                              CircleAvatar(
-                                radius: 24,
-                                backgroundColor: ArrozTheme.accent,
-                                child: Text((foundUserData!['name'] ?? 'U')[0].toUpperCase(), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: ArrozTheme.primary)),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(foundUserData!['name'] ?? 'Arroz User', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: ArrozTheme.textMain)),
-                                    Text(_maskEmail(foundUserData!['email'] ?? ''), style: const TextStyle(color: ArrozTheme.textMuted, fontSize: 12)),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(localized['chooseMethod']!, style: const TextStyle(fontSize: 13, color: ArrozTheme.textMuted, height: 1.4)),
-                        const SizedBox(height: 12),
-
-                        if ((foundUserData!['email'] ?? '').toString().contains('@'))
-                          RadioListTile<String>(
-                            value: 'email', groupValue: selectedMethod, activeColor: ArrozTheme.primary, contentPadding: EdgeInsets.zero,
-                            title: Text(localized['sendEmailLink']!, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                            subtitle: Text(_maskEmail(foundUserData!['email'] ?? ''), style: const TextStyle(fontSize: 12)),
-                            onChanged: (v) => setSheetState(() => selectedMethod = v!),
-                          ),
-                        if ((foundUserData!['phone'] ?? '').toString().isNotEmpty)
-                          RadioListTile<String>(
-                            value: 'sms', groupValue: selectedMethod, activeColor: ArrozTheme.primary, contentPadding: EdgeInsets.zero,
-                            title: Text(localized['sendSmsOtp']!, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                            subtitle: Text(_maskPhone(foundUserData!['phone'] ?? ''), style: const TextStyle(fontSize: 12)),
-                            onChanged: (v) => setSheetState(() => selectedMethod = v!),
-                          ),
-
-                        const SizedBox(height: 20),
-                        SizedBox(
-                          width: double.infinity, height: 50,
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(backgroundColor: ArrozTheme.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
-                            onPressed: isProcessing ? null : () async {
-                              setSheetState(() => isProcessing = true);
-                              try {
-                                if (selectedMethod == 'email') {
-                                  targetAddress = foundUserData!['email'];
-                                  await AuthService.instance.generateAndSaveEmailOTP(
-                                    email: targetAddress,
-                                    name: foundUserData!['name'] ?? 'User',
-                                    reason: "Password Reset",
-                                  );
-                                } else {
-                                  targetAddress = _normalizePhoneNumber(foundUserData!['phone'] ?? '');
-                                  // Inayos para TextBee.dev gamit ang pinalitang method
-                                  await AuthService.instance.sendPhoneOTPWithTextBee(phoneNumber: targetAddress);
-                                }
-                                setSheetState(() => currentStep = 3);
-                                startResendTimer();
-                              } catch (e) {
-                                if (context.mounted) _showSnackBar(localized['connErr']!, ArrozTheme.error);
-                              } finally {
-                                setSheetState(() => isProcessing = false);
-                              }
-                            },
-                            child: isProcessing
-                                ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                                : Text(localized['continueBtn']!, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                          ),
-                        ),
-                      ]
-
                       // STEP 3: VERIFY OTP CODE (WITH TIMER & RESEND CODE)
                       else if (currentStep == 3) ...[
                         Text(localized['enterOtpTitle']!, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: ArrozTheme.textMain)),
                         const SizedBox(height: 6),
-                        Text("${localized['enterOtpSub']!}$targetAddress", style: const TextStyle(color: ArrozTheme.textMuted, fontSize: 13, height: 1.4)),
+                        Text("${localized['enterOtpSub']!}${selectedMethod == 'email' ? _maskEmail(targetAddress) : _maskPhone(targetAddress)}", style: const TextStyle(color: ArrozTheme.textMuted, fontSize: 13, height: 1.4)),
                         const SizedBox(height: 20),
                         TextField(
                           controller: otpController,
@@ -586,132 +612,132 @@ class _LoginUserPageState extends State<LoginUserPage> {
 
                       // STEP 4: SET NEW PASSWORD
                       else if (currentStep == 4) ...[
-                        Text(localized['newPassTitle']!, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: ArrozTheme.textMain)),
-                        const SizedBox(height: 6),
-                        Text(localized['newPassSub']!, style: const TextStyle(color: ArrozTheme.textMuted, fontSize: 13, height: 1.4)),
-                        const SizedBox(height: 20),
+                          Text(localized['newPassTitle']!, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: ArrozTheme.textMain)),
+                          const SizedBox(height: 6),
+                          Text(localized['newPassSub']!, style: const TextStyle(color: ArrozTheme.textMuted, fontSize: 13, height: 1.4)),
+                          const SizedBox(height: 20),
 
-                        TextField(
-                          controller: newPasswordController,
-                          obscureText: obscureNew,
-                          onChanged: (val) {
-                            setSheetState(() {
-                              hasMin8 = val.length >= 8;
-                              hasDigit = val.contains(RegExp(r'\d'));
-                              hasSpecial = val.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>\-_=+]'));
-                            });
-                          },
-                          decoration: InputDecoration(
-                            labelText: localized['newPassHint'],
-                            prefixIcon: const Icon(Icons.lock_outline_rounded, color: ArrozTheme.primary),
-                            suffixIcon: IconButton(
-                              icon: Icon(obscureNew ? Icons.visibility_outlined : Icons.visibility_off_outlined, color: ArrozTheme.textMuted),
-                              onPressed: () => setSheetState(() => obscureNew = !obscureNew),
+                          TextField(
+                            controller: newPasswordController,
+                            obscureText: obscureNew,
+                            onChanged: (val) {
+                              setSheetState(() {
+                                hasMin8 = val.length >= 8;
+                                hasDigit = val.contains(RegExp(r'\d'));
+                                hasSpecial = val.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>\-_=+]'));
+                              });
+                            },
+                            decoration: InputDecoration(
+                              labelText: localized['newPassHint'],
+                              prefixIcon: const Icon(Icons.lock_outline_rounded, color: ArrozTheme.primary),
+                              suffixIcon: IconButton(
+                                icon: Icon(obscureNew ? Icons.visibility_outlined : Icons.visibility_off_outlined, color: ArrozTheme.textMuted),
+                                onPressed: () => setSheetState(() => obscureNew = !obscureNew),
+                              ),
+                              filled: true, fillColor: ArrozTheme.bg,
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
                             ),
-                            filled: true, fillColor: ArrozTheme.bg,
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
                           ),
-                        ),
-                        const SizedBox(height: 12),
+                          const SizedBox(height: 12),
 
-                        TextField(
-                          controller: confirmPasswordController,
-                          obscureText: obscureConfirm,
-                          decoration: InputDecoration(
-                            labelText: localized['confirmPassHint'],
-                            prefixIcon: const Icon(Icons.lock_reset_rounded, color: ArrozTheme.primary),
-                            suffixIcon: IconButton(
-                              icon: Icon(obscureConfirm ? Icons.visibility_outlined : Icons.visibility_off_outlined, color: ArrozTheme.textMuted),
-                              onPressed: () => setSheetState(() => obscureConfirm = !obscureConfirm),
+                          TextField(
+                            controller: confirmPasswordController,
+                            obscureText: obscureConfirm,
+                            decoration: InputDecoration(
+                              labelText: localized['confirmPassHint'],
+                              prefixIcon: const Icon(Icons.lock_reset_rounded, color: ArrozTheme.primary),
+                              suffixIcon: IconButton(
+                                icon: Icon(obscureConfirm ? Icons.visibility_outlined : Icons.visibility_off_outlined, color: ArrozTheme.textMuted),
+                                onPressed: () => setSheetState(() => obscureConfirm = !obscureConfirm),
+                              ),
+                              filled: true, fillColor: ArrozTheme.bg,
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
                             ),
-                            filled: true, fillColor: ArrozTheme.bg,
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
                           ),
-                        ),
-                        const SizedBox(height: 16),
+                          const SizedBox(height: 16),
 
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(color: ArrozTheme.bg, borderRadius: BorderRadius.circular(14)),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildRuleItem(localized['ruleLength']!, hasMin8),
-                              const SizedBox(height: 6),
-                              _buildRuleItem(localized['ruleNumber']!, hasDigit),
-                              const SizedBox(height: 6),
-                              _buildRuleItem(localized['ruleSpecial']!, hasSpecial),
-                            ],
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(color: ArrozTheme.bg, borderRadius: BorderRadius.circular(14)),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildRuleItem(localized['ruleLength']!, hasMin8),
+                                const SizedBox(height: 6),
+                                _buildRuleItem(localized['ruleNumber']!, hasDigit),
+                                const SizedBox(height: 6),
+                                _buildRuleItem(localized['ruleSpecial']!, hasSpecial),
+                              ],
+                            ),
                           ),
-                        ),
 
-                        const SizedBox(height: 20),
+                          const SizedBox(height: 20),
 
-                        SizedBox(
-                          width: double.infinity, height: 50,
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(backgroundColor: ArrozTheme.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
-                            onPressed: isProcessing ? null : () async {
-                              final pass = newPasswordController.text.trim();
-                              final confirmPass = confirmPasswordController.text.trim();
+                          SizedBox(
+                            width: double.infinity, height: 50,
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(backgroundColor: ArrozTheme.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
+                              onPressed: isProcessing ? null : () async {
+                                final pass = newPasswordController.text.trim();
+                                final confirmPass = confirmPasswordController.text.trim();
 
-                              if (pass != confirmPass) {
-                                _showCustomWarningDialog(
-                                  context: context,
-                                  title: localized['passNotMatchTitle']!,
-                                  description: localized['passNotMatchSub']!,
-                                  icon: Icons.password_rounded,
-                                  color: ArrozTheme.warning,
-                                  buttonText: localized['btnUnderstand']!,
-                                );
-                                return;
-                              }
-
-                              if (!hasMin8 || !hasDigit || !hasSpecial) {
-                                _showCustomWarningDialog(
-                                  context: context,
-                                  title: _currentLanguage == 'Tagalog' ? "Babalala sa Password Rules" : "Password Rules Warning",
-                                  description: _currentLanguage == 'Tagalog' 
-                                      ? "Mangyaring sundin ang lahat ng patakaran sa password bago magpatuloy." 
-                                      : "Please make sure your password satisfies all requirements.",
-                                  icon: Icons.security_rounded,
-                                  color: ArrozTheme.warning,
-                                  buttonText: localized['btnUnderstand']!,
-                                );
-                                return;
-                              }
-
-                              setSheetState(() => isProcessing = true);
-                              try {
-                                final uid = foundUserData!['uid'];
-                                await FirebaseFirestore.instance.collection('users').doc(uid).update({
-                                  'passwordUpdated': FieldValue.serverTimestamp(),
-                                });
-
-                                if (context.mounted) {
-                                  Navigator.pop(context);
-                                  
+                                if (pass != confirmPass) {
                                   _showCustomWarningDialog(
                                     context: context,
-                                    title: localized['passSuccessTitle']!,
-                                    description: localized['passSuccessSub']!,
-                                    icon: Icons.check_circle_rounded,
-                                    color: Colors.green.shade700,
-                                    buttonText: localized['btnOk']!,
+                                    title: localized['passNotMatchTitle']!,
+                                    description: localized['passNotMatchSub']!,
+                                    icon: Icons.password_rounded,
+                                    color: ArrozTheme.warning,
+                                    buttonText: localized['btnUnderstand']!,
                                   );
+                                  return;
                                 }
-                              } catch (e) {
-                                if (context.mounted) _showSnackBar(localized['connErr']!, ArrozTheme.error);
-                              } finally {
-                                setSheetState(() => isProcessing = false);
-                              }
-                            },
-                            child: isProcessing
-                                ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                                : Text(localized['savePassBtn']!, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+
+                                if (!hasMin8 || !hasDigit || !hasSpecial) {
+                                  _showCustomWarningDialog(
+                                    context: context,
+                                    title: _currentLanguage == 'Tagalog' ? "Babalala sa Password Rules" : "Password Rules Warning",
+                                    description: _currentLanguage == 'Tagalog'
+                                        ? "Mangyaring sundin ang lahat ng patakaran sa password bago magpatuloy."
+                                        : "Please make sure your password satisfies all requirements.",
+                                    icon: Icons.security_rounded,
+                                    color: ArrozTheme.warning,
+                                    buttonText: localized['btnUnderstand']!,
+                                  );
+                                  return;
+                                }
+
+                                setSheetState(() => isProcessing = true);
+                                try {
+                                  final uid = foundUserData!['uid'];
+                                  await FirebaseFirestore.instance.collection('users').doc(uid).update({
+                                    'passwordUpdated': FieldValue.serverTimestamp(),
+                                  });
+
+                                  if (context.mounted) {
+                                    Navigator.pop(context);
+
+                                    _showCustomWarningDialog(
+                                      context: context,
+                                      title: localized['passSuccessTitle']!,
+                                      description: localized['passSuccessSub']!,
+                                      icon: Icons.check_circle_rounded,
+                                      color: Colors.green.shade700,
+                                      buttonText: localized['btnOk']!,
+                                    );
+                                  }
+                                } catch (e) {
+                                  if (context.mounted) _showSnackBar(localized['connErr']!, ArrozTheme.error);
+                                } finally {
+                                  setSheetState(() => isProcessing = false);
+                                }
+                              },
+                              child: isProcessing
+                                  ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                  : Text(localized['savePassBtn']!, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
                     ],
                   ),
                 ),
