@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../services/auth.service.dart';
 import 'homeuser_page.dart';
+import 'create_phone_password_page.dart';
 
 class ArrozTheme {
   static const Color primary = Color(0xFF0F5132); // Deep Emerald
@@ -192,14 +193,34 @@ class _VerifyOtpPageState extends State<VerifyOtpPage> with WidgetsBindingObserv
         );
 
         if (isCorrect) {
-          var userCredential = await AuthService.instance.registerWithPhoneFakeEmail(
-            phoneNumber: widget.phoneNumber
+
+          final password = await Navigator.push<String>(
+            context,
+            MaterialPageRoute(
+              builder: (_) => CreatePhonePasswordPage(
+                phoneNumber: widget.phoneNumber,
+              ),
+            ),
           );
 
-          await FirebaseFirestore.instance.collection("users").doc(userCredential.user!.uid).set({
+          if (password == null) {
+            setState(() => _isLoading = false);
+            return;
+          }
+
+          var userCredential =
+          await AuthService.instance.registerWithPhone(
+            phoneNumber: widget.phoneNumber,
+            password: password,
+          );
+
+          await FirebaseFirestore.instance
+              .collection("users")
+              .doc(userCredential.user!.uid)
+              .set({
             "uid": userCredential.user!.uid,
             "name": widget.name ?? "",
-            "phone": widget.phoneNumber.trim(),
+            "phone": widget.phoneNumber,
             "address": widget.address ?? "",
             "email": "Registered via Cellphone Number",
             "role": "user",

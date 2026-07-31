@@ -6,12 +6,14 @@ import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import '../../services/auth.service.dart';
 
+const String backendUrl = "http://YOUR-IP:3001";
+
 class GlobalAddressSelectionService {
   static void showAddressPicker({
     required BuildContext context,
     required Function(Map<String, dynamic> selectedAddress) onAddressSelected,
   }) {
-    final User? currentUser = FirebaseAuth.instance.currentUser; 
+    final User? currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) return;
 
     showModalBottomSheet(
@@ -52,19 +54,19 @@ class GlobalAddressSelectionService {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             const Text(
-                              "Pumili ng Delivery Address",
+                              "Select Delivery Address",
                               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: -0.5),
                             ),
                             TextButton.icon(
                               onPressed: () {
                                 Navigator.pop(context);
                                 GlobalAddressSelectionService._showAddressFormSheet(
-                                  context: context, 
+                                  context: context,
                                   onAddressSaved: onAddressSelected,
                                 );
                               },
                               icon: const Icon(Icons.add_location_alt_outlined, color: Colors.green),
-                              label: const Text("Magdagdag", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                              label: const Text("Add New", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
                             ),
                           ],
                         ),
@@ -77,7 +79,7 @@ class GlobalAddressSelectionService {
                                 children: [
                                   Icon(Icons.location_off_outlined, size: 64, color: Colors.grey),
                                   SizedBox(height: 16),
-                                  Text("Walang naka-save na address.", style: TextStyle(color: Colors.grey, fontSize: 15)),
+                                  Text("No saved addresses found.", style: TextStyle(color: Colors.grey, fontSize: 15)),
                                 ],
                               ),
                             ),
@@ -92,8 +94,7 @@ class GlobalAddressSelectionService {
                                 final data = doc.data() as Map<String, dynamic>;
                                 data['id'] = doc.id;
 
-                                // Kumuha sa alinmang key para hindi mag-N/A
-                                final String mobile = data['mobileNumber'] ?? data['phoneNumber'] ?? 'Walang Number';
+                                final String mobile = data['mobileNumber'] ?? data['phoneNumber'] ?? 'No Number Provided';
 
                                 return Card(
                                   elevation: 0,
@@ -131,9 +132,9 @@ class GlobalAddressSelectionService {
                                                       Text(
                                                         mobile,
                                                         style: const TextStyle(
-                                                          color: Colors.green, 
-                                                          fontWeight: FontWeight.bold, 
-                                                          fontSize: 13
+                                                            color: Colors.green,
+                                                            fontWeight: FontWeight.bold,
+                                                            fontSize: 13
                                                         ),
                                                       ),
                                                     ],
@@ -143,7 +144,7 @@ class GlobalAddressSelectionService {
                                             ),
                                             IconButton(
                                               icon: const Icon(Icons.edit_outlined, color: Colors.blue, size: 20),
-                                              tooltip: "I-edit",
+                                              tooltip: "Edit",
                                               onPressed: () {
                                                 Navigator.pop(context);
                                                 GlobalAddressSelectionService._showAddressFormSheet(
@@ -156,7 +157,7 @@ class GlobalAddressSelectionService {
                                             ),
                                             IconButton(
                                               icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
-                                              tooltip: "Burahin",
+                                              tooltip: "Delete",
                                               onPressed: () => _confirmDeleteAddress(context, currentUser.uid, doc.id),
                                             ),
                                           ],
@@ -181,7 +182,7 @@ class GlobalAddressSelectionService {
                                               Navigator.pop(context);
                                               onAddressSelected(data);
                                             },
-                                            child: const Text("Gamitin ang Address na Ito", style: TextStyle(fontWeight: FontWeight.bold)),
+                                            child: const Text("Use This Address", style: TextStyle(fontWeight: FontWeight.bold)),
                                           ),
                                         ),
                                       ],
@@ -208,12 +209,12 @@ class GlobalAddressSelectionService {
       context: context,
       builder: (dialogCtx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text("Burahin ang Address?"),
-        content: const Text("Sigurado ka bang gusto mong burahin ang address na ito sa iyong account?"),
+        title: const Text("Delete Address?"),
+        content: const Text("Are you sure you want to delete this address from your account?"),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogCtx),
-            child: const Text("Kanselahin"),
+            child: const Text("Cancel"),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
@@ -227,15 +228,15 @@ class GlobalAddressSelectionService {
                     .delete();
                 if (dialogCtx.mounted) Navigator.pop(dialogCtx);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Naisave ang pagbura ng address."), backgroundColor: Colors.green),
+                  const SnackBar(content: Text("Address deleted successfully."), backgroundColor: Colors.green),
                 );
               } catch (e) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text("Error sa pagbura: $e"), backgroundColor: Colors.red),
+                  SnackBar(content: Text("Error deleting address: $e"), backgroundColor: Colors.red),
                 );
               }
             },
-            child: const Text("Oo, Burahin", style: TextStyle(color: Colors.white)),
+            child: const Text("Yes, Delete", style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -292,16 +293,15 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
   late TextEditingController _miController;
   late TextEditingController _lnameController;
   late TextEditingController _mobileController;
-  late TextEditingController _emailController;
   late TextEditingController _areaSelectionController;
   late TextEditingController _streetController;
   late TextEditingController _postalController;
 
-  String fname = "", mi = "", lname = "", mobileNumber = "", emailAddress = "", streetBuildingHouseNo = "", postalCode = "";
+  String fname = "", mi = "", lname = "", mobileNumber = "", streetBuildingHouseNo = "", postalCode = "";
   String? selectedRegion, selectedProvince, selectedCity, selectedBarangay;
 
   List<dynamic> currentLevelItems = [];
-  String currentFlowStep = "REGION"; 
+  String currentFlowStep = "REGION";
   bool isApiLoading = false;
   bool isLocating = false;
 
@@ -314,7 +314,6 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
     _miController = TextEditingController(text: editData?['middleInitial'] ?? '');
     _lnameController = TextEditingController(text: editData?['lastName'] ?? '');
     _mobileController = TextEditingController(text: editData?['mobileNumber'] ?? editData?['phoneNumber'] ?? '');
-    _emailController = TextEditingController(text: editData?['emailAddress'] ?? '');
     _streetController = TextEditingController(text: editData?['streetBuildingHouseNo'] ?? '');
     _postalController = TextEditingController(text: editData?['postalCode'] ?? '');
 
@@ -342,7 +341,6 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
     _miController.dispose();
     _lnameController.dispose();
     _mobileController.dispose();
-    _emailController.dispose();
     _areaSelectionController.dispose();
     _streetController.dispose();
     _postalController.dispose();
@@ -377,7 +375,7 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
       if (currentFlowStep == "REGION") {
         selectedRegion = name;
         _areaSelectionController.text = name;
-        
+
         final res = await http.get(Uri.parse('https://psgc.gitlab.io/api/regions/$code/provinces/'));
         final distRes = await http.get(Uri.parse('https://psgc.gitlab.io/api/regions/$code/districts/'));
         List<dynamic> combined = [];
@@ -398,7 +396,7 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
       } else if (currentFlowStep == "PROVINCE") {
         selectedProvince = name;
         _areaSelectionController.text = "$selectedRegion, $name";
-        
+
         final res = await http.get(Uri.parse('https://psgc.gitlab.io/api/provinces/$code/cities-municipalities/'));
         final distRes = await http.get(Uri.parse('https://psgc.gitlab.io/api/districts/$code/cities-municipalities/'));
         List<dynamic> combined = [];
@@ -422,7 +420,7 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
         currentFlowStep = "DONE";
         currentLevelItems = [];
       }
-      
+
       if (currentLevelItems.isNotEmpty) {
         currentLevelItems.sort((a, b) => a['name'].toString().compareTo(b['name'].toString()));
       }
@@ -436,7 +434,7 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
   Future<void> _determineAndSetGPSLocation() async {
     if (!mounted) return;
     setState(() => isLocating = true);
-    
+
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
@@ -457,8 +455,8 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
       final String url = "https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.latitude}&lon=${position.longitude}&addressdetails=1";
 
       final response = await http.get(
-        Uri.parse(url),
-        headers: {'User-Agent': 'ShopeeAddressApp_Flutter_Application_v1.0'}
+          Uri.parse(url),
+          headers: {'User-Agent': 'ShopeeAddressApp_Flutter_Application_v1.0'}
       );
 
       if (response.statusCode == 200 && mounted) {
@@ -474,7 +472,7 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
           selectedRegion = exactRegion;
           selectedProvince = exactProvince;
           selectedCity = exactCity;
-          selectedBarangay = exactBarangay; 
+          selectedBarangay = exactBarangay;
 
           _areaSelectionController.text = "$selectedRegion, $selectedProvince, $selectedCity, $selectedBarangay";
           _postalController.text = address['postcode'] ?? "";
@@ -516,15 +514,13 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
     final formattedMI = mi.trim().isNotEmpty ? "${mi.trim()}. " : "";
     final String synthesizedFullName = "${fname.trim()} $formattedMI${lname.trim()}";
 
-    // SINU-SUPORTAHAN PAREHO ANG `mobileNumber` AT `phoneNumber` PARA HINDI MAG-N/A
     final addressMap = {
       'firstName': fname.trim(),
       'middleInitial': mi.trim(),
       'lastName': lname.trim(),
       'fullName': synthesizedFullName.trim().isEmpty ? fname.trim() : synthesizedFullName.trim(),
       'mobileNumber': mobileNumber.trim(),
-      'phoneNumber': mobileNumber.trim(), 
-      'emailAddress': emailAddress.trim(),
+      'phoneNumber': mobileNumber.trim(),
       'region': selectedRegion ?? '',
       'province': selectedProvince ?? '',
       'cityMunicipality': selectedCity ?? '',
@@ -536,135 +532,219 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
 
     if (widget.docId == null) {
       addressMap['createdAt'] = FieldValue.serverTimestamp();
-      _verifyWithGmailOTP(addressMap);
+      _verifyWithPhoneOTP(addressMap);
     } else {
       try {
         await _saveAddressToFirestore(addressMap);
         if (mounted) {
           Navigator.pop(context);
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Matagumpay na na-update ang address!"), backgroundColor: Colors.green),
+            const SnackBar(content: Text("Address updated successfully!"), backgroundColor: Colors.green),
           );
         }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Pumalya sa pag-save: $e"), backgroundColor: Colors.red),
+            SnackBar(content: Text("Failed to save address: $e"), backgroundColor: Colors.red),
           );
         }
       }
     }
   }
 
-  Future<void> _verifyWithGmailOTP(Map<String, dynamic> addressMap) async {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator(color: Colors.green)),
-    );
-
-    try {
-      await AuthService.instance.generateAndSaveEmailOTP(
-        email: emailAddress.trim(),
-        name: addressMap['fullName'] ?? "User",
-        reason: "Address Verification",
-      );
-    } catch (e) {
-      if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Pumalya sa pagpadala ng OTP: $e"), backgroundColor: Colors.red),
-        );
-      }
-      return;
-    }
-
-    if (!mounted) return;
-    Navigator.pop(context);
+  Future<void> _verifyWithPhoneOTP(
+      Map<String, dynamic> addressMap,
+      ) async {
 
     final TextEditingController otpController = TextEditingController();
+
+    try {
+
+      final response = await http.post(
+        Uri.parse("$backendUrl/send-address-otp"),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: jsonEncode({
+          "phoneNumber": mobileNumber,
+        }),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception("Failed to send OTP");
+      }
+
+    } catch (e) {
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Failed to send OTP\n$e"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+
+      return;
+    }
 
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
-        String inlineError = ""; 
-        bool isVerifying = false;
+
+        bool isLoading = false;
+        String error = "";
 
         return StatefulBuilder(
           builder: (context, setDialogState) {
+
             return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+
               title: const Row(
                 children: [
-                  Icon(Icons.security, color: Colors.green),
-                  SizedBox(width: 8),
-                  Text("I-verify ang Email"),
+                  Icon(Icons.sms,color: Colors.green),
+                  SizedBox(width:8),
+                  Text("Phone Verification"),
                 ],
               ),
+
               content: Column(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text("Ipasok ang verification code na ipinadala sa:"),
-                  Text(emailAddress.trim(), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
-                  const SizedBox(height: 16),
+
+                  Text(
+                    "An OTP will be sent to",
+                  ),
+
+                  const SizedBox(height:8),
+
+                  Text(
+                    mobileNumber,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green,
+                    ),
+                  ),
+
+                  const SizedBox(height:20),
+
                   TextField(
                     controller: otpController,
                     keyboardType: TextInputType.number,
                     maxLength: 6,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 4),
-                    decoration: const InputDecoration(counterText: "", border: OutlineInputBorder(), hintText: "000000"),
+                    decoration: const InputDecoration(
+                      hintText: "Enter OTP",
+                      border: OutlineInputBorder(),
+                      counterText: "",
+                    ),
                   ),
-                  if (inlineError.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Text(inlineError, style: const TextStyle(color: Colors.red, fontSize: 13)),
+
+                  if(error.isNotEmpty)...[
+                    const SizedBox(height:10),
+                    Text(
+                      error,
+                      style: const TextStyle(color: Colors.red),
+                    )
                   ]
+
                 ],
               ),
+
               actions: [
+
                 TextButton(
-                  onPressed: isVerifying ? null : () => Navigator.pop(dialogContext), 
-                  child: const Text("I-cancel", style: TextStyle(color: Colors.grey))
+                  onPressed: (){
+                    Navigator.pop(dialogContext);
+                  },
+                  child: const Text("Cancel"),
                 ),
+
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                  onPressed: isVerifying ? null : () async {
-                    final typedCode = otpController.text.trim();
-                    if (typedCode.length < 6) {
-                      setDialogState(() => inlineError = "Pakilagay ang kumpletong 6-digit code.");
-                      return;
-                    }
 
-                    setDialogState(() => isVerifying = true);
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                  ),
 
-                    bool isCorrect = await AuthService.instance.verifyEmailOTP(
-                      email: emailAddress.trim(),
-                      typedOtp: typedCode,
+                  onPressed: isLoading
+                      ? null
+                      : () async {
+
+                    setDialogState(() {
+                      isLoading = true;
+                      error = "";
+                    });
+
+                    final verify = await http.post(
+                      Uri.parse("$backendUrl/verify-address-otp"),
+                      headers: {
+                        "Content-Type": "application/json",
+                      },
+                      body: jsonEncode({
+                        "phoneNumber": mobileNumber,
+                        "otp": otpController.text.trim(),
+                      }),
                     );
 
-                    if (isCorrect) {
-                      Navigator.pop(dialogContext);
+                    final body = jsonDecode(verify.body);
+
+                    if (verify.statusCode == 200 &&
+                        body["success"] == true) {
+
                       await _saveAddressToFirestore(addressMap);
-                      if (mounted) Navigator.pop(context);
+
+                      if (mounted) {
+                        Navigator.pop(dialogContext);
+                        Navigator.pop(context);
+
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text("Address saved successfully."),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                      }
+
                     } else {
+
                       setDialogState(() {
-                        isVerifying = false;
-                        inlineError = "Maling code! Pakitingnan ang iyong email.";
+                        error = body["message"] ?? "Invalid OTP";
+                        isLoading = false;
                       });
+
                     }
+
                   },
-                  child: isVerifying 
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Text("I-verify at I-save", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+
+                  child: isLoading
+                      ? const SizedBox(
+                    width:18,
+                    height:18,
+                    child: CircularProgressIndicator(
+                      strokeWidth:2,
+                      color: Colors.white,
+                    ),
+                  )
+                      : const Text(
+                    "Verify",
+                    style: TextStyle(color: Colors.white),
+                  ),
                 )
+
               ],
+
             );
+
           },
         );
+
       },
     );
+
   }
 
   @override
@@ -673,10 +753,10 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
       child: Container(
         height: MediaQuery.of(context).size.height * 0.85,
         padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom, 
-          left: 20, 
-          right: 20, 
-          top: 20
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+            left: 20,
+            right: 20,
+            top: 20
         ),
         child: Form(
           key: _formKey,
@@ -686,7 +766,7 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    widget.docId == null ? "Bagong Address" : "I-edit ang Address",
+                    widget.docId == null ? "New Address" : "Edit Address",
                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                   IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
@@ -706,7 +786,7 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
                             child: TextFormField(
                               controller: _fnameController,
                               decoration: const InputDecoration(labelText: "First Name", prefixIcon: Icon(Icons.person_outline)),
-                              validator: (v) => v!.trim().isEmpty ? "Kailangan" : null,
+                              validator: (v) => v!.trim().isEmpty ? "Required" : null,
                               onSaved: (v) => fname = v!,
                             ),
                           ),
@@ -726,39 +806,30 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
                             child: TextFormField(
                               controller: _lnameController,
                               decoration: const InputDecoration(labelText: "Last Name"),
-                              validator: (v) => v!.trim().isEmpty ? "Kailangan" : null,
+                              validator: (v) => v!.trim().isEmpty ? "Required" : null,
                               onSaved: (v) => lname = v!,
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 12),
-                      
+
                       TextFormField(
                         controller: _mobileController,
                         keyboardType: TextInputType.phone,
                         maxLength: 11,
                         decoration: const InputDecoration(
-                          labelText: "Mobile Number (para sa Rider)", 
+                          labelText: "Mobile Number (for Delivery)",
                           prefixIcon: Icon(Icons.phone_android_outlined),
                           hintText: "09XXXXXXXXX",
                           counterText: "",
                         ),
                         validator: (v) {
-                          if (v!.trim().isEmpty) return "Kailangan ang mobile number";
-                          if (v.trim().length != 11) return "Dapat 11 digits (hal. 09123456789)";
+                          if (v!.trim().isEmpty) return "Mobile number is required";
+                          if (v.trim().length != 11) return "Must be 11 digits (e.g. 09123456789)";
                           return null;
                         },
                         onSaved: (v) => mobileNumber = v!,
-                      ),
-                      const SizedBox(height: 12),
-                      
-                      TextFormField(
-                        controller: _emailController,
-                        keyboardType: TextInputType.emailAddress,
-                        decoration: const InputDecoration(labelText: "Email Address", prefixIcon: Icon(Icons.email_outlined)),
-                        validator: (v) => v!.isEmpty ? "Kailangan ang email address" : null,
-                        onSaved: (v) => emailAddress = v!,
                       ),
                       const SizedBox(height: 12),
 
@@ -766,33 +837,33 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
                         controller: _areaSelectionController,
                         readOnly: true,
                         decoration: InputDecoration(
-                          labelText: "Rehiyon / Probinsya / Lungsod / Barangay",
+                          labelText: "Region / Province / City / Barangay",
                           prefixIcon: const Icon(Icons.map_outlined),
-                          suffixIcon: currentFlowStep != "REGION" 
-                            ? IconButton(
-                                icon: const Icon(Icons.refresh, color: Colors.red),
-                                onPressed: () {
-                                  setState(() {
-                                    currentFlowStep = "REGION";
-                                    selectedRegion = null; selectedProvince = null; selectedCity = null; selectedBarangay = null;
-                                    _areaSelectionController.clear();
-                                    _streetController.clear();
-                                    _fetchLocationData();
-                                  });
-                                },
-                              )
-                            : null,
+                          suffixIcon: currentFlowStep != "REGION"
+                              ? IconButton(
+                            icon: const Icon(Icons.refresh, color: Colors.red),
+                            onPressed: () {
+                              setState(() {
+                                currentFlowStep = "REGION";
+                                selectedRegion = null; selectedProvince = null; selectedCity = null; selectedBarangay = null;
+                                _areaSelectionController.clear();
+                                _streetController.clear();
+                                _fetchLocationData();
+                              });
+                            },
+                          )
+                              : null,
                         ),
-                        validator: (v) => selectedBarangay == null ? "Pumili ng lokasyon" : null,
+                        validator: (v) => selectedBarangay == null ? "Please select a location" : null,
                       ),
                       Align(
                         alignment: Alignment.centerLeft,
                         child: TextButton.icon(
                           onPressed: isLocating ? null : _determineAndSetGPSLocation,
-                          icon: isLocating 
-                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.green))
-                            : const Icon(Icons.my_location, color: Colors.green),
-                          label: Text(isLocating ? "Kinukuha..." : "Gamitin ang Aking Kasalukuyang Lokasyon", style: const TextStyle(color: Colors.green)),
+                          icon: isLocating
+                              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.green))
+                              : const Icon(Icons.my_location, color: Colors.green),
+                          label: Text(isLocating ? "Fetching..." : "Use My Current Location", style: const TextStyle(color: Colors.green)),
                         ),
                       ),
                       if (currentLevelItems.isNotEmpty) ...[
@@ -804,29 +875,29 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
                             borderRadius: BorderRadius.circular(12),
                             color: Colors.grey.shade50,
                           ),
-                          child: isApiLoading 
-                            ? const Center(child: CircularProgressIndicator(color: Colors.green))
-                            : ListView.builder(
-                                itemCount: currentLevelItems.length,
-                                itemBuilder: (context, idx) {
-                                  final item = currentLevelItems[idx];
-                                  return ListTile(
-                                    title: Text(item['name'], style: const TextStyle(fontSize: 14)),
-                                    trailing: const Icon(Icons.chevron_right, size: 16),
-                                    onTap: () => _handleItemSelection(item),
-                                  );
-                                },
-                              ),
+                          child: isApiLoading
+                              ? const Center(child: CircularProgressIndicator(color: Colors.green))
+                              : ListView.builder(
+                            itemCount: currentLevelItems.length,
+                            itemBuilder: (context, idx) {
+                              final item = currentLevelItems[idx];
+                              return ListTile(
+                                title: Text(item['name'], style: const TextStyle(fontSize: 14)),
+                                trailing: const Icon(Icons.chevron_right, size: 16),
+                                onTap: () => _handleItemSelection(item),
+                              );
+                            },
+                          ),
                         ),
                       ],
                       const SizedBox(height: 12),
                       TextFormField(
                         controller: _streetController,
                         decoration: const InputDecoration(
-                          labelText: "Numero ng Bahay / Kalsada", 
+                          labelText: "House No. / Building / Street",
                           prefixIcon: Icon(Icons.home_outlined),
                         ),
-                        validator: (v) => v!.isEmpty ? "Kailangan ang kalsada o numero ng bahay" : null,
+                        validator: (v) => v!.isEmpty ? "House number or street is required" : null,
                         onSaved: (v) => streetBuildingHouseNo = v!,
                       ),
                       const SizedBox(height: 12),
@@ -834,7 +905,7 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
                         controller: _postalController,
                         keyboardType: TextInputType.number,
                         decoration: const InputDecoration(labelText: "Postal Code", prefixIcon: Icon(Icons.local_post_office_outlined)),
-                        validator: (v) => v!.isEmpty ? "Kailangan ang postal code" : null,
+                        validator: (v) => v!.isEmpty ? "Postal code is required" : null,
                         onSaved: (v) => postalCode = v!,
                       ),
                       const SizedBox(height: 30),
@@ -843,8 +914,8 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
                         height: 50,
                         child: ElevatedButton(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
+                              backgroundColor: Colors.green,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
                           ),
                           onPressed: () {
                             if (_formKey.currentState!.validate()) {
@@ -853,7 +924,7 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
                             }
                           },
                           child: Text(
-                            widget.docId == null ? "I-verify at I-save ang Address" : "I-update ang Address", 
+                            widget.docId == null ? "Verify & Save Address" : "Update Address",
                             style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                           ),
                         ),

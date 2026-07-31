@@ -291,11 +291,11 @@ Bawal ang paglalagay ng pekeng impormasyon, pagsubok na sirain ang seguridad ng 
           ),
         );
       } else {
-        String formattedPhone = phone;
-        if (phone.startsWith('0')) {
-          formattedPhone = '+63${phone.substring(1)}';
-        } else if (!phone.startsWith('+')) {
-          formattedPhone = '+63$phone';
+        String formattedPhone =
+        phone.replaceAll(RegExp(r'\D'), '');
+
+        if (formattedPhone.startsWith('63')) {
+          formattedPhone = '0${formattedPhone.substring(2)}';
         }
 
         await AuthService.instance.sendPhoneOTPWithSemaphore(phoneNumber: formattedPhone).timeout(

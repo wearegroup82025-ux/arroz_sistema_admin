@@ -5,50 +5,17 @@ import 'cart_page.dart';
 import 'orders_page.dart';
 import 'product_page.dart';
 import 'profile_page.dart';
-
-enum AppLanguage { tagalog, english }
-
-class AppLocalizations {
-  final AppLanguage language;
-  AppLocalizations(this.language);
-
-  String get home => language == AppLanguage.english ? "Home" : "Tahanan";
-  String get products => language == AppLanguage.english ? "Products" : "Mga Produkto";
-  String get cart => language == AppLanguage.english ? "Cart" : "Kariton";
-  String get orders => language == AppLanguage.english ? "Orders" : "Mga Order";
-  String get profile => language == AppLanguage.english ? "Profile" : "Profile";
-
-  String get welcome => language == AppLanguage.english ? "Welcome back" : "Maligayang pagbabalik";
-  String get specsTitle => language == AppLanguage.english ? "Product Specifications" : "Tungkol sa Ating Palay";
-  String get specsDesc => language == AppLanguage.english
-      ? "Our premium palay is directly sourced and harvested from the rich agricultural fields of Kapalangan, Pampanga."
-      : "Ang ating de-kalidad na palay ay direktang nagmula at inani sa mayayamang sakahan ng Kapalangan, Pampanga.";
-
-  String get bestSeller => language == AppLanguage.english ? "🔥 Best Sellers" : "🔥 Pinakamabenta";
-  String get recommended => language == AppLanguage.english ? "👍 Recommended for You" : "👍 Rekomendado sa Iyo";
-  String get viewAll => language == AppLanguage.english ? "See All" : "Tingnan Lahat";
-  String get noItems => language == AppLanguage.english ? "No items posted yet" : "Wala pang naka-post";
-
-  String get activeOrders => language == AppLanguage.english ? "Active Orders" : "Mga Aktibong Order";
-  String get myCart => language == AppLanguage.english ? "My Cart" : "Aking Kariton";
-  String get favorites => language == AppLanguage.english ? "Favorites" : "Mga Paborito";
-  String get availableProducts => language == AppLanguage.english ? "Available Products" : "Mga Produktong Abot-kaya";
-
-  String get notifTitle => language == AppLanguage.english ? "Notifications" : "Mga Abiso";
-  String get noNotif => language == AppLanguage.english ? "No new updates right now." : "Walang bagong balita sa ngayon.";
-
-  String get chatTitle => language == AppLanguage.english ? "Chat Support / Admin" : "Sulat sa Admin";
-  String get chatHint => language == AppLanguage.english ? "Ask about your order or product..." : "Magtanong tungkol sa order o produkto...";
-  String get send => language == AppLanguage.english ? "Send" : "Ipadala";
-
-  String get orderNow => language == AppLanguage.english ? "Order Now" : "Bumili Na";
-  String get actionDesc => language == AppLanguage.english
-      ? "Ready to secure your high-recovery palay supply? Tap below to start browsing."
-      : "Handa nang kumuha ng de-kalidad na supply ng palay? Pindutin sa ibaba para makapili.";
-}
+import 'package:provider/provider.dart';
+import '../../providers/language_provider.dart';
+import '../../services/app_localizations.dart';
 
 class HomeUserPage extends StatefulWidget {
-  const HomeUserPage({super.key});
+  final int initialIndex;
+
+  const HomeUserPage({
+    super.key,
+    this.initialIndex = 0,
+  });
 
   @override
   State<HomeUserPage> createState() => _HomeUserPageState();
@@ -56,16 +23,19 @@ class HomeUserPage extends StatefulWidget {
 
 class _HomeUserPageState extends State<HomeUserPage> {
   int _currentIndex = 0;
-  AppLanguage _currentLang = AppLanguage.tagalog;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+  }
 
   List<Widget> _buildPages() {
     return [
       _DashboardView(
-        language: _currentLang,
+        language: context.watch<LanguageProvider>().language,
         onLanguageToggle: () {
-          setState(() {
-            _currentLang = _currentLang == AppLanguage.tagalog ? AppLanguage.english : AppLanguage.tagalog;
-          });
+          context.read<LanguageProvider>().toggleLanguage();
         },
         onNavigateToProducts: () => setState(() => _currentIndex = 1),
         onNavigateToCart: () => setState(() => _currentIndex = 2),
@@ -80,11 +50,13 @@ class _HomeUserPageState extends State<HomeUserPage> {
 
   @override
   Widget build(BuildContext context) {
-    final local = AppLocalizations(_currentLang);
+    final language = context.watch<LanguageProvider>().language;
+    final local = AppLocalizations(language);
     final currentPages = _buildPages();
+    final theme = Theme.of(context);
 
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.surfaceContainerLowest,
+      backgroundColor: theme.colorScheme.surfaceContainerLowest,
       body: IndexedStack(
         index: _currentIndex,
         children: currentPages,
@@ -92,16 +64,36 @@ class _HomeUserPageState extends State<HomeUserPage> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         elevation: 3,
-        backgroundColor: Colors.white,
-        indicatorColor: Colors.green[100],
+        backgroundColor: theme.colorScheme.surface,
+        indicatorColor: theme.colorScheme.primaryContainer,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         onDestinationSelected: (index) => setState(() => _currentIndex = index),
         destinations: [
-          NavigationDestination(icon: const Icon(Icons.home_outlined), selectedIcon: const Icon(Icons.home), label: local.home),
-          NavigationDestination(icon: const Icon(Icons.storefront_outlined), selectedIcon: const Icon(Icons.storefront), label: local.products),
-          NavigationDestination(icon: const Icon(Icons.shopping_cart_outlined), selectedIcon: const Icon(Icons.shopping_cart), label: local.cart),
-          NavigationDestination(icon: const Icon(Icons.receipt_long_outlined), selectedIcon: const Icon(Icons.receipt_long), label: local.orders),
-          NavigationDestination(icon: const Icon(Icons.person_outline), selectedIcon: const Icon(Icons.person), label: local.profile),
+          NavigationDestination(
+              icon: const Icon(Icons.home_outlined),
+              selectedIcon: Icon(Icons.home, color: theme.colorScheme.primary),
+              label: local.home
+          ),
+          NavigationDestination(
+              icon: const Icon(Icons.storefront_outlined),
+              selectedIcon: Icon(Icons.storefront, color: theme.colorScheme.primary),
+              label: local.products
+          ),
+          NavigationDestination(
+              icon: const Icon(Icons.shopping_cart_outlined),
+              selectedIcon: Icon(Icons.shopping_cart, color: theme.colorScheme.primary),
+              label: local.cart
+          ),
+          NavigationDestination(
+              icon: const Icon(Icons.receipt_long_outlined),
+              selectedIcon: Icon(Icons.receipt_long, color: theme.colorScheme.primary),
+              label: local.orders
+          ),
+          NavigationDestination(
+              icon: const Icon(Icons.person_outline),
+              selectedIcon: Icon(Icons.person, color: theme.colorScheme.primary),
+              label: local.profile
+          ),
         ],
       ),
     );
@@ -130,13 +122,14 @@ class _DashboardView extends StatelessWidget {
     return language == AppLanguage.english ? "Good Evening! 🌙" : "Magandang Gabi! 🌙";
   }
 
-  // DIALOG / BOTTOM SHEET PARA SA CHAT SA ADMIN
   void _showAdminChatPanel(BuildContext context, AppLocalizations local, String userId) {
     final messageController = TextEditingController();
+    final theme = Theme.of(context);
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: theme.colorScheme.surface,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
         return Padding(
@@ -148,12 +141,11 @@ class _DashboardView extends StatelessWidget {
             padding: const EdgeInsets.all(16.0),
             child: Column(
               children: [
-                // Header
                 Row(
                   children: [
                     CircleAvatar(
-                      backgroundColor: Colors.green[100],
-                      child: Icon(Icons.support_agent_rounded, color: Colors.green[800]),
+                      backgroundColor: theme.colorScheme.primaryContainer,
+                      child: Icon(Icons.support_agent_rounded, color: theme.colorScheme.onPrimaryContainer),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -162,24 +154,22 @@ class _DashboardView extends StatelessWidget {
                         children: [
                           Text(
                             local.chatTitle,
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
                           ),
                           Text(
                             language == AppLanguage.english ? "Active • Support Team" : "Aktibo • Suporta sa Mamimili",
-                            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                            style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
                           ),
                         ],
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.close),
+                      icon: Icon(Icons.close, color: theme.colorScheme.onSurface),
                       onPressed: () => Navigator.pop(context),
                     )
                   ],
                 ),
                 const Divider(),
-
-                // Chat Stream
                 Expanded(
                   child: StreamBuilder<QuerySnapshot>(
                     stream: FirebaseFirestore.instance
@@ -190,7 +180,7 @@ class _DashboardView extends StatelessWidget {
                         .snapshots(),
                     builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator());
+                        return Center(child: CircularProgressIndicator(color: theme.colorScheme.primary));
                       }
 
                       final docs = snapshot.data?.docs ?? [];
@@ -199,13 +189,13 @@ class _DashboardView extends StatelessWidget {
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.chat_bubble_outline, size: 48, color: Colors.grey[400]),
+                              Icon(Icons.chat_bubble_outline, size: 48, color: theme.colorScheme.outline),
                               const SizedBox(height: 8),
                               Text(
                                 language == AppLanguage.english
                                     ? "No messages yet. Send a message to Admin!"
                                     : "Wala pang mensahe. Mag-iwan ng tanong sa Admin!",
-                                style: TextStyle(color: Colors.grey[500], fontSize: 13),
+                                style: TextStyle(color: theme.colorScheme.outline, fontSize: 13),
                               ),
                             ],
                           ),
@@ -225,7 +215,7 @@ class _DashboardView extends StatelessWidget {
                               margin: const EdgeInsets.symmetric(vertical: 4),
                               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                               decoration: BoxDecoration(
-                                color: isMe ? Colors.green[700] : Colors.grey[200],
+                                color: isMe ? theme.colorScheme.primary : theme.colorScheme.surfaceContainerHigh,
                                 borderRadius: BorderRadius.only(
                                   topLeft: const Radius.circular(14),
                                   topRight: const Radius.circular(14),
@@ -236,7 +226,7 @@ class _DashboardView extends StatelessWidget {
                               child: Text(
                                 msg['text'] ?? '',
                                 style: TextStyle(
-                                  color: isMe ? Colors.white : Colors.black87,
+                                  color: isMe ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface,
                                   fontSize: 13.5,
                                 ),
                               ),
@@ -247,20 +237,19 @@ class _DashboardView extends StatelessWidget {
                     },
                   ),
                 ),
-
-                // Input Bar
                 const SizedBox(height: 8),
                 Row(
                   children: [
                     Expanded(
                       child: TextField(
                         controller: messageController,
+                        style: TextStyle(color: theme.colorScheme.onSurface),
                         decoration: InputDecoration(
                           hintText: local.chatHint,
-                          hintStyle: const TextStyle(fontSize: 13),
+                          hintStyle: TextStyle(fontSize: 13, color: theme.colorScheme.outline),
                           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                           filled: true,
-                          fillColor: Colors.grey[100],
+                          fillColor: theme.colorScheme.surfaceContainerHighest,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(24),
                             borderSide: BorderSide.none,
@@ -271,16 +260,15 @@ class _DashboardView extends StatelessWidget {
                     const SizedBox(width: 8),
                     IconButton.filled(
                       style: IconButton.styleFrom(
-                        backgroundColor: Colors.green[700],
+                        backgroundColor: theme.colorScheme.primary,
                       ),
-                      icon: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                      icon: Icon(Icons.send_rounded, color: theme.colorScheme.onPrimary, size: 20),
                       onPressed: () async {
                         final text = messageController.text.trim();
                         if (text.isEmpty) return;
 
                         messageController.clear();
 
-                        // Save message to user's chat subcollection
                         final ref = FirebaseFirestore.instance
                             .collection('chats')
                             .doc(userId)
@@ -292,7 +280,6 @@ class _DashboardView extends StatelessWidget {
                           'timestamp': FieldValue.serverTimestamp(),
                         });
 
-                        // Update metadata for Admin View
                         await FirebaseFirestore.instance.collection('chats').doc(userId).set({
                           'lastMessage': text,
                           'lastUpdated': FieldValue.serverTimestamp(),
@@ -312,9 +299,12 @@ class _DashboardView extends StatelessWidget {
   }
 
   void _showNotificationPanel(BuildContext context, AppLocalizations local, String userId) {
+    final theme = Theme.of(context);
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: theme.colorScheme.surface,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
         return DraggableScrollableSheet(
@@ -330,9 +320,12 @@ class _DashboardView extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(local.notifTitle, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      Text(
+                          local.notifTitle,
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)
+                      ),
                       IconButton(
-                        icon: const Icon(Icons.done_all, color: Colors.green, size: 20),
+                        icon: Icon(Icons.done_all, color: theme.colorScheme.primary, size: 20),
                         tooltip: "I-mark lahat bilang nabasa",
                         onPressed: () async {
                           final batch = FirebaseFirestore.instance.batch();
@@ -361,13 +354,13 @@ class _DashboardView extends StatelessWidget {
                           .snapshots(),
                       builder: (context, snapshot) {
                         if (snapshot.connectionState == ConnectionState.waiting) {
-                          return const Center(child: CircularProgressIndicator());
+                          return Center(child: CircularProgressIndicator(color: theme.colorScheme.primary));
                         }
 
                         final docs = snapshot.data?.docs ?? [];
                         if (docs.isEmpty) {
                           return Center(
-                            child: Text(local.noNotif, style: TextStyle(color: Colors.grey[500], fontSize: 14)),
+                            child: Text(local.noNotif, style: TextStyle(color: theme.colorScheme.outline, fontSize: 14)),
                           );
                         }
 
@@ -380,7 +373,7 @@ class _DashboardView extends StatelessWidget {
                             final String type = notif['type'] ?? 'GENERAL';
 
                             IconData notifIcon = Icons.notifications;
-                            Color iconColor = Colors.green;
+                            Color iconColor = theme.colorScheme.primary;
 
                             if (type == 'ORDER_UPDATE') {
                               notifIcon = Icons.local_shipping;
@@ -390,13 +383,13 @@ class _DashboardView extends StatelessWidget {
                               iconColor = Colors.orange;
                             } else if (type == 'CART_NUDGE') {
                               notifIcon = Icons.shopping_cart;
-                              iconColor = Colors.red;
+                              iconColor = theme.colorScheme.error;
                             }
 
                             return Container(
                               margin: const EdgeInsets.only(bottom: 8),
                               decoration: BoxDecoration(
-                                color: isRead ? Colors.transparent : Colors.green.shade50.withOpacity(0.5),
+                                color: isRead ? Colors.transparent : theme.colorScheme.primaryContainer.withOpacity(0.3),
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: ListTile(
@@ -409,11 +402,12 @@ class _DashboardView extends StatelessWidget {
                                   style: TextStyle(
                                     fontWeight: isRead ? FontWeight.normal : FontWeight.bold,
                                     fontSize: 14,
+                                    color: theme.colorScheme.onSurface,
                                   ),
                                 ),
                                 subtitle: Text(
                                   notif['body'] ?? '',
-                                  style: const TextStyle(fontSize: 12, color: Colors.black87),
+                                  style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
                                 ),
                                 onTap: () {
                                   docs[index].reference.update({'isRead': true});
@@ -444,55 +438,11 @@ class _DashboardView extends StatelessWidget {
     );
   }
 
-  void _showFavoritesPanel(BuildContext context, AppLocalizations local, String userId) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(local.favorites, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              const Divider(height: 24),
-              Expanded(
-                child: StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance.collection('favorites').where('userId', isEqualTo: userId).snapshots(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    final docs = snapshot.data?.docs ?? [];
-                    if (docs.isEmpty) {
-                      return Center(child: Text(local.noItems, style: TextStyle(color: Colors.grey[500])));
-                    }
-                    return ListView.builder(
-                      itemCount: docs.length,
-                      itemBuilder: (context, index) {
-                        final fav = docs[index].data() as Map<String, dynamic>;
-                        return ListTile(
-                          leading: const Icon(Icons.favorite, color: Colors.red),
-                          title: Text(fav['productName'] ?? 'Palay Item'),
-                          subtitle: Text("₱${fav['price'] ?? 0}"),
-                        );
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final local = AppLocalizations(language);
     final currentUser = FirebaseAuth.instance.currentUser;
+    final theme = Theme.of(context);
 
     return CustomScrollView(
       physics: const BouncingScrollPhysics(),
@@ -503,25 +453,26 @@ class _DashboardView extends StatelessWidget {
           pinned: true,
           elevation: 0,
           scrolledUnderElevation: 2,
-          backgroundColor: Colors.green[700],
+          backgroundColor: theme.colorScheme.primary,
+          iconTheme: IconThemeData(color: theme.colorScheme.onPrimary),
           actions: [
-            // LANGUAGE TOGGLE
             TextButton.icon(
-              style: TextButton.styleFrom(foregroundColor: Colors.white.withOpacity(0.9)),
+              style: TextButton.styleFrom(
+                foregroundColor: theme.colorScheme.onPrimary,
+              ),
               onPressed: onLanguageToggle,
               icon: const Icon(Icons.translate, size: 16),
-              label: Text(language == AppLanguage.tagalog ? "EN" : "TAG", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              label: Text(
+                language == AppLanguage.tagalog ? "EN" : "TAG",
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
             ),
-
-            // CHAT WITH ADMIN BUTTON (BAGONG DAGDAG)
             if (currentUser != null)
               IconButton(
-                icon: const Icon(Icons.chat_outlined, color: Colors.white),
+                icon: Icon(Icons.chat_outlined, color: theme.colorScheme.onPrimary),
                 tooltip: "Kausapin ang Admin",
                 onPressed: () => _showAdminChatPanel(context, local, currentUser.uid),
               ),
-
-            // NOTIFICATIONS BUTTON WITH BADGE
             Padding(
               padding: const EdgeInsets.only(right: 12.0),
               child: currentUser == null
@@ -537,10 +488,13 @@ class _DashboardView extends StatelessWidget {
                   final unreadCount = snapshot.hasData ? snapshot.data!.docs.length : 0;
                   return IconButton(
                     icon: Badge(
-                      label: Text("$unreadCount", style: const TextStyle(fontSize: 10, color: Colors.white)),
-                      backgroundColor: Colors.red,
+                      label: Text(
+                        "$unreadCount",
+                        style: TextStyle(fontSize: 10, color: theme.colorScheme.onError),
+                      ),
+                      backgroundColor: theme.colorScheme.error,
                       isLabelVisible: unreadCount > 0,
-                      child: const Icon(Icons.notifications_none_outlined, color: Colors.white),
+                      child: Icon(Icons.notifications_none_outlined, color: theme.colorScheme.onPrimary),
                     ),
                     onPressed: () => _showNotificationPanel(context, local, currentUser.uid),
                   );
@@ -554,19 +508,39 @@ class _DashboardView extends StatelessWidget {
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [Colors.green[700]!, Colors.green[900]!],
+                  colors: [
+                    theme.colorScheme.primary,
+                    theme.colorScheme.primary.withOpacity(0.85),
+                  ],
                 ),
               ),
               child: Stack(
                 children: [
-                  Positioned(right: 40, bottom: -30, child: Text("🌾", style: TextStyle(fontSize: 100, color: Colors.white.withOpacity(0.06)))),
+                  Positioned(
+                    right: 40,
+                    bottom: -30,
+                    child: Text(
+                      "🌾",
+                      style: TextStyle(
+                        fontSize: 100,
+                        color: theme.colorScheme.onPrimary.withOpacity(0.12),
+                      ),
+                    ),
+                  ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        Text(_getTimeGreeting(), style: TextStyle(color: Colors.green[100], fontSize: 13, fontWeight: FontWeight.w500)),
+                        Text(
+                          _getTimeGreeting(),
+                          style: TextStyle(
+                            color: theme.colorScheme.onPrimary.withOpacity(0.9),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                         const SizedBox(height: 2),
                         StreamBuilder<DocumentSnapshot>(
                           stream: currentUser != null
@@ -580,7 +554,12 @@ class _DashboardView extends StatelessWidget {
                             }
                             return Text(
                               "${local.welcome}, ${name.trim()}!",
-                              style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.bold, letterSpacing: -0.5),
+                              style: TextStyle(
+                                color: theme.colorScheme.onPrimary,
+                                fontSize: 19,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: -0.5,
+                              ),
                             );
                           },
                         ),
@@ -603,8 +582,6 @@ class _DashboardView extends StatelessWidget {
               local: local,
               onOrdersTap: onNavigateToOrders,
               onCartTap: onNavigateToCart,
-              onFavoritesTap: () => _showFavoritesPanel(context, local, currentUser.uid),
-              onProductsTap: onNavigateToProducts,
             ),
           ),
         ),
@@ -614,22 +591,22 @@ class _DashboardView extends StatelessWidget {
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: theme.colorScheme.surface,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.grey[200]!),
+              border: Border.all(color: theme.colorScheme.outlineVariant.withOpacity(0.5)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    Icon(Icons.gavel_outlined, color: Colors.green[700], size: 18),
+                    Icon(Icons.gavel_outlined, color: theme.colorScheme.primary, size: 18),
                     const SizedBox(width: 8),
-                    Text(local.specsTitle, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                    Text(local.specsTitle, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
                   ],
                 ),
                 const SizedBox(height: 8),
-                Text(local.specsDesc, style: TextStyle(color: Colors.grey[600], fontSize: 13, height: 1.4)),
+                Text(local.specsDesc, style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 13, height: 1.4)),
               ],
             ),
           ),
@@ -642,9 +619,9 @@ class _DashboardView extends StatelessWidget {
               elevation: 0,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
-                side: BorderSide(color: Colors.green.withOpacity(0.2)),
+                side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.2)),
               ),
-              color: Colors.green[50]!.withOpacity(0.6),
+              color: theme.colorScheme.primaryContainer.withOpacity(0.3),
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Row(
@@ -655,12 +632,13 @@ class _DashboardView extends StatelessWidget {
                         children: [
                           Text(
                             local.actionDesc,
-                            style: TextStyle(fontSize: 12.5, color: Colors.grey[800], height: 1.4),
+                            style: TextStyle(fontSize: 12.5, color: theme.colorScheme.onSurfaceVariant, height: 1.4),
                           ),
                           const SizedBox(height: 12),
                           FilledButton.icon(
                             style: FilledButton.styleFrom(
-                              backgroundColor: Colors.green[700],
+                              backgroundColor: theme.colorScheme.primary,
+                              foregroundColor: theme.colorScheme.onPrimary,
                               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                             ),
@@ -672,7 +650,7 @@ class _DashboardView extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 16),
-                    Icon(Icons.eco_outlined, size: 54, color: Colors.green[300]),
+                    Icon(Icons.eco_outlined, size: 54, color: theme.colorScheme.primary.withOpacity(0.5)),
                   ],
                 ),
               ),
@@ -680,8 +658,23 @@ class _DashboardView extends StatelessWidget {
           ),
         ),
 
-        SliverToBoxAdapter(child: _HorizontalProductSection(local: local, title: local.bestSeller, categoryFilter: 'best_seller', onSeeAll: onNavigateToProducts)),
-        SliverToBoxAdapter(child: _HorizontalProductSection(local: local, title: local.recommended, categoryFilter: 'recommended', onSeeAll: onNavigateToProducts)),
+        // 🔥 PINAKAMABENTA & 👍 REKOMENDADO SECTIONS
+        SliverToBoxAdapter(
+          child: _HorizontalProductSection(
+            local: local,
+            title: local.bestSeller,
+            categoryFilter: 'best_seller',
+            onSeeAll: onNavigateToProducts,
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: _HorizontalProductSection(
+            local: local,
+            title: local.recommended,
+            categoryFilter: 'recommended',
+            onSeeAll: onNavigateToProducts,
+          ),
+        ),
         const SliverToBoxAdapter(child: SizedBox(height: 32)),
       ],
     );
@@ -693,16 +686,12 @@ class _DashboardCardGrid extends StatelessWidget {
   final AppLocalizations local;
   final VoidCallback onOrdersTap;
   final VoidCallback onCartTap;
-  final VoidCallback onFavoritesTap;
-  final VoidCallback onProductsTap;
 
   const _DashboardCardGrid({
     required this.userId,
     required this.local,
     required this.onOrdersTap,
     required this.onCartTap,
-    required this.onFavoritesTap,
-    required this.onProductsTap,
   });
 
   @override
@@ -716,49 +705,48 @@ class _DashboardCardGrid extends StatelessWidget {
       physics: const NeverScrollableScrollPhysics(),
       children: [
         _buildMetricCard(
+          context: context,
           stream: FirebaseFirestore.instance.collection('orders').where('userId', isEqualTo: userId).snapshots(),
-          label: local.activeOrders, icon: Icons.local_shipping_outlined, color: Colors.blue,
+          label: local.activeOrders,
+          icon: Icons.local_shipping_outlined,
+          color: Colors.blue,
           onTap: onOrdersTap,
         ),
         _buildMetricCard(
+          context: context,
           stream: FirebaseFirestore.instance.collection('cart').where('userId', isEqualTo: userId).snapshots(),
-          label: local.myCart, icon: Icons.shopping_bag_outlined, color: Colors.orange,
+          label: local.myCart,
+          icon: Icons.shopping_bag_outlined,
+          color: Colors.orange,
           onTap: onCartTap,
-        ),
-        _buildMetricCard(
-          stream: FirebaseFirestore.instance.collection('favorites').where('userId', isEqualTo: userId).snapshots(),
-          label: local.favorites, icon: Icons.favorite_border, color: Colors.red,
-          onTap: onFavoritesTap,
-        ),
-        _buildMetricCard(
-          stream: FirebaseFirestore.instance.collection('products').where('stock', isGreaterThan: 0).snapshots(),
-          label: local.availableProducts, icon: Icons.warehouse_outlined, color: Colors.green,
-          onTap: onProductsTap,
         ),
       ],
     );
   }
 
   Widget _buildMetricCard({
+    required BuildContext context,
     required Stream<QuerySnapshot> stream,
     required String label,
     required IconData icon,
     required Color color,
     required VoidCallback onTap,
   }) {
+    final theme = Theme.of(context);
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey[200]!),
+          border: Border.all(color: theme.colorScheme.outlineVariant.withOpacity(0.5)),
         ),
         child: Row(
           children: [
-            CircleAvatar(backgroundColor: color.withOpacity(0.08), radius: 18, child: Icon(icon, color: color, size: 18)),
+            CircleAvatar(backgroundColor: color.withOpacity(0.1), radius: 18, child: Icon(icon, color: color, size: 18)),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -769,13 +757,13 @@ class _DashboardCardGrid extends StatelessWidget {
                     stream: stream,
                     builder: (context, snapshot) {
                       if (snapshot.hasError) {
-                        return const Text("!", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold));
+                        return Text("!", style: TextStyle(color: theme.colorScheme.error, fontWeight: FontWeight.bold));
                       }
                       final count = snapshot.hasData ? snapshot.data!.docs.length.toString() : "...";
-                      return Text(count, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: -0.5));
+                      return Text(count, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: -0.5, color: theme.colorScheme.onSurface));
                     },
                   ),
-                  Text(label, style: TextStyle(color: Colors.grey[500], fontSize: 11, fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis),
+                  Text(label, style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 11, fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis),
                 ],
               ),
             )
@@ -786,6 +774,7 @@ class _DashboardCardGrid extends StatelessWidget {
   }
 }
 
+// 🌾 UPDATED & DYNAMIC PRODUCT SECTION
 class _HorizontalProductSection extends StatelessWidget {
   final AppLocalizations local;
   final String title;
@@ -796,11 +785,13 @@ class _HorizontalProductSection extends StatelessWidget {
     required this.local,
     required this.title,
     required this.categoryFilter,
-    required this.onSeeAll
+    required this.onSeeAll,
   });
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -809,37 +800,49 @@ class _HorizontalProductSection extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: -0.3)),
+              Text(title, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: -0.3, color: theme.colorScheme.onSurface)),
               TextButton(
                 onPressed: onSeeAll,
                 style: TextButton.styleFrom(
-                    padding: EdgeInsets.zero,
-                    minimumSize: const Size(50, 30),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(50, 30),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
-                child: Text(local.viewAll, style: TextStyle(color: Colors.green[700], fontSize: 13, fontWeight: FontWeight.bold)),
+                child: Text(local.viewAll, style: TextStyle(color: theme.colorScheme.primary, fontSize: 13, fontWeight: FontWeight.bold)),
               )
             ],
           ),
         ),
         SizedBox(
-          height: 140,
+          height: 150,
           child: StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance.collection('products').where(categoryFilter, isEqualTo: true).limit(5).snapshots(),
+            stream: FirebaseFirestore.instance.collection('products').snapshots(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(
-                    child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.green))
+                return Center(
+                  child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.primary)),
                 );
               }
 
-              final docs = snapshot.data?.docs ?? [];
+              final allDocs = snapshot.data?.docs ?? [];
+
+              List<QueryDocumentSnapshot> docs = allDocs.where((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                return data[categoryFilter] == true;
+              }).toList();
+
+              if (docs.isEmpty) {
+                docs = allDocs.take(5).toList();
+              } else if (docs.length > 5) {
+                docs = docs.sublist(0, 5);
+              }
+
               if (docs.isEmpty) {
                 return Padding(
                   padding: const EdgeInsets.only(left: 20.0),
                   child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(local.noItems, style: TextStyle(color: Colors.grey[400], fontSize: 12))
+                    alignment: Alignment.centerLeft,
+                    child: Text(local.noItems, style: TextStyle(color: theme.colorScheme.outline, fontSize: 12)),
                   ),
                 );
               }
@@ -850,38 +853,55 @@ class _HorizontalProductSection extends StatelessWidget {
                 itemCount: docs.length,
                 itemBuilder: (context, index) {
                   final prod = docs[index].data() as Map<String, dynamic>;
-                  return Container(
-                    width: 130,
-                    margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey[200]!),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(10),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            height: 55,
-                            width: double.infinity,
-                            decoration: BoxDecoration(color: Colors.amber[50], borderRadius: BorderRadius.circular(8)),
-                            child: Icon(Icons.grain, color: Colors.amber[800], size: 28),
-                          ),
-                          const Spacer(),
-                          Text(
-                              prod['name'] ?? 'Palay Bag',
-                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  final String? imageUrl = prod['imageUrl'] ?? prod['photoUrl'] ?? prod['image'];
+
+                  return GestureDetector(
+                    onTap: onSeeAll,
+                    child: Container(
+                      width: 130,
+                      margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surface,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: theme.colorScheme.outlineVariant.withOpacity(0.5)),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(10),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              height: 60,
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.secondaryContainer.withOpacity(0.3),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: imageUrl != null && imageUrl.isNotEmpty
+                                  ? ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.network(
+                                  imageUrl,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) => Icon(Icons.grain, color: theme.colorScheme.secondary, size: 28),
+                                ),
+                              )
+                                  : Icon(Icons.grain, color: theme.colorScheme.secondary, size: 28),
+                            ),
+                            const Spacer(),
+                            Text(
+                              prod['name'] ?? prod['title'] ?? 'Palay Bag',
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
                               maxLines: 1,
-                              overflow: TextOverflow.ellipsis
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
                               "₱${prod['price'] ?? 0}",
-                              style: const TextStyle(color: Colors.green, fontSize: 13, fontWeight: FontWeight.bold)
-                          ),
-                        ],
+                              style: TextStyle(color: theme.colorScheme.primary, fontSize: 13, fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   );

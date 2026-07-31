@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-
+import 'homeuser_page.dart';
 import 'address_picker.dart';
 import 'payment_webview.dart';
 import 'orders_page.dart';
@@ -32,23 +32,46 @@ class _CheckoutPageState extends State<CheckoutPage> {
   @override
   void initState() {
     super.initState();
-    selectedAddress = widget.initialAddress;
+    _loadDefaultAddress();
+  }
+
+  Future<void> _loadDefaultAddress() async {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) return;
+
+    final snapshot = await FirebaseFirestore.instance
+        .collection("users")
+        .doc(user.uid)
+        .collection("addresses")
+        .where("isDefault", isEqualTo: true)
+        .limit(1)
+        .get();
+
+    if (snapshot.docs.isNotEmpty) {
+      setState(() {
+        selectedAddress = snapshot.docs.first.data();
+      });
+    }
   }
 
   // --- ONLINE PAYMENT METHOD (PAYMONGO CHECKOUT PROCESS) ---
   Future<void> _processOnlinePayment(DocumentReference orderRef, String methodKey) async {
+    final primaryColor = Theme.of(context).primaryColor;
+    final errorColor = Theme.of(context).colorScheme.error;
+
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(
+      builder: (_) => Center(
         child: Card(
-          margin: EdgeInsets.all(20),
+          margin: const EdgeInsets.all(20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              CircularProgressIndicator(color: Colors.green),
-              SizedBox(height: 15),
-              Text("Inihahanda ang secure payment gateway...", style: TextStyle(fontWeight: FontWeight.bold)),
+              CircularProgressIndicator(color: primaryColor),
+              const SizedBox(height: 15),
+              const Text("Preparing secure payment gateway...", style: TextStyle(fontWeight: FontWeight.bold)),
             ],
           ),
         ),
@@ -85,21 +108,26 @@ class _CheckoutPageState extends State<CheckoutPage> {
         );
 
         if (mounted && result == "SUCCESS") {
+          await _removePurchasedItemsFromCart();
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("Payment Successful! Natanggap na ang iyong bayad at order."),
-              backgroundColor: Colors.green,
+            SnackBar(
+              content: const Text("Payment Successful! Your payment and order have been received."),
+              backgroundColor: primaryColor,
             ),
           );
           Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (_) => const OrdersPage()),
-            (route) => route.isFirst,
+            MaterialPageRoute(
+              builder: (_) => const HomeUserPage(
+                initialIndex: 3,
+              ),
+            ),
+                (route) => false,
           );
         } else if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("Kanselado o pumalya ang online payment."),
-              backgroundColor: Colors.red,
+            SnackBar(
+              content: const Text("Online payment was cancelled or failed."),
+              backgroundColor: errorColor,
             ),
           );
         }
@@ -107,8 +135,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text("Pumalya ang online payment session (${response.statusCode})."),
-              backgroundColor: Colors.red,
+              content: Text("Online payment session failed (${response.statusCode})."),
+              backgroundColor: errorColor,
             ),
           );
         }
@@ -117,17 +145,36 @@ class _CheckoutPageState extends State<CheckoutPage> {
       if (mounted) {
         Navigator.of(context, rootNavigator: true).pop();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error sa Payment Gateway: $e"), backgroundColor: Colors.red),
+          SnackBar(content: Text("Payment Gateway Error: $e"), backgroundColor: errorColor),
         );
       }
     }
   }
 
+  Future<void> _removePurchasedItemsFromCart() async {
+    final batch = FirebaseFirestore.instance.batch();
+
+    for (final item in widget.orderItems) {
+      if (item['cartDocId'] != null) {
+        final docRef = FirebaseFirestore.instance
+            .collection('cart')
+            .doc(item['cartDocId']);
+
+        batch.delete(docRef);
+      }
+    }
+
+    await batch.commit();
+  }
+
   // --- MAIN ORDER CREATION LOGIC ---
   void _placeOrder() async {
+    final errorColor = Theme.of(context).colorScheme.error;
+    final primaryColor = Theme.of(context).primaryColor;
+
     if (selectedAddress == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Pumili muna ng Delivery Address."), backgroundColor: Colors.red),
+        SnackBar(content: const Text("Please select a delivery address."), backgroundColor: errorColor),
       );
       return;
     }
@@ -138,10 +185,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
       final user = FirebaseAuth.instance.currentUser;
       final bool isOnlinePayment = paymentMethod == "GCash / E-Wallet";
 
-      // MAPANATAG NA MAKUHA ANG MOBILE NUMBER SA KAHIT ANONG FIELD KEY
       final String contactNum = selectedAddress!['phoneNumber'] ?? selectedAddress!['mobileNumber'] ?? "N/A";
 
-      // 1. Lumikha ng Order Record sa Firestore
+      // 1. Create Order Record in Firestore
       final orderRef = await FirebaseFirestore.instance.collection("orders").add({
         "userId": user?.uid,
         "customerName": selectedAddress!['fullName'],
@@ -156,7 +202,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
         "createdAt": FieldValue.serverTimestamp(),
       });
 
-      // 2. Paghihiwalay ng proseso depende sa napiling mode of payment
+      await _removePurchasedItemsFromCart();
+
+      // 2. Process based on selected payment method
       if (isOnlinePayment) {
         if (mounted) setState(() => isPlacingOrder = false);
         await _processOnlinePayment(orderRef, "gcash");
@@ -166,11 +214,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
             context: context,
             barrierDismissible: false,
             builder: (context) => AlertDialog(
-              title: const Text("Order Placed Successfully! 🎉"),
-              content: const Text("Salamat! Natanggap na namin ang iyong order at inihahanda na para sa delivery."),
+              title: const Text("Order Placed Successfully!"),
+              content: const Text("Thank you! We have received your order and are preparing it for delivery."),
               actions: [
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                  style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
                   onPressed: () {
                     Navigator.pop(context);
                     Navigator.pop(context);
@@ -185,7 +233,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error sa pag-place ng order: $e"), backgroundColor: Colors.red),
+          SnackBar(content: Text("Error placing order: $e"), backgroundColor: errorColor),
         );
       }
     } finally {
@@ -195,11 +243,15 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Kukunin nito ang dynamic theme colors ng app mo:
+    final primaryColor = Theme.of(context).primaryColor;
+    final errorColor = Theme.of(context).colorScheme.error;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text("Checkout / Order Review", style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.green,
-        foregroundColor: Colors.white,
+        backgroundColor: primaryColor,
+        foregroundColor: Theme.of(context).colorScheme.onPrimary,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
@@ -218,11 +270,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Row(
+                        Row(
                           children: [
-                            Icon(Icons.location_on, color: Colors.green),
-                            SizedBox(width: 8),
-                            Text("Delivery Address", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                            Icon(Icons.location_on, color: primaryColor),
+                            const SizedBox(width: 8),
+                            const Text("Delivery Address", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                           ],
                         ),
                         TextButton(
@@ -235,22 +287,21 @@ class _CheckoutPageState extends State<CheckoutPage> {
                             );
                           },
                           child: Text(
-                            selectedAddress == null ? "+ Pumili / Magdagdag" : "Palitan", 
-                            style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)
+                              selectedAddress == null ? "+ Select / Add" : "Change",
+                              style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold)
                           ),
                         )
                       ],
                     ),
                     const Divider(),
                     if (selectedAddress == null)
-                      const Text("Walang napiling address. Paki-pindot ang '+ Pumili / Magdagdag' sa itaas.", style: TextStyle(color: Colors.red))
+                      Text("No address selected. Please click '+ Select / Add' above.", style: TextStyle(color: errorColor))
                     else ...[
-                      Text("Pangalan: ${selectedAddress!['fullName']}", style: const TextStyle(fontWeight: FontWeight.w600)),
+                      Text("Name: ${selectedAddress!['fullName']}", style: const TextStyle(fontWeight: FontWeight.w600)),
                       Text("Email: ${selectedAddress!['emailAddress'] ?? 'N/A'}"),
-                      // INAYOS NA MAKUHA ANG PAGPIPILIAN NA FIELD KEY NG CONTACT NUMBER
                       Text(
-                        "Contact No: ${selectedAddress!['phoneNumber'] ?? selectedAddress!['mobileNumber'] ?? 'N/A'}", 
-                        style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)
+                          "Contact No: ${selectedAddress!['phoneNumber'] ?? selectedAddress!['mobileNumber'] ?? 'N/A'}",
+                          style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold)
                       ),
                       const SizedBox(height: 6),
                       Text(
@@ -273,11 +324,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Row(
+                    Row(
                       children: [
-                        Icon(Icons.payment, color: Colors.green),
-                        SizedBox(width: 8),
-                        Text("Mode of Payment", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        Icon(Icons.payment, color: primaryColor),
+                        const SizedBox(width: 8),
+                        const Text("Mode of Payment", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                       ],
                     ),
                     const Divider(),
@@ -285,14 +336,14 @@ class _CheckoutPageState extends State<CheckoutPage> {
                       title: const Text("Cash on Delivery (COD)"),
                       value: "Cash on Delivery (COD)",
                       groupValue: paymentMethod,
-                      activeColor: Colors.green,
+                      activeColor: primaryColor,
                       onChanged: (val) => setState(() => paymentMethod = val!),
                     ),
                     RadioListTile<String>(
                       title: const Text("GCash / E-Wallet"),
                       value: "GCash / E-Wallet",
                       groupValue: paymentMethod,
-                      activeColor: Colors.green,
+                      activeColor: primaryColor,
                       onChanged: (val) => setState(() => paymentMethod = val!),
                     ),
                   ],
@@ -326,8 +377,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text("Kabuuan (Total Amount):", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                        Text("₱${widget.totalAmount.toStringAsFixed(2)}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.green)),
+                        const Text("Total Amount:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                        Text("₱${widget.totalAmount.toStringAsFixed(2)}", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: primaryColor)),
                       ],
                     )
                   ],
@@ -345,14 +396,14 @@ class _CheckoutPageState extends State<CheckoutPage> {
         child: SizedBox(
           height: 50,
           child: ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+            style: ElevatedButton.styleFrom(backgroundColor: primaryColor, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
             onPressed: isPlacingOrder ? null : _placeOrder,
             child: isPlacingOrder
                 ? const CircularProgressIndicator(color: Colors.white)
                 : Text(
-                    paymentMethod == "GCash / E-Wallet" ? "MAGBAYAD GAMIT ANG GCASH" : "PLACE ORDER NOW",
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
+              paymentMethod == "GCash / E-Wallet" ? "PAY VIA GCASH" : "PLACE ORDER NOW",
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+            ),
           ),
         ),
       ),

@@ -40,7 +40,7 @@ class _LoginUserPageState extends State<LoginUserPage> {
   final Map<String, Map<String, String>> _txt = {
     'English': {
       'subtitle': 'Modern Agriculture Platform',
-      'email': 'Email Address',
+      'email': 'Email Address / Mobile Number',
       'password': 'Password',
       'forgotPwd': 'Forgot Password?',
       'btnLogin': 'Sign In',
@@ -88,7 +88,7 @@ class _LoginUserPageState extends State<LoginUserPage> {
     },
     'Tagalog': {
       'subtitle': 'Sistema para sa Modernong Magsasaka',
-      'email': 'Email Address',
+      'email': 'Email o Mobile Number',
       'password': 'Password',
       'forgotPwd': 'Nakalimutan ang Password?',
       'btnLogin': 'Mag-login',
@@ -793,10 +793,19 @@ class _LoginUserPageState extends State<LoginUserPage> {
     setState(() => _isLoading = true);
 
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
-      );
+      String username = _emailController.text.trim();
+
+      if (username.contains("@")) {
+        await FirebaseAuth.instance.signInWithEmailAndPassword(
+          email: username,
+          password: _passwordController.text.trim(),
+        );
+      } else {
+        await AuthService.instance.loginWithPhone(
+          phoneNumber: username,
+          password: _passwordController.text.trim(),
+        );
+      }
 
       _failedAttempts = 0;
       if (!mounted) return;
@@ -921,10 +930,15 @@ class _LoginUserPageState extends State<LoginUserPage> {
                         children: [
                           TextFormField(
                             controller: _emailController,
-                            keyboardType: TextInputType.emailAddress,
+                            keyboardType: TextInputType.text,
                             style: const TextStyle(color: ArrozTheme.textMain, fontWeight: FontWeight.w500),
                             decoration: _inputDecoration(localized['email']!, Icons.mail_outline_rounded),
-                            validator: (v) => (v == null || !v.contains('@')) ? localized['valEmail'] : null,
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) {
+                                return localized['valEmail'];
+                              }
+                              return null;
+                            },
                           ),
                           const SizedBox(height: 16),
                           TextFormField(

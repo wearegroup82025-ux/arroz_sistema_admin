@@ -42,11 +42,21 @@ class AuthService {
   }
 
   // --- PHONE OTP FUNCTIONS ---
-  Future<String> sendPhoneOTPWithTextBee({required String phoneNumber}) async {
+  Future<String> sendPhoneOTPWithTextBee({
+    required String phoneNumber,
+  }) async {
     try {
-      String cleanPhone = phoneNumber.trim();
+      // I-convert lagi sa 09XXXXXXXXX
+      String cleanPhone = phoneNumber.replaceAll(RegExp(r'\D'), '');
 
-      // 1. DIRECT FIRESTORE CHECK: Titingnan kung nakarehistro na ang Phone Number
+      if (cleanPhone.startsWith('63')) {
+        cleanPhone = '0${cleanPhone.substring(2)}';
+      }
+
+      if (!cleanPhone.startsWith('09') || cleanPhone.length != 11) {
+        throw Exception("Invalid cellphone number.");
+      }
+
       final existingUser = await _firestore
           .collection('users')
           .where('phone', isEqualTo: cleanPhone)
@@ -57,48 +67,43 @@ class AuthService {
         throw Exception("May umiiral nang account gamit ang numerong ito.");
       }
 
-      final random = Random();
-      String otp = List.generate(6, (_) => random.nextInt(10).toString()).join();
-
-      DateTime now = DateTime.now();
-      DateTime expirationTime = now.add(const Duration(minutes: 1));
+      final otp = List.generate(
+        6,
+            (_) => Random().nextInt(10).toString(),
+      ).join();
 
       await _firestore.collection('phone_otps').doc(cleanPhone).set({
         'otp': otp,
         'createdAt': FieldValue.serverTimestamp(),
-        'expiresAt': Timestamp.fromDate(expirationTime),
+        'expiresAt': Timestamp.fromDate(
+          DateTime.now().add(const Duration(minutes: 1)),
+        ),
       });
 
-      const String textBeeApiKey = '8e680a8f-af13-4c93-98c1-094982c6ee1f';
-      const String textBeeDeviceId = '6a644202ceb4314c6cb6d0ad';
+      const apiKey = '3976128d-92db-428f-8e94-8ac21cb5b1b4';
+      const deviceId = '6a6c26d3cd8a35b23c02a931';
 
-      final url = Uri.parse('https://api.textbee.dev/api/v1/gateway/devices/$textBeeDeviceId/send-sms');
-      final client = _getHttpClient();
+      final response = await _getHttpClient().post(
+        Uri.parse(
+          'https://api.textbee.dev/api/v1/gateway/devices/$deviceId/send-sms',
+        ),
+        headers: {
+          'x-api-key': apiKey,
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          "recipients": [cleanPhone],
+          "message":
+          "Your Arroz OTP code is: $otp. Valid for 1 minute only.",
+        }),
+      );
 
-      try {
-        final response = await client.post(
-          url,
-          headers: {
-            'x-api-key': textBeeApiKey.trim(),
-            'apiKey': textBeeApiKey.trim(),
-            'Authorization': 'Bearer ${textBeeApiKey.trim()}',
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: jsonEncode({
-            'recipients': [cleanPhone],
-            'message': 'Your Arroz OTP code is: $otp. Valid for 1 minute only. Do not share.',
-          }),
-        );
-
-        if (response.statusCode == 200 || response.statusCode == 201) {
-          return otp;
-        } else {
-          throw Exception("Hindi maipadala ang SMS. Pakisuri kung tama ang numero.");
-        }
-      } finally {
-        client.close();
+      if (response.statusCode != 200 &&
+          response.statusCode != 201) {
+        throw Exception("Hindi maipadala ang SMS.");
       }
+
+      return otp;
     } catch (e) {
       rethrow;
     }
@@ -137,15 +142,57 @@ class AuthService {
     }
   }
 
-  Future<UserCredential> registerWithPhoneFakeEmail({required String phoneNumber}) async {
-    String fakeEmail = "${phoneNumber.replaceAll('+', '')}@carrotcarper.internal";
-    String fakePassword = "PhoneUserDefault123!";
-    
-    try {
-      return await _auth.signInWithEmailAndPassword(email: fakeEmail, password: fakePassword);
-    } catch (e) {
-      return await _auth.createUserWithEmailAndPassword(email: fakeEmail, password: fakePassword);
+  Future<UserCredential> registerWithPhone({
+    required String phoneNumber,
+    required String password,
+  }) async {
+    String cleanPhone = normalizePhone(phoneNumber);
+
+    String fakeEmail =
+        "$cleanPhone@carrotcarper.internal";
+    final methods =
+    await _auth.fetchSignInMethodsForEmail(fakeEmail);
+
+    if (methods.isNotEmpty) {
+      throw Exception("May account na gamit ang numerong ito.");
     }
+
+    return await _auth.createUserWithEmailAndPassword(
+      email: fakeEmail,
+      password: password,
+    );
+  }
+
+  Future<UserCredential> loginWithPhone({
+    required String phoneNumber,
+    required String password,
+  }) async {
+
+    String cleanPhone = normalizePhone(phoneNumber);
+
+    final fakeEmail =
+        "$cleanPhone@carrotcarper.internal";
+
+    return await _auth.signInWithEmailAndPassword(
+      email: fakeEmail,
+      password: password,
+    );
+  }
+
+  String normalizePhone(String phone) {
+    String clean = phone.replaceAll(RegExp(r'\D'), '');
+
+    if (clean.startsWith('09')) {
+      clean = '63${clean.substring(1)}';
+    } else if (clean.startsWith('9') && clean.length == 10) {
+      clean = '63$clean';
+    } else if (clean.startsWith('639')) {
+      // already normalized
+    } else {
+      throw Exception("Invalid phone number.");
+    }
+
+    return clean;
   }
 
   // --- EMAIL OTP GENERATOR WITH DIRECT FIRESTORE EXISTENCE CHECK ---

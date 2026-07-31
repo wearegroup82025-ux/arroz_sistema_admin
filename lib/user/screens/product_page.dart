@@ -7,105 +7,260 @@ import 'cart_page.dart';
 import 'checkout_page.dart';
 import 'payment_webview.dart';
 import 'orders_page.dart';
+import 'package:provider/provider.dart';
+import '../../providers/language_provider.dart';
+import '../../services/app_localizations.dart';
 
-class ProductPage extends StatelessWidget {
+// Import ArrozTheme mula sa ProfilePage o ilagay sa hiwalay na theme file
+import 'profile_page.dart';
+
+class ProductPage extends StatefulWidget {
   const ProductPage({super.key});
 
   @override
+  State<ProductPage> createState() => _ProductPageState();
+}
+
+class _ProductPageState extends State<ProductPage> {
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = "";
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final language = context.watch<LanguageProvider>().language;
+    final local = AppLocalizations(language);
+
     return Scaffold(
+      backgroundColor: ArrozTheme.bgGrey,
       appBar: AppBar(
-        title: const Text("Products"),
-        backgroundColor: Colors.green,
+        title: Text(
+          local.products,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: ArrozTheme.emerald,
         foregroundColor: Colors.white,
         elevation: 0,
+        centerTitle: true,
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection("products").snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) return Center(child: Text(snapshot.error.toString()));
-          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-
-          final docs = snapshot.data?.docs ?? [];
-          if (docs.isEmpty) return const Center(child: Text("No products available."));
-
-          return GridView.builder(
-            padding: const EdgeInsets.all(12),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              childAspectRatio: 0.63,
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
+      body: Column(
+        children: [
+          // 🔍 SEARCH BAR SECTION (SA BABA NG HEADER)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            decoration: const BoxDecoration(
+              color: ArrozTheme.emerald,
+              borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),
             ),
-            itemCount: docs.length,
-            itemBuilder: (context, index) {
-              final doc = docs[index];
-              final product = doc.data() as Map<String, dynamic>;
-              final String imageUrl = product['imageUrl'] ?? '';
-              final int deliveryDays = product['deliveryDays'] ?? 3;
+            child: Container(
+              height: 48,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(30), // Pill Shape
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.black12,
+                    blurRadius: 8,
+                    offset: Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: TextField(
+                controller: _searchController,
+                onChanged: (value) {
+                  setState(() {
+                    _searchQuery = value.trim().toLowerCase();
+                  });
+                },
+                textAlignVertical: TextAlignVertical.center,
+                style: const TextStyle(fontSize: 14, color: ArrozTheme.textDark),
+                decoration: InputDecoration(
+                  hintText: language == AppLanguage.english ? "Search product..." : "Maghanap ng produkto...",
+                  hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+                  prefixIcon: Padding(
+                    padding: const EdgeInsets.only(left: 12, right: 8),
+                    child: Icon(Icons.search, color: Colors.grey.shade600, size: 24),
+                  ),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                    icon: const Icon(Icons.clear, size: 20, color: Colors.grey),
+                    onPressed: () {
+                      _searchController.clear();
+                      setState(() {
+                        _searchQuery = "";
+                      });
+                    },
+                  )
+                      : null,
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                ),
+              ),
+            ),
+          ),
 
-              return GestureDetector(
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => ProductDetailPage(product: product, productId: doc.id),
+          // 🌾 PRODUCT GRID (CONNECTED SA FIREBASE)
+          Expanded(
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance.collection("products").snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return Center(child: Text("Error: ${snapshot.error}"));
+                }
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator(color: ArrozTheme.emerald));
+                }
+
+                final allDocs = snapshot.data?.docs ?? [];
+
+                // Filtering logic para sa dynamic search
+                final docs = allDocs.where((doc) {
+                  final product = doc.data() as Map<String, dynamic>;
+                  final name = (product['name'] ?? '').toString().toLowerCase();
+                  final description = (product['description'] ?? '').toString().toLowerCase();
+
+                  return name.contains(_searchQuery) || description.contains(_searchQuery);
+                }).toList();
+
+                if (docs.isEmpty) {
+                  return Center(
+                    child: Text(
+                      _searchQuery.isNotEmpty
+                          ? "Walang produktong tumutugma sa \"$_searchQuery\""
+                          : "Walang available na produkto sa ngayon.",
+                      style: const TextStyle(color: ArrozTheme.textSub),
+                      textAlign: TextAlign.center,
                     ),
                   );
-                },
-                child: Card(
-                  elevation: 2,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Container(
-                          width: double.infinity,
-                          decoration: BoxDecoration(
-                            color: Colors.grey[200],
-                            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                }
+
+                return GridView.builder(
+                  padding: const EdgeInsets.all(14),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    childAspectRatio: 0.65,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                  ),
+                  itemCount: docs.length,
+                  itemBuilder: (context, index) {
+                    final doc = docs[index];
+                    final product = doc.data() as Map<String, dynamic>;
+                    final String imageUrl = product['imageUrl'] ?? '';
+                    final int deliveryDays = product['deliveryDays'] ?? 3;
+                    final int stock = product['stock'] ?? 0;
+
+                    return InkWell(
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => ProductDetailPage(product: product, productId: doc.id),
                           ),
-                          child: imageUrl.isNotEmpty
-                              ? ClipRRect(
-                            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                            child: Image.network(imageUrl, fit: BoxFit.cover),
-                          )
-                              : const Icon(Icons.image, size: 50, color: Colors.grey),
+                        );
+                      },
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: const [
+                            BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))
+                          ],
                         ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.all(8.0),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(product['name'] ?? 'No Name', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                            const SizedBox(height: 4),
-                            Text("₱${product['price'] ?? 0}", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 16)),
-                            const SizedBox(height: 4),
-                            Text("Stock: ${product['stock'] ?? 0}", style: const TextStyle(color: Colors.grey, fontSize: 11)),
-                            const SizedBox(height: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                              decoration: BoxDecoration(color: Colors.orange.withOpacity(0.15), borderRadius: BorderRadius.circular(4)),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
+                            // Product Image Container
+                            Expanded(
+                              child: Stack(
                                 children: [
-                                  const Icon(Icons.local_shipping, size: 12, color: Colors.orange),
-                                  const SizedBox(width: 4),
-                                  Text("Ships in $deliveryDays days", style: const TextStyle(color: Colors.orange, fontSize: 10, fontWeight: FontWeight.bold)),
+                                  Container(
+                                    width: double.infinity,
+                                    decoration: const BoxDecoration(
+                                      color: ArrozTheme.bgGrey,
+                                      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                                    ),
+                                    child: imageUrl.isNotEmpty
+                                        ? ClipRRect(
+                                      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                                      child: Image.network(imageUrl, fit: BoxFit.cover),
+                                    )
+                                        : const Icon(Icons.image, size: 48, color: Colors.grey),
+                                  ),
+                                  if (stock <= 0)
+                                    Positioned(
+                                      top: 8,
+                                      left: 8,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: Colors.red.withOpacity(0.9),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: const Text("Out of Stock", style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            // Product Info
+                            Padding(
+                              padding: const EdgeInsets.all(10.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    product['name'] ?? 'No Name',
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: ArrozTheme.textDark),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    "₱${product['price'] ?? 0}",
+                                    style: const TextStyle(color: ArrozTheme.emerald, fontWeight: FontWeight.bold, fontSize: 16),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text("Stock: $stock", style: const TextStyle(color: ArrozTheme.textSub, fontSize: 11)),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.orange.shade50,
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(color: Colors.orange.shade200),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            const Icon(Icons.local_shipping, size: 10, color: ArrozTheme.warningOrange),
+                                            const SizedBox(width: 2),
+                                            Text("$deliveryDays d", style: const TextStyle(color: ArrozTheme.warningOrange, fontSize: 9, fontWeight: FontWeight.bold)),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ],
                               ),
                             ),
                           ],
                         ),
                       ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          );
-        },
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -124,103 +279,6 @@ class ProductDetailPage extends StatefulWidget {
 class _ProductDetailPageState extends State<ProductDetailPage> {
   final currentUser = FirebaseAuth.instance.currentUser;
 
-  Future<void> _processPayMongoPayment({
-    required BuildContext navContext,
-    required String paymentMethod, // 'gcash' or 'paymaya'
-    required DocumentReference orderRef,
-    required double totalAmount,
-  }) async {
-    try {
-      showDialog(
-        context: navContext,
-        barrierDismissible: false,
-        builder: (_) => const Center(
-          child: Card(
-            margin: EdgeInsets.symmetric(horizontal: 40),
-            child: Padding(
-              padding: EdgeInsets.all(20.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(color: Colors.green),
-                  SizedBox(height: 15),
-                  Text("Initializing secure checkout...", style: TextStyle(fontWeight: FontWeight.bold)),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-
-      final response = await http.post(
-        Uri.parse("https://arroz-backend.onrender.com/api/create-payment"),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode({
-          "orderId": orderRef.id,
-          "amount": totalAmount,
-          "paymentMethod": paymentMethod, // "gcash" o "paymaya"
-        }),
-      );
-
-      if (navContext.mounted) Navigator.of(navContext, rootNavigator: true).pop(); // Isara ang loading dialog
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final checkoutUrl = data["checkoutUrl"];
-
-        if (!navContext.mounted || checkoutUrl == null) return;
-
-        final result = await Navigator.of(navContext).push(
-          MaterialPageRoute(
-            builder: (_) => PaymentWebView(
-              checkoutUrl: checkoutUrl,
-              orderId: orderRef.id,
-              paymentMethod: paymentMethod,
-            ),
-          ),
-        );
-
-        if (navContext.mounted && result == "SUCCESS") {
-          // 🟢 AUTOMATICALLY MARK AS PAID PARA DIRETSO AGAD SA 'TO SHIP'
-          await orderRef.update({
-            'isPaid': true,
-            'orderStatus': 'Paid',
-            'prepareToShip': true,
-            'paidAt': FieldValue.serverTimestamp(),
-          });
-
-          if (!navContext.mounted) return;
-
-          ScaffoldMessenger.of(navContext).showSnackBar(
-            const SnackBar(
-              content: Text("Payment Successful! Your order has been placed under To Ship."),
-              backgroundColor: Colors.green,
-            ),
-          );
-          Navigator.of(navContext).pushReplacement(
-            MaterialPageRoute(builder: (_) => const OrdersPage()),
-          );
-        }
-      } else {
-        if (navContext.mounted) {
-          ScaffoldMessenger.of(navContext).showSnackBar(
-            SnackBar(
-              content: Text("Payment session failed (${response.statusCode}). Please try again."),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      if (navContext.mounted) {
-        Navigator.of(navContext, rootNavigator: true).pop();
-        ScaffoldMessenger.of(navContext).showSnackBar(
-          SnackBar(content: Text("Network/Server Error: $e"), backgroundColor: Colors.red),
-        );
-      }
-    }
-  }
-
   void _showAddToCartSheet(BuildContext pageContext) {
     int selectedQuantity = 1;
     int maxStock = widget.product['stock'] ?? 0;
@@ -237,24 +295,27 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text("Select Quantity for Cart", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const Text("Piliin ang Dami (Quantity)", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: ArrozTheme.textDark)),
                   const SizedBox(height: 15),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text("Price: ₱${widget.product['price'] ?? 0}", style: const TextStyle(fontSize: 16, color: Colors.green, fontWeight: FontWeight.bold)),
-                      Row(
-                        children: [
-                          IconButton(
-                            onPressed: () { if (selectedQuantity > 1) setSheetState(() => selectedQuantity--); },
-                            icon: const Icon(Icons.remove_circle_outline, color: Colors.green),
-                          ),
-                          Text("$selectedQuantity", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                          IconButton(
-                            onPressed: () { if (selectedQuantity < maxStock) setSheetState(() => selectedQuantity++); },
-                            icon: const Icon(Icons.add_circle_outline, color: Colors.green),
-                          ),
-                        ],
+                      Text("Presyo: ₱${widget.product['price'] ?? 0}", style: const TextStyle(fontSize: 16, color: ArrozTheme.emerald, fontWeight: FontWeight.bold)),
+                      Container(
+                        decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
+                        child: Row(
+                          children: [
+                            IconButton(
+                              onPressed: () { if (selectedQuantity > 1) setSheetState(() => selectedQuantity--); },
+                              icon: const Icon(Icons.remove, color: ArrozTheme.emerald, size: 18),
+                            ),
+                            Text("$selectedQuantity", style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                            IconButton(
+                              onPressed: () { if (selectedQuantity < maxStock) setSheetState(() => selectedQuantity++); },
+                              icon: const Icon(Icons.add, color: ArrozTheme.emerald, size: 18),
+                            ),
+                          ],
+                        ),
                       )
                     ],
                   ),
@@ -263,17 +324,19 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                     width: double.infinity,
                     height: 48,
                     child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: ArrozTheme.warningOrange,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
                       onPressed: maxStock == 0 ? null : () async {
-                        final currentUser = FirebaseAuth.instance.currentUser;
                         if (currentUser == null) return;
                         Navigator.pop(sheetContext);
 
                         await FirebaseFirestore.instance
                             .collection("cart")
-                            .doc("${currentUser.uid}_${widget.productId}")
+                            .doc("${currentUser!.uid}_${widget.productId}")
                             .set({
-                          "userId": currentUser.uid,
+                          "userId": currentUser!.uid,
                           "productId": widget.productId,
                           "name": widget.product["name"],
                           "price": widget.product["price"],
@@ -284,11 +347,9 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
 
                         if (pageContext.mounted) {
                           ScaffoldMessenger.of(pageContext).showSnackBar(
-                            const SnackBar(content: Text("Added to Cart Successfully!"), backgroundColor: Colors.orange),
+                            const SnackBar(content: Text("Naidagdag na sa Cart!"), backgroundColor: ArrozTheme.warningOrange),
                           );
-                          Navigator.of(pageContext).push(
-                            MaterialPageRoute(builder: (_) => const CartPage()),
-                          );
+                          Navigator.of(pageContext).push(MaterialPageRoute(builder: (_) => const CartPage()));
                         }
                       },
                       child: Text(maxStock == 0 ? "Out of Stock" : "Add to Cart", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -325,35 +386,38 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text("Buy Now Options", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const Text("Buy Now Options", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: ArrozTheme.textDark)),
                   const Divider(),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text("Dami (Quantity):", style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+                      const Text("Dami (Quantity):", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                       Row(
                         children: [
                           IconButton(
                             onPressed: () { if (selectedQuantity > 1) setSheetState(() => selectedQuantity--); },
-                            icon: const Icon(Icons.remove_circle_outline, color: Colors.green),
+                            icon: const Icon(Icons.remove_circle_outline, color: ArrozTheme.emerald),
                           ),
-                          Text("$selectedQuantity", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          Text("$selectedQuantity", style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                           IconButton(
                             onPressed: () { if (selectedQuantity < maxStock) setSheetState(() => selectedQuantity++); },
-                            icon: const Icon(Icons.add_circle_outline, color: Colors.green),
+                            icon: const Icon(Icons.add_circle_outline, color: ArrozTheme.emerald),
                           ),
                         ],
                       )
                     ],
                   ),
                   const SizedBox(height: 10),
-                  Text("Kabuuan: ₱${totalAmount.toStringAsFixed(2)}", style: const TextStyle(fontSize: 16, color: Colors.green, fontWeight: FontWeight.bold)),
+                  Text("Kabuuan: ₱${totalAmount.toStringAsFixed(2)}", style: const TextStyle(fontSize: 16, color: ArrozTheme.emerald, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 15),
                   SizedBox(
                     width: double.infinity,
                     height: 48,
                     child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: ArrozTheme.emerald,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
                       onPressed: maxStock == 0 ? null : () {
                         if (currentUser == null) return;
                         Navigator.pop(sheetContext);
@@ -389,264 +453,123 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     );
   }
 
-  void _showAddReviewDialog() async {
-    if (currentUser == null) return;
-
-    final orderQuery = await FirebaseFirestore.instance
-        .collection("orders")
-        .where("userId", isEqualTo: currentUser!.uid)
-        .get();
-
-    bool hasPurchased = false;
-    for (var doc in orderQuery.docs) {
-      List items = doc.data()['items'] ?? [];
-      if (items.any((item) => item['productId'] == widget.productId)) {
-        hasPurchased = true;
-        break;
-      }
-    }
-
-    if (!hasPurchased) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Paumanhin, mga nakabili lamang ng produktong ito ang pwedeng mag-rate."), backgroundColor: Colors.red),
-      );
-      return;
-    }
-
-    double userRating = 5;
-    final reviewController = TextEditingController();
-
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(builder: (context, setDialogState) {
-          return AlertDialog(
-            title: const Text("Write a Real Review"),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(5, (index) {
-                    return IconButton(
-                      icon: Icon(index < userRating ? Icons.star : Icons.star_border, color: Colors.amber, size: 32),
-                      onPressed: () => setDialogState(() => userRating = index + 1.0),
-                    );
-                  }),
-                ),
-                TextField(
-                  controller: reviewController,
-                  decoration: const InputDecoration(hintText: "Share your experience..."),
-                  maxLines: 3,
-                )
-              ],
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text("Cancel")),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                onPressed: () async {
-                  if (reviewController.text.trim().isEmpty) return;
-
-                  await FirebaseFirestore.instance.collection("reviews").add({
-                    "productId": widget.productId,
-                    "userId": currentUser!.uid,
-                    "userEmail": currentUser!.email ?? "Anonymous",
-                    "rating": userRating,
-                    "comment": reviewController.text.trim(),
-                    "likes": [],
-                    "dislikes": [],
-                    "createdAt": FieldValue.serverTimestamp(),
-                  });
-
-                  if (dialogContext.mounted) Navigator.pop(dialogContext);
-                },
-                child: const Text("Submit", style: TextStyle(color: Colors.white)),
-              ),
-            ],
-          );
-        });
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final String imageUrl = widget.product['imageUrl'] ?? '';
     final int deliveryDays = widget.product['deliveryDays'] ?? 3;
 
     return Scaffold(
-      appBar: AppBar(title: Text(widget.product['name'] ?? 'Product Details'), backgroundColor: Colors.green, foregroundColor: Colors.white),
+      backgroundColor: ArrozTheme.bgGrey,
+      appBar: AppBar(
+        title: Text(widget.product['name'] ?? 'Product Details'),
+        backgroundColor: ArrozTheme.emerald,
+        foregroundColor: Colors.white,
+      ),
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Image Header
             Container(
-              height: 280, width: double.infinity, color: Colors.grey[200],
-              child: imageUrl.isNotEmpty ? Image.network(imageUrl, fit: BoxFit.cover) : const Icon(Icons.image, size: 100, color: Colors.grey),
+              height: 280,
+              width: double.infinity,
+              color: Colors.white,
+              child: imageUrl.isNotEmpty
+                  ? Image.network(imageUrl, fit: BoxFit.cover)
+                  : const Icon(Icons.image, size: 80, color: Colors.grey),
             ),
-            Padding(
+
+            // Details Card
+            Container(
+              width: double.infinity,
               padding: const EdgeInsets.all(16.0),
+              color: Colors.white,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text("₱${widget.product['price'] ?? 0}", style: const TextStyle(color: Colors.green, fontSize: 24, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  Text(widget.product['name'] ?? 'No Name', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 10),
+                  Text("₱${widget.product['price'] ?? 0}", style: const TextStyle(color: ArrozTheme.emerald, fontSize: 24, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 6),
+                  Text(widget.product['name'] ?? 'No Name', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: ArrozTheme.textDark)),
+                  const SizedBox(height: 12),
                   Row(
                     children: [
-                      Chip(avatar: const Icon(Icons.local_shipping, size: 14, color: Colors.orange), label: Text("Ships in $deliveryDays days", style: const TextStyle(fontSize: 12)), backgroundColor: Colors.orange.withOpacity(0.1), side: BorderSide.none),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(6)),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.local_shipping, size: 14, color: ArrozTheme.warningOrange),
+                            const SizedBox(width: 4),
+                            Text("Ships in $deliveryDays days", style: const TextStyle(fontSize: 12, color: ArrozTheme.warningOrange, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                      ),
                       const SizedBox(width: 10),
-                      Chip(avatar: const Icon(Icons.inventory, size: 14, color: Colors.grey), label: Text("Stock: ${widget.product['stock'] ?? 0}", style: const TextStyle(fontSize: 12)), backgroundColor: Colors.grey[200], side: BorderSide.none),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(color: ArrozTheme.bgGrey, borderRadius: BorderRadius.circular(6)),
+                        child: Text("Stock: ${widget.product['stock'] ?? 0}", style: const TextStyle(fontSize: 12, color: ArrozTheme.textSub)),
+                      ),
                     ],
                   ),
-                  const Divider(height: 30),
-                  Text(widget.product['description'] ?? 'No description available.', style: const TextStyle(fontSize: 14, color: Colors.black87, height: 1.4)),
-                  const Divider(height: 30),
-
-                  StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance.collection("reviews").where("productId", isEqualTo: widget.productId).snapshots(),
-                    builder: (context, snapshot) {
-                      if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                        return const Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text("Product Ratings", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                            Text("No ratings yet", style: TextStyle(color: Colors.grey, fontSize: 13)),
-                          ],
-                        );
-                      }
-
-                      final reviewDocs = snapshot.data!.docs;
-                      double totalStars = 0;
-                      for (var doc in reviewDocs) {
-                        totalStars += (doc.data() as Map<String, dynamic>)['rating'] ?? 0;
-                      }
-                      double avgRating = totalStars / reviewDocs.length;
-
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text("Product Ratings", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                              Row(
-                                children: [
-                                  const Icon(Icons.star, color: Colors.amber, size: 18),
-                                  Text(" ${avgRating.toStringAsFixed(1)}/5 (${reviewDocs.length} real reviews)", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                                ],
-                              )
-                            ],
-                          ),
-                          const SizedBox(height: 15),
-                          ListView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemCount: reviewDocs.length,
-                            itemBuilder: (context, idx) {
-                              final rDoc = reviewDocs[idx];
-                              final rData = rDoc.data() as Map<String, dynamic>;
-                              List likes = rData['likes'] ?? [];
-                              List dislikes = rData['dislikes'] ?? [];
-
-                              return Card(
-                                margin: const EdgeInsets.symmetric(vertical: 6),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12.0),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Text(rData['userEmail'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
-                                          Row(children: List.generate(5, (sIdx) => Icon(sIdx < (rData['rating'] ?? 0) ? Icons.star : Icons.star_border, color: Colors.amber, size: 14))),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Text(rData['comment'] ?? '', style: const TextStyle(fontSize: 14)),
-                                      const SizedBox(height: 8),
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.end,
-                                        children: [
-                                          IconButton(
-                                            icon: Icon(likes.contains(currentUser?.uid) ? Icons.thumb_up : Icons.thumb_up_outlined, size: 16, color: Colors.blue),
-                                            onPressed: currentUser == null ? null : () {
-                                              if (likes.contains(currentUser!.uid)) {
-                                                rDoc.reference.update({"likes": FieldValue.arrayRemove([currentUser!.uid])});
-                                              } else {
-                                                rDoc.reference.update({
-                                                  "likes": FieldValue.arrayUnion([currentUser!.uid]),
-                                                  "dislikes": FieldValue.arrayRemove([currentUser!.uid])
-                                                });
-                                              }
-                                            },
-                                          ),
-                                          Text("${likes.length}", style: const TextStyle(fontSize: 12)),
-                                          const SizedBox(width: 10),
-                                          IconButton(
-                                            icon: Icon(dislikes.contains(currentUser?.uid) ? Icons.thumb_down : Icons.thumb_down_outlined, size: 16, color: Colors.red),
-                                            onPressed: currentUser == null ? null : () {
-                                              if (dislikes.contains(currentUser!.uid)) {
-                                                rDoc.reference.update({"dislikes": FieldValue.arrayRemove([currentUser!.uid])});
-                                              } else {
-                                                rDoc.reference.update({
-                                                  "dislikes": FieldValue.arrayUnion([currentUser!.uid]),
-                                                  "likes": FieldValue.arrayRemove([currentUser!.uid])
-                                                });
-                                              }
-                                            },
-                                          ),
-                                          Text("${dislikes.length}", style: const TextStyle(fontSize: 12)),
-                                        ],
-                                      )
-                                    ],
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 20),
-                  OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.amber, width: 1.5), foregroundColor: Colors.amber[800]),
-                    onPressed: _showAddReviewDialog,
-                    icon: const Icon(Icons.rate_review),
-                    label: const Text("Write a Product Review"),
-                  ),
-                  const SizedBox(height: 120),
                 ],
               ),
             ),
+
+            const SizedBox(height: 10),
+
+            // Description Section
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16.0),
+              color: Colors.white,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("Deskripsyon ng Produkto", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: ArrozTheme.textDark)),
+                  const SizedBox(height: 8),
+                  Text(
+                    widget.product['description'] ?? 'Walang nakalagay na deskripsyon.',
+                    style: const TextStyle(fontSize: 13, color: ArrozTheme.textDark, height: 1.5),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 100), // Bottom padding
           ],
         ),
       ),
-      bottomNavigationBar: SafeArea(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      bottomNavigationBar: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: const BoxDecoration(
           color: Colors.white,
+          boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, -2))],
+        ),
+        child: SafeArea(
           child: Row(
             children: [
               Expanded(
                 child: OutlinedButton(
-                  style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.orange, width: 2), padding: const EdgeInsets.symmetric(vertical: 15)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: ArrozTheme.warningOrange, width: 1.5),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
                   onPressed: () => _showAddToCartSheet(context),
-                  child: const Text("Add to Cart", style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+                  child: const Text("Add to Cart", style: TextStyle(color: ArrozTheme.warningOrange, fontWeight: FontWeight.bold)),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(vertical: 15)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: ArrozTheme.emerald,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
                   onPressed: () => _showPaymentSheet(context, 1),
-                  child: const Text("Buy Now", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                  child: const Text("Buy Now", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
                 ),
               ),
             ],
