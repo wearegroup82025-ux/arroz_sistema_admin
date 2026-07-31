@@ -3,8 +3,8 @@ import 'package:http/http.dart' as http;
 
 import '../../domain/weather_entity.dart';
 import '../../domain/weather_repository.dart';
-import '../../services/weather_api_service.dart';
-import '../../services/weather_repository_impl.dart';
+import '../../services/weather/weather_api_service.dart';
+import '../../services/weather/weather_repository_impl.dart';
 import 'system_control_hub.dart';
 
 class WeatherPage extends StatefulWidget {

@@ -12,20 +12,29 @@ class HourlyForecastEntity {
 
 class DailyForecastEntity {
   final String date;
+
   final double maxTemp;
   final double minTemp;
-  final int weatherCode;
-  final List<HourlyForecastEntity> hourlyData; // Lahat ng oras para sa araw na ito
 
-  DailyForecastEntity({
+  final int weatherCode;
+
+  final double rainfall;
+  final double rainProbability;
+  final double windSpeed;
+
+  final List<HourlyForecastEntity> hourlyData;
+
+  const DailyForecastEntity({
     required this.date,
     required this.maxTemp,
     required this.minTemp,
     required this.weatherCode,
+    required this.rainfall,
+    required this.rainProbability,
+    required this.windSpeed,
     required this.hourlyData,
   });
 }
-
 class WeatherEntity {
   final double temperature;
   final double feelsLike;

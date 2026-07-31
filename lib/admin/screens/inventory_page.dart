@@ -80,13 +80,36 @@ class _InventoryPageState extends State<InventoryPage> {
   ProductType _selectedFilter = ProductType.palay;
   String _searchQuery = "";
 
-  // MGA DATA ARRAYS PARA SA MGA DROPDOWNS MO
-  final List<String> _riceVarieties = ["Dinorado Rice", "Sinandomeng Rice", "Jasmine Rice", "RC216 Milled", "Well-Milled Local"];
-  final List<String> _palayVarieties = ["RC222 Raw Palay", "NSIC Rc222", "Premium Palay Batch", "Dry Palay Grade A"];
+  // IN-UPDATE NA MGA LISTAHAN NG PALAY AT BIGAS NA TINDA MO
+  final List<String> _palayVarieties = [
+    "C4 Palay",
+    "C18 Palay",
+    "Jasmine Palay",
+    "R10 Palay",
+    "R42 Palay",
+    "R45 Palay",
+    "216 Palay"
+  ];
+
+  final List<String> _riceVarieties = [
+    "C4 Rice",
+    "C18 Rice",
+    "Jasmine Rice",
+    "R10 Rice",
+    "R42 Rice",
+    "R45 Rice",
+    "216 Rice"
+  ];
   
   final List<String> _categories = ["Premium", "Regular", "Local", "Imported"];
   
-  final List<String> _metricSpecs = ["14% Moisture (Dry)", "Well-Milled", "Premium Grade", "Freshly Harvested", "Double Polished"];
+  final List<String> _metricSpecs = [
+    "14% Moisture (Dry)", 
+    "Well-Milled", 
+    "Premium Grade", 
+    "Freshly Harvested", 
+    "Double Polished"
+  ];
   final List<int> _thresholdOptions = [20, 30, 50, 100, 150];
 
   @override
@@ -175,7 +198,7 @@ class _InventoryPageState extends State<InventoryPage> {
                   ),
                   const SizedBox(height: 16),
 
-                  // KPI CARDS ROW (Responsive Grid/Row)
+                  // KPI CARDS ROW
                   LayoutBuilder(
                     builder: (context, constraints) {
                       if (constraints.maxWidth < 500) {
@@ -635,7 +658,7 @@ class _InventoryPageState extends State<InventoryPage> {
                       ),
                       const SizedBox(height: 16),
 
-                      // 2. PRODUCT NAME DROPDOWN
+                      // 2. PRODUCT NAME DROPDOWN (MGA SPECIFIC PALAY/BIGAS VARIETIES MO)
                       const Text("Product Variety Name", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xff334155))),
                       const SizedBox(height: 6),
                       DropdownButtonFormField<String>(
@@ -648,7 +671,7 @@ class _InventoryPageState extends State<InventoryPage> {
                       ),
                       const SizedBox(height: 14),
 
-                      // 3. CATEGORY & QUALITY SPECS (Responsive Stack/Row)
+                      // 3. CATEGORY & QUALITY SPECS
                       if (isMobileModal) ...[
                         const Text("Category Tag", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xff334155))),
                         const SizedBox(height: 6),

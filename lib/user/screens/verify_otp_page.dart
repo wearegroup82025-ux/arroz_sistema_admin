@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../../services/auth.service.dart';
+import '../../services/auth/auth.service.dart';
 import 'homeuser_page.dart';
 import 'create_phone_password_page.dart';
 

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../services/auth.service.dart';
+import '../../services/auth/auth.service.dart';
 import 'verify_otp_page.dart';
 
 class ArrozTheme {

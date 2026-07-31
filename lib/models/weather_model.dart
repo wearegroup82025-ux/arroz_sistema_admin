@@ -2,21 +2,47 @@ import '../domain/weather_entity.dart';
 
 class WeatherModel extends WeatherEntity {
   WeatherModel({
-    required super.temperature,
-    required super.feelsLike,
-    required super.humidity,
-    required super.condition,
-    required super.weatherCode,
-    super.alertMessage,
-    required super.forecast,
-  });
+  required super.temperature,
+  required super.feelsLike,
+  required super.humidity,
+  required super.condition,
+  required super.weatherCode,
+  super.windSpeed,
+  super.alertMessage,
+  required super.forecast,
+});
+  static bool isRain(int code) {
+  return code >= 51 && code <= 82;
+}
+
+static bool isStorm(int code) {
+  return code >= 95;
+}
+
+static bool isSunny(int code) {
+  return code == 0;
+}
+
+static bool isCloudy(int code) {
+  return code >= 1 && code <= 3;
+}
+  
+
 
   factory WeatherModel.fromJson(Map<String, dynamic> json) {
     final current = json['current'] as Map<String, dynamic>? ?? {};
     final daily = json['daily'] as Map<String, dynamic>? ?? {};
     final hourly = json['hourly'] as Map<String, dynamic>? ?? {};
-    
     final currentWeatherCode = current['weather_code'] as int? ?? 0;
+    final rainfall =
+    daily['precipitation_sum'] as List<dynamic>? ?? [];
+
+    final rainProbability =
+    daily['precipitation_probability_max'] as List<dynamic>? ?? [];
+
+    final windSpeed =
+    daily['wind_speed_10m_max'] as List<dynamic>? ?? [];   
+    
     
     // --- WEATHER ALERT LOGIC ---
     String? systemAlert;
@@ -55,32 +81,86 @@ class WeatherModel extends WeatherEntity {
         }
       }
 
-      dailyList.add(DailyForecastEntity(
-        date: dailyDates[i].toString(),
-        maxTemp: (maxTemps[i] as num? ?? 0.0).toDouble(),
-        minTemp: (minTemps[i] as num? ?? 0.0).toDouble(),
-        weatherCode: dailyCodes[i] as int? ?? 0,
-        hourlyData: dayHourlyList,
-      ));
+     dailyList.add(
+  DailyForecastEntity(
+    date: dailyDates[i].toString(),
+
+    maxTemp: (maxTemps[i] as num? ?? 0).toDouble(),
+
+    minTemp: (minTemps[i] as num? ?? 0).toDouble(),
+
+    weatherCode: dailyCodes[i] as int? ?? 0,
+
+    rainfall: (rainfall[i] as num? ?? 0).toDouble(),
+
+    rainProbability:
+        (rainProbability[i] as num? ?? 0).toDouble(),
+
+    windSpeed:
+        (windSpeed[i] as num? ?? 0).toDouble(),
+
+    hourlyData: dayHourlyList,
+  ),
+);
     }
 
     return WeatherModel(
-      temperature: (current['temperature_2m'] as num? ?? 0.0).toDouble(),
-      feelsLike: (current['apparent_temperature'] as num? ?? 0.0).toDouble(),
-      humidity: (current['relative_humidity_2m'] as num? ?? 0).toInt(),
-      condition: _mapWeatherCode(currentWeatherCode),
-      weatherCode: currentWeatherCode,
-      alertMessage: systemAlert,
-      forecast: dailyList,
-    );
+  temperature: (current['temperature_2m'] as num? ?? 0).toDouble(),
+  feelsLike: (current['apparent_temperature'] as num? ?? 0).toDouble(),
+  humidity: (current['relative_humidity_2m'] as num? ?? 0).toInt(),
+  condition: _mapWeatherCode(currentWeatherCode),
+  weatherCode: currentWeatherCode,
+  windSpeed: (current['wind_speed_10m'] as num? ?? 0).toDouble(),
+  alertMessage: systemAlert,
+  forecast: dailyList,
+);
   }
 
-  static String _mapWeatherCode(int code) {
-    if (code > 0 && code <= 3) return 'Partly Cloudy';
-    if (code >= 45 && code <= 48) return 'Foggy';
-    if (code >= 51 && code <= 67) return 'Rainy';
-    if (code >= 71 && code <= 86) return 'Snowy';
-    if (code >= 95) return 'Thunderstorm';
-    return 'Sunny';
+ static String _mapWeatherCode(int code) {
+  switch (code) {
+    case 0:
+      return "Clear";
+
+    case 1:
+    case 2:
+    case 3:
+      return "Partly Cloudy";
+
+    case 45:
+    case 48:
+      return "Fog";
+
+    case 51:
+    case 53:
+    case 55:
+      return "Drizzle";
+
+    case 61:
+    case 63:
+    case 65:
+      return "Rain";
+
+    case 66:
+    case 67:
+      return "Freezing Rain";
+
+    case 71:
+    case 73:
+    case 75:
+      return "Snow";
+
+    case 80:
+    case 81:
+    case 82:
+      return "Rain Showers";
+
+    case 95:
+    case 96:
+    case 99:
+      return "Thunderstorm";
+
+    default:
+      return "Unknown";
   }
+}
 }
