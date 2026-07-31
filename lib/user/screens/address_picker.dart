@@ -4,7 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
-import '../../services/auth.service.dart';
+import '../../services/auth/auth.service.dart';
 
 class GlobalAddressSelectionService {
   static void showAddressPicker({

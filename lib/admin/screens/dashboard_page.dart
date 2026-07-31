@@ -10,7 +10,9 @@ import 'reports_page.dart';
 import 'weather_page.dart';
 import 'guidance_page.dart';
 import 'notification_page.dart';
-import '../../notification_service.dart';
+// TODO: Siguraduhing i-import ang tinanggal na file depende sa lokasyon nito:
+import 'user_management_page.dart'; 
+import '../../services/notification/notification_service.dart';
 
 class DashboardPage extends StatefulWidget {
   final String userRole;
@@ -66,6 +68,50 @@ class _DashboardPageState extends State<DashboardPage> {
     _initAllRealtimeListeners();
   }
 
+  // --- PLANTING & SEASON HELPER LOGIC ---
+  String _getSeasonInfo() {
+    final month = DateTime.now().month;
+    if (month >= 6 && month <= 11) {
+      return "Wet / Tag-ulan Season";
+    } else {
+      return "Dry / Tag-araw Season";
+    }
+  }
+
+  Map<String, dynamic> _getPlantingRecommendation() {
+    final month = DateTime.now().month;
+
+    if (month >= 6 && month <= 7) {
+      return {
+        "status": "Napakaganda Magtanim! 🌾",
+        "description": "Tamang-tama ang simula ng tag-ulan para sa Wet Season planting.",
+        "color": const Color(0xff16A34A),
+        "icon": Icons.check_circle_outline_rounded,
+      };
+    } else if (month >= 11 || month <= 1) {
+      return {
+        "status": "Maganda Magtanim (Dry Crop) ☀️",
+        "description": "Ideal para sa Dry Season cropping kung may sapat na irigasyon.",
+        "color": Colors.amber.shade800,
+        "icon": Icons.wb_sunny_outlined,
+      };
+    } else if (month >= 8 && month <= 10) {
+      return {
+        "status": "Mag-ingat sa Pagtatanim ⚠️",
+        "description": "Peak ng bagyo at baha. Siguraduhing maayos ang drainage o gumamit ng flood-tolerant varieties.",
+        "color": Colors.orange.shade800,
+        "icon": Icons.warning_amber_rounded,
+      };
+    } else {
+      return {
+        "status": "Katamtaman / Off-Season 🚜",
+        "description": "Ihanda ang lupa o mag-fallow muna para makapahinga ang sakahan.",
+        "color": Colors.blueGrey,
+        "icon": Icons.info_outline,
+      };
+    }
+  }
+
   void _resetInactivityTimer() {
     _inactivityTimer?.cancel();
     if (widget.userRole == 'admin') {
@@ -103,7 +149,6 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   void _initAllRealtimeListeners() {
-    // Inventory Alerts
     _inventorySubscription = FirebaseFirestore.instance
         .collection('inventory')
         .snapshots()
@@ -123,7 +168,6 @@ class _DashboardPageState extends State<DashboardPage> {
       }
     });
 
-    // Orders Listener
     _ordersSubscription = FirebaseFirestore.instance
         .collection('orders')
         .snapshots()
@@ -148,7 +192,6 @@ class _DashboardPageState extends State<DashboardPage> {
       }
     });
 
-    // User Registrations
     _usersSubscription = FirebaseFirestore.instance
         .collection('users')
         .snapshots()
@@ -171,7 +214,6 @@ class _DashboardPageState extends State<DashboardPage> {
       }
     });
 
-    // Weather & Emergency SOS
     _weatherSubscription = FirebaseFirestore.instance
         .collection('weather_alerts')
         .snapshots()
@@ -320,7 +362,7 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   List<_NavigationItem> get _navigationMenu {
-    return [
+    final list = [
       const _NavigationItem(Icons.dashboard_rounded, "Dashboard", null),
       const _NavigationItem(Icons.inventory_2_outlined, "Inventory", InventoryPage()),
       const _NavigationItem(Icons.shopping_cart_outlined, "Orders", OrdersPage()),
@@ -328,6 +370,16 @@ class _DashboardPageState extends State<DashboardPage> {
       const _NavigationItem(Icons.cloud_outlined, "Weather", WeatherPage()),
       const _NavigationItem(Icons.library_books_outlined, "Guidance Hub", GuidancePage()),
     ];
+
+    if (widget.userRole == 'admin') {
+      list.add(const _NavigationItem(
+        Icons.admin_panel_settings_outlined, 
+        "User Controls", 
+        UserManagementPage()
+      ));
+    }
+
+    return list;
   }
 
   void _openMessagesModal() {
@@ -726,6 +778,17 @@ class _DashboardPageState extends State<DashboardPage> {
                     _navigateToPage(5);
                   },
                 ),
+                if (widget.userRole == 'admin')
+                  ListTile(
+                    leading: const Icon(Icons.admin_panel_settings_outlined, color: Colors.redAccent),
+                    title: const Text("User Controls (Scam Prevention)", style: TextStyle(fontWeight: FontWeight.w600)),
+                    selected: _currentMenuIndex == 6,
+                    selectedTileColor: _primary.withOpacity(0.08),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _navigateToPage(6);
+                    },
+                  ),
               ],
             ),
           ),
@@ -811,6 +874,15 @@ class _DashboardPageState extends State<DashboardPage> {
                       );
                     },
                   ),
+                  if (widget.userRole == 'admin')
+                    ListTile(
+                      leading: const Icon(Icons.admin_panel_settings_outlined, color: Colors.redAccent),
+                      title: const Text("Manage Users & Anti-Scam", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _navigateToPage(6);
+                      },
+                    ),
                 ],
               ),
             ),
@@ -851,6 +923,8 @@ class _DashboardPageState extends State<DashboardPage> {
           _buildHeaderSection(),
           const SizedBox(height: 20),
           _buildMetricsRow(isDesktop),
+          const SizedBox(height: 16),
+          _buildPlantingAdvisoryCard(),
           const SizedBox(height: 24),
           _buildQuickAccessSection(isDesktop),
           const SizedBox(height: 24),
@@ -957,7 +1031,75 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  Widget _buildPlantingAdvisoryCard() {
+    final season = _getSeasonInfo();
+    final recommendation = _getPlantingRecommendation();
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: _cardStyle(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Icon(recommendation['icon'] as IconData, color: recommendation['color'] as Color, size: 22),
+                  const SizedBox(width: 8),
+                  Text(
+                    "SEASON & PLANTING ADVISORY",
+                    style: TextStyle(
+                      color: _textSecondary.withOpacity(0.8),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: (recommendation['color'] as Color).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  season,
+                  style: TextStyle(
+                    color: recommendation['color'] as Color,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            recommendation['status'] as String,
+            style: const TextStyle(
+              color: _textPrimary,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            recommendation['description'] as String,
+            style: const TextStyle(
+              color: _textSecondary,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildQuickAccessSection(bool isDesktop) {
+    int gridCount = isDesktop ? (widget.userRole == 'admin' ? 5 : 4) : 2;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -966,7 +1108,7 @@ class _DashboardPageState extends State<DashboardPage> {
         GridView.count(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          crossAxisCount: isDesktop ? 4 : 2,
+          crossAxisCount: gridCount,
           crossAxisSpacing: 12,
           mainAxisSpacing: 12,
           childAspectRatio: isDesktop ? 1.8 : 1.5,
@@ -975,6 +1117,8 @@ class _DashboardPageState extends State<DashboardPage> {
             _buildNavCard(Icons.shopping_cart_outlined, "Orders", "Track Orders", Colors.indigo, 2),
             _buildNavCard(Icons.bar_chart_rounded, "Reports", "Audits & Metrics", Colors.blue.shade600, 3),
             _buildNavCard(Icons.library_books_outlined, "Guidance Hub", "Docs & Standards", Colors.teal.shade600, 5),
+            if (widget.userRole == 'admin')
+              _buildNavCard(Icons.admin_panel_settings_outlined, "User Controls", "Anti-Scam Panel", Colors.redAccent, 6),
           ],
         ),
       ],

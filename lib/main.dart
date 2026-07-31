@@ -4,7 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'firebase_options.dart';
-import 'notification_service.dart';
+import 'services/notification/notification_service.dart';
 
 import 'user/screens/login_page.dart';
 import 'user/screens/homeuser_page.dart';
@@ -28,7 +28,7 @@ void main() async {
 // true  = Admin App
 // false = User App
 // ==============================
-const bool isAdminApp = false;
+const bool isAdminApp = true;
 
 class MyApp extends StatefulWidget {
   const MyApp({super.key});

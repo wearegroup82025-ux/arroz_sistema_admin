@@ -1,4 +1,4 @@
-import 'dart:convert';   
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -10,18 +10,73 @@ class RiceVariety {
   final String description;
 
   const RiceVariety(this.name, this.totalMaturityDays, this.description);
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'totalMaturityDays': totalMaturityDays,
+        'description': description,
+      };
+
+  factory RiceVariety.fromJson(Map<String, dynamic> json) {
+    return RiceVariety(
+      json['name'] ?? 'Standard Inbred (e.g., Rc 222)',
+      json['totalMaturityDays'] ?? 115,
+      json['description'] ?? '',
+    );
+  }
 }
 
 const List<RiceVariety> kRiceVarieties = [
   RiceVariety('Standard Inbred (e.g., Rc 222)', 115, 'Karaniwang binhi na umaani sa loob ng 115 araw.'),
-  RiceVariety('Early Maturing (e.g., Rc 192)', 105, 'Mabilis anihin, mainam para sa maikling tag-ulan.'),
-  RiceVariety('Late / Hybrid Rice', 125, 'Matagal anihin ngunit may potensyal sa mas mataas na ani.'),
+  RiceVariety('Early Maturing (e.g., Rc 192)', 105, 'Mabilis anihin (100-108 araw), mainam sa maikling tag-ulan.'),
+  RiceVariety('Medium Maturing (e.g., Rc 216)', 112, 'Katamtamang panahon ng pag-ani (110-115 araw).'),
+  RiceVariety('Late / Hybrid Rice', 125, 'Matagal anihin (120+ araw) ngunit may mataas na potensyal sa ani.'),
 ];
+
+/// Data Model para sa Crop History Record
+class PlantingRecord {
+  final String id;
+  final DateTime plantingDate;
+  final RiceVariety variety;
+  final bool isDirectSeeded;
+  final DateTime estimatedHarvestDate;
+
+  PlantingRecord({
+    required this.id,
+    required this.plantingDate,
+    required this.variety,
+    required this.isDirectSeeded,
+    required this.estimatedHarvestDate,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'plantingDate': plantingDate.toIso8601String(),
+        'variety': variety.toJson(),
+        'isDirectSeeded': isDirectSeeded,
+        'estimatedHarvestDate': estimatedHarvestDate.toIso8601String(),
+      };
+
+  factory PlantingRecord.fromJson(Map<String, dynamic> json) {
+    return PlantingRecord(
+      id: json['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      plantingDate: DateTime.parse(json['plantingDate']),
+      variety: RiceVariety.fromJson(json['variety']),
+      isDirectSeeded: json['isDirectSeeded'] ?? false,
+      estimatedHarvestDate: DateTime.parse(json['estimatedHarvestDate']),
+    );
+  }
+}
 
 /// Siyentipikong Yugto ng Palay batay sa PhilRice PalayCheck System
 enum RiceStage {
+  preparation(
+    'Paghahanda (Pre-Planting)',
+    Icons.engineering_rounded,
+    'PhilRice Prep: Seed Prep & Land Cultivation',
+  ),
   planning(
-    'Paghahanda & Pagpaplano',
+    'Pagtatapos ng Pagpapatag',
     Icons.calendar_month_rounded,
     'PhilRice Key Check 1: Seed Selection & Land Prep',
   ),
@@ -64,18 +119,27 @@ class _GuidancePageState extends State<GuidancePage> {
   // Configurable Crop State
   DateTime? _plantingDate;
   int _cropAgeDays = 0;
+  bool _isFuturePlanting = false;
+  int _daysUntilPlanting = 0;
+
   RiceVariety _selectedVariety = kRiceVarieties[0];
-  bool _isDirectSeeded = false; // false = Transplanted (DAT), true = Direct Seeded (DAS)
+  bool _isDirectSeeded = false;
   RiceStage _selectedStage = RiceStage.planning;
+
+  // History State
+  List<PlantingRecord> _plantingHistory = [];
 
   // Weather State
   bool _isLoadingWeather = true;
   double? _currentTemp;
   int? _weatherCode;
-  String _realtimeAdvisory = "Kina-kalkula ang datos ng panahon sa Capalangan...";
+  String _realtimeAdvisory = "Kina-kalkula ang datos ng panahon at araw ng tanim...";
 
   // Task Checklist Tracking State
   Map<String, bool> _completedTasks = {};
+
+  // Calendar View State
+  DateTime _focusedCalendarMonth = DateTime.now();
 
   static const double capalanganLat = 14.9540;
   static const double capalanganLng = 120.7594;
@@ -89,26 +153,81 @@ class _GuidancePageState extends State<GuidancePage> {
     });
   }
 
+  // --- PHILRICE CAPALANGAN SMART SUITABILITY MATRIX ---
+  Map<String, dynamic> _getPhilriceCapalanganSuitability(DateTime date) {
+    final month = date.month;
+
+    // June - July: Wet Season Start (Ideal for Rice)
+    if (month == 6 || month == 7) {
+      return {
+        "status": "GREEN",
+        "color": const Color(0xFF16A34A),
+        "label": "Napakaganda Magtanim 🌾",
+        "reason": "BAKIT MAGANDA: Tamang-tama ang simula ng tag-ulan para sa Wet Season. May sapat at tuloy-tuloy na patubig mula sa ulan para sa pagpapatag at pagsusuwi ng palay.",
+      };
+    }
+    // November - December: Dry Season Start (Ideal with Irrigation)
+    else if (month == 11 || month == 12) {
+      return {
+        "status": "GREEN",
+        "color": const Color(0xFF16A34A),
+        "label": "Napakaganda Magtanim (Dry Crop) ☀️",
+        "reason": "BAKIT MAGANDA: Mainam ang sikat ng araw sa Dry Season at mababa ang banta ng bagyo. Mas mataas ang ani basta't may maayos na patubig mula sa canal.",
+      };
+    }
+    // January, May: Transitional Months
+    else if (month == 1 || month == 5) {
+      return {
+        "status": "YELLOW",
+        "color": Colors.amber.shade800,
+        "label": "Pwede Magtanim (Mag-ingat / Katamtaman) ⚠️",
+        "reason": "BAKIT DILAW: Nasa transition period ang panahon. Pwede magtanim pero kailangan ng maingat na pamamahala sa tubig (maaaring kulangin sa patubig kapag Mayo, o malamig ang gabi na nagpapabagal sa paglaki kapag Enero).",
+      };
+    }
+    // August - October: Peak Typhoon Season in Luzon
+    else if (month >= 8 && month <= 10) {
+      return {
+        "status": "RED",
+        "color": Colors.red.shade700,
+        "label": "Huwag Muna Magtanim (Mataas ang Risk) 🚨",
+        "reason": "BAKIT HINDI MAGANDA: Peak season ng mga bagyo at matinding pag-ulan. Mataas ang posibilidad na mabaha ang palayan at masira ang mga bagong sibol na tanim o malunod ang puno ng palay.",
+      };
+    }
+    // February - April: Extreme Heat / Water Scarcity
+    else {
+      return {
+        "status": "RED",
+        "color": Colors.red.shade700,
+        "label": "Huwag Muna Magtanim (Tag-tuyot) ☀️",
+        "reason": "BAKIT HINDI MAGANDA: Peak ng tag-init at matinding init ng araw. Mabilis matuyo ang irrigation canals at maaring magkulang sa tubig ang palay sa kritikal na yugto ng paglilihi.",
+      };
+    }
+  }
+
   // --- LOCAL PERSISTENCE & OFFLINE CACHING ---
   Future<void> _loadSavedData() async {
     final prefs = await SharedPreferences.getInstance();
-    
-    // Load Planting Date
+
     final savedDateStr = prefs.getString('guidance_planting_date');
     if (savedDateStr != null) {
       _plantingDate = DateTime.tryParse(savedDateStr);
     }
 
-    // Load Variety
     final varietyIndex = prefs.getInt('guidance_variety_index') ?? 0;
     if (varietyIndex >= 0 && varietyIndex < kRiceVarieties.length) {
       _selectedVariety = kRiceVarieties[varietyIndex];
     }
 
-    // Load Planting Method
     _isDirectSeeded = prefs.getBool('guidance_is_direct_seeded') ?? false;
 
-    // Load Tasks State
+    final historyJson = prefs.getString('guidance_planting_history');
+    if (historyJson != null) {
+      try {
+        final List<dynamic> decoded = json.decode(historyJson);
+        _plantingHistory = decoded.map((e) => PlantingRecord.fromJson(e)).toList();
+      } catch (_) {}
+    }
+
     final tasksJson = prefs.getString('guidance_completed_tasks');
     if (tasksJson != null) {
       try {
@@ -117,7 +236,6 @@ class _GuidancePageState extends State<GuidancePage> {
       } catch (_) {}
     }
 
-    // Load Cached Weather (Offline Support)
     final cachedAdvisory = prefs.getString('guidance_cached_advisory');
     if (cachedAdvisory != null) {
       _realtimeAdvisory = cachedAdvisory;
@@ -135,22 +253,45 @@ class _GuidancePageState extends State<GuidancePage> {
     await prefs.setBool('guidance_is_direct_seeded', _isDirectSeeded);
     await prefs.setString('guidance_completed_tasks', json.encode(_completedTasks));
     await prefs.setString('guidance_cached_advisory', _realtimeAdvisory);
+
+    final encodedHistory = json.encode(_plantingHistory.map((e) => e.toJson()).toList());
+    await prefs.setString('guidance_planting_history', encodedHistory);
   }
 
-  Future<void> _resetAllData() async {
+  void _saveRecordToHistory(DateTime date) {
+    final harvestDate = date.add(Duration(days: _selectedVariety.totalMaturityDays));
+    final newRecord = PlantingRecord(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      plantingDate: date,
+      variety: _selectedVariety,
+      isDirectSeeded: _isDirectSeeded,
+      estimatedHarvestDate: harvestDate,
+    );
+
+    setState(() {
+      _plantingHistory.insert(0, newRecord);
+    });
+  }
+
+  Future<void> _resetCurrentTanim() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
+    await prefs.remove('guidance_planting_date');
+    await prefs.remove('guidance_completed_tasks');
+
     setState(() {
       _plantingDate = null;
       _cropAgeDays = 0;
-      _selectedVariety = kRiceVarieties[0];
-      _isDirectSeeded = false;
+      _isFuturePlanting = false;
+      _daysUntilPlanting = 0;
       _selectedStage = RiceStage.planning;
       _completedTasks.clear();
     });
+
+    await _saveData();
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Na-reset na ang lahat ng datos ng pagtatanim.')),
+        const SnackBar(content: Text('Na-reset na ang kasalukuyang tanim. Naka-save pa rin ang history.')),
       );
     }
   }
@@ -159,6 +300,8 @@ class _GuidancePageState extends State<GuidancePage> {
     if (_plantingDate == null) {
       setState(() {
         _cropAgeDays = 0;
+        _isFuturePlanting = false;
+        _daysUntilPlanting = 0;
         _selectedStage = RiceStage.planning;
       });
       return;
@@ -167,63 +310,90 @@ class _GuidancePageState extends State<GuidancePage> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final pDate = DateTime(_plantingDate!.year, _plantingDate!.month, _plantingDate!.day);
-    
+
     final diff = today.difference(pDate).inDays;
 
     setState(() {
-      _cropAgeDays = diff < 0 ? 0 : diff;
-      
-      // Dynamic Stage Range Calculation
-      final totalDays = _selectedVariety.totalMaturityDays;
-      final vegEnd = (totalDays * 0.35).round(); 
-      final repEnd = (totalDays * 0.65).round(); 
-      final ripEnd = totalDays - 2;               
-
-      if (_cropAgeDays <= 0) {
-        _selectedStage = RiceStage.planning;
-      } else if (_cropAgeDays <= vegEnd) {
-        _selectedStage = RiceStage.vegetative;
-      } else if (_cropAgeDays <= repEnd) {
-        _selectedStage = RiceStage.reproductive;
-      } else if (_cropAgeDays <= ripEnd) {
-        _selectedStage = RiceStage.ripening;
+      if (diff < 0) {
+        _isFuturePlanting = true;
+        _daysUntilPlanting = diff.abs();
+        _cropAgeDays = 0;
+        _selectedStage = RiceStage.preparation;
       } else {
-        _selectedStage = RiceStage.harvesting;
+        _isFuturePlanting = false;
+        _daysUntilPlanting = 0;
+        _cropAgeDays = diff;
+
+        final totalDays = _selectedVariety.totalMaturityDays;
+        final vegEnd = (totalDays * 0.35).round();
+        final repEnd = (totalDays * 0.65).round();
+        final ripEnd = totalDays - 2;
+
+        if (_cropAgeDays == 0) {
+          _selectedStage = RiceStage.planning;
+        } else if (_cropAgeDays <= vegEnd) {
+          _selectedStage = RiceStage.vegetative;
+        } else if (_cropAgeDays <= repEnd) {
+          _selectedStage = RiceStage.reproductive;
+        } else if (_cropAgeDays <= ripEnd) {
+          _selectedStage = RiceStage.ripening;
+        } else {
+          _selectedStage = RiceStage.harvesting;
+        }
       }
     });
+
+    if (_weatherCode != null && _currentTemp != null) {
+      _realtimeAdvisory = _generateDailyAndWeatherAdvisory(_weatherCode!, _currentTemp!);
+    }
   }
 
-  // VALIDATED DATE PICKER
-  Future<void> _selectPlantingDate(BuildContext context) async {
-    final now = DateTime.now();
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _plantingDate ?? now,
-      firstDate: now.subtract(const Duration(days: 150)),
-      lastDate: now,
-      helpText: 'PILIIN ANG PETSA NG PAGTATANIM',
-      confirmText: 'SIMULAN ANG PLANO',
-      cancelText: 'KANSELA',
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: Color(0xFF16A34A),
-              onPrimary: Colors.white,
-              onSurface: Color(0xFF0F172A),
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
+  Map<String, String> _getCropMaturityStatus() {
+    final total = _selectedVariety.totalMaturityDays;
+    
+    String varietyCategory = "Standard";
+    if (total <= 108) {
+      varietyCategory = "Early Maturing (100-108 Araw)";
+    } else if (total <= 118) {
+      varietyCategory = "Medium Maturing (110-118 Araw)";
+    } else {
+      varietyCategory = "Late Maturing / Hybrid (120+ Araw)";
+    }
 
-    if (picked != null) {
-      setState(() {
-        _plantingDate = picked;
-      });
-      _updateCropAgeAndStage();
-      _saveData();
+    if (_plantingDate == null || _isFuturePlanting) {
+      return {
+        "varietyCategory": varietyCategory,
+        "harvestGuide": "Nasa Preparation Stage / Hindi Pa Nakatanim",
+        "statusTag": "N/A",
+      };
+    }
+
+    final daysRemaining = total - _cropAgeDays;
+
+    if (_cropAgeDays < (total - 15)) {
+      return {
+        "varietyCategory": varietyCategory,
+        "harvestGuide": "Masyado pang Maaga para Anihin (May $daysRemaining araw pa)",
+        "statusTag": "MASYADO PANG MAAGA",
+      };
+    } else if (_cropAgeDays >= (total - 15) && _cropAgeDays < (total - 3)) {
+      return {
+        "varietyCategory": varietyCategory,
+        "harvestGuide": "Malapit nang Anihin! Ihanda ang pagpapatuyo at makinarya ($daysRemaining araw nalang)",
+        "statusTag": "MALAPIT NANG ANIHIN",
+      };
+    } else if (_cropAgeDays >= (total - 3) && _cropAgeDays <= (total + 7)) {
+      return {
+        "varietyCategory": varietyCategory,
+        "harvestGuide": "PUWEDENG-PUWEDE NANG ANIHIN! (Nasa tamang panahon na ng pag-ani)",
+        "statusTag": "PWEDE NANG ANIHIN 🌾",
+      };
+    } else {
+      return {
+        "varietyCategory": varietyCategory,
+        "harvestGuide": "Lampas na sa Takdang Araw ng Ani! Anihin agad upang maiwasan ang pagkatapon ng butil.",
+        "statusTag": "OVERDUE / ANIHIN AGAD",
+      };
     }
   }
 
@@ -244,7 +414,7 @@ class _GuidancePageState extends State<GuidancePage> {
           setState(() {
             _currentTemp = temp;
             _weatherCode = code;
-            _realtimeAdvisory = _generateRealtimeAdvisory(code, temp);
+            _realtimeAdvisory = _generateDailyAndWeatherAdvisory(code, temp);
             _isLoadingWeather = false;
           });
           _saveData();
@@ -262,24 +432,192 @@ class _GuidancePageState extends State<GuidancePage> {
       setState(() {
         _isLoadingWeather = false;
         if (_realtimeAdvisory.contains("Kina-kalkula")) {
-          _realtimeAdvisory = "Capalangan Advisory (Offline): Panatilihing malinis ang mga kanal sa paligid ng palayan upang mabilis ang daloy ng tubig.";
+          _realtimeAdvisory =
+              "Capalangan Advisory (Offline): Panatilihing malinis ang mga kanal sa paligid ng palayan upang mabilis ang daloy ng tubig.";
         }
       });
     }
   }
 
-  String _generateRealtimeAdvisory(int code, double temp) {
-    if (code >= 95) {
-      return "🚨 PHILRICE WEATHER ALERT: Banta ng thunderstorm! Itigil muna ang pag-aabono o pag-spray ng pestisidyo upang maiwasan ang pagka-anod.";
-    } else if (code >= 61 && code <= 67) {
-      return "🌧️ PHILRICE AGRI-ADVISORY: Umuulan sa Capalangan ($temp°C). Huwag mag-aabono ng Nitrogen dahil masasayang lamang ito sa pag-agos ng tubig (Nutrient Leaching).";
-    } else if (code >= 51 && code <= 55) {
-      return "🌦️ PHILRICE AGRI-ADVISORY: May ambon ($temp°C). Tamang panahon upang mag-inspeksyon ng mga peste gaya ng kuhol at stem borer.";
-    } else if (temp >= 33.0) {
-      return "☀️ THERMAL STRESS ALERT: Mainit ang panahon ($temp°C). Panatilihing may 3-5 cm na lalim ng tubig sa petak upang maprotektahan ang ugat.";
-    } else {
-      return "🌤️ MAGANDANG PANAHON ($temp°C): Angkop na pagkakataon para sa pamamahala ng pataba, patubig, o paglilinis ng palayan.";
+  String _generateDailyAndWeatherAdvisory(int code, double temp) {
+    bool isRaining = code >= 51;
+    bool isStormy = code >= 95;
+    final dayLabel = _isDirectSeeded ? "DAS" : "DAT";
+    final maturityInfo = _getCropMaturityStatus();
+
+    if (_plantingDate == null) {
+      if (isRaining) {
+        return "🌧️ ADVISORY NGAYONG ARAW: Umuulan ($temp°C). Mainam na maghanda ng kanal para sa lalabas na tubig bago magsimula ng tanim.";
+      }
+      return "🌤️ ADVISORY NGAYONG ARAW ($temp°C): Magandang simula para magplano ng petsa ng pagtatanim at maghanda ng binhi.";
     }
+
+    if (_isFuturePlanting) {
+      if (_daysUntilPlanting <= 7) {
+        if (isRaining) {
+          return "🌦️ $_daysUntilPlanting ARAW BAGO MAGTANIM: Umuulan ($temp°C). Siguraduhing pantay ang patag ng lupa at hindi babahain ang punlaan.";
+        }
+        return "🚜 $_daysUntilPlanting ARAW BAGO MAGTANIM: Mainam ang panahon ($temp°C) para sa huling pagpapatag ng lupa at paghahanda ng binhi.";
+      }
+      return "📅 PAGHAHAHANDA SA PAGTATANIM: May $_daysUntilPlanting araw pa. Simulan na ang pag-aararo at pagbili ng sertipikadong binhi.";
+    }
+
+    if (isStormy) {
+      return "🚨 THUNDERSTORM ALERT (Araw $_cropAgeDays - $dayLabel): Unahin ang kaligtasan! Itigil muna ang pag-aabono o pag-spray ng pestisidyo.";
+    }
+
+    if (_cropAgeDays >= 0 && _cropAgeDays <= 7) {
+      if (isRaining) {
+        return "🌧️ ARAW $_cropAgeDays ($dayLabel) - [${maturityInfo['statusTag']}]: Umuulan ($temp°C). Bantayan ang lalim ng tubig. Huwag hayaang malunod ang mga bagong sibol!";
+      }
+      return "🌱 ARAW $_cropAgeDays ($dayLabel) - [${maturityInfo['statusTag']}]: Panatilihing mababaw lang (2-3 cm) ang tubig upang mabilis na mag-ugat ang palay.";
+    }
+
+    if (_cropAgeDays >= 10 && _cropAgeDays <= 15) {
+      if (isRaining) {
+        return "⚠️ ARAW $_cropAgeDays ($dayLabel): Umuulan ($temp°C). IPAGPALIBAN MUNA ANG UNANG PAG-AABONO (Complete 14-14-14) upang hindi maanod ng tubig.";
+      }
+      return "🧪 ARAW $_cropAgeDays ($dayLabel): Takdang araw para sa UNANG PAG-AABONO (14-14-14). Mag-abono habang maaliwalas ang panahon ($temp°C).";
+    }
+
+    if (_cropAgeDays >= 28 && _cropAgeDays <= 32) {
+      if (isRaining) {
+        return "🌦️ ARAW $_cropAgeDays ($dayLabel): May ulan ($temp°C). Ipagpaliban ang pag-aabono ng Urea (Nitrogen) hanggang sa tumigil ang ulan.";
+      }
+      return "🌾 ARAW $_cropAgeDays ($dayLabel) - PAGSUSUWI: Takdang panahon sa PANGALAWANG PAG-AABONO. Gamitin ang Leaf Color Chart (LCC) bago maglagay ng Urea.";
+    }
+
+    if (_cropAgeDays >= 50 && _cropAgeDays <= 65) {
+      if (temp >= 33.0) {
+        return "☀️ ARAW $_cropAgeDays ($dayLabel) - HEAT ALERT ($temp°C): Yugto ng Paglilihi/Pagbulaklak! Taasan ang tubig sa 3-5 cm para hindi matuyo ang mga bulaklak.";
+      }
+      if (isRaining) {
+        return "🌧️ ARAW $_cropAgeDays ($dayLabel): Umuulan ($temp°C). Maging alerto sa mga peste tulad ng Rice Bug (Atangya) pagkatapos ng ulan.";
+      }
+      return "🌸 ARAW $_cropAgeDays ($dayLabel) - PAGBULAKLAK: Huwag papatuyuan ang petak! Panatilihing may sapat na tubig para sa buong timbang ng butil.";
+    }
+
+    if (_cropAgeDays >= (_selectedVariety.totalMaturityDays - 15) && _cropAgeDays < (_selectedVariety.totalMaturityDays - 3)) {
+      return "🔔 ARAW $_cropAgeDays ($dayLabel) - [${maturityInfo['statusTag']}]: ${maturityInfo['harvestGuide']}. Patuyuin na ang bukid (Terminal Drainage).";
+    }
+
+    if (_cropAgeDays >= (_selectedVariety.totalMaturityDays - 3)) {
+      return "🌾 ARAW $_cropAgeDays ($dayLabel) - [${maturityInfo['statusTag']}]: ${maturityInfo['harvestGuide']}. Angkop ang panahon ($temp°C) para sa pag-aani!";
+    }
+
+    if (isRaining) {
+      return "🌧️ ARAW $_cropAgeDays ($dayLabel) - [${maturityInfo['statusTag']}]: Umuulan ($temp°C). Panatilihing malinis ang daluyan ng tubig.";
+    }
+
+    return "🌤️ ARAW $_cropAgeDays ($dayLabel) - [${maturityInfo['statusTag']}]: ${maturityInfo['harvestGuide']}.";
+  }
+
+  void _showHistoryBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Container(
+              padding: const EdgeInsets.all(20),
+              height: MediaQuery.of(context).size.height * 0.7,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.history_rounded, color: Color(0xFF16A34A)),
+                          SizedBox(width: 8),
+                          Text(
+                            "History ng Pagtatanim",
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                          ),
+                        ],
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded, color: Colors.grey),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
+                  ),
+                  const Divider(),
+                  const SizedBox(height: 8),
+                  if (_plantingHistory.isEmpty)
+                    const Expanded(
+                      child: Center(
+                        child: Text(
+                          "Wala pang nakatalang history ng pagtatanim.\nSimulan ang pagtatanim para magkaroon ng record.",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                        ),
+                      ),
+                    )
+                  else
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: _plantingHistory.length,
+                        itemBuilder: (context, index) {
+                          final item = _plantingHistory[index];
+                          final method = item.isDirectSeeded ? "Sabog-Tanim (DAS)" : "Lipat-Tanim (DAT)";
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: const BorderSide(color: Color(0xFFE2E8F0)),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        item.variety.name,
+                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF15803D)),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
+                                        onPressed: () async {
+                                          setState(() {
+                                            _plantingHistory.removeAt(index);
+                                          });
+                                          setModalState(() {});
+                                          await _saveData();
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text("Petsa ng Tanim: ${item.plantingDate.year}-${item.plantingDate.month.toString().padLeft(2, '0')}-${item.plantingDate.day.toString().padLeft(2, '0')}",
+                                      style: const TextStyle(fontSize: 12, color: Color(0xFF334155))),
+                                  Text("Tantyang Ani: ${item.estimatedHarvestDate.year}-${item.estimatedHarvestDate.month.toString().padLeft(2, '0')}-${item.estimatedHarvestDate.day.toString().padLeft(2, '0')}",
+                                      style: const TextStyle(fontSize: 12, color: Color(0xFF334155))),
+                                  Text("Paraan: $method", style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -301,20 +639,25 @@ class _GuidancePageState extends State<GuidancePage> {
         ),
         actions: [
           IconButton(
-            tooltip: "I-reset ang Data",
+            tooltip: "Tingnan ang History",
+            icon: const Icon(Icons.history_rounded, color: Color(0xFF16A34A), size: 22),
+            onPressed: _showHistoryBottomSheet,
+          ),
+          IconButton(
+            tooltip: "I-reset ang Kasalukuyang Tanim",
             icon: const Icon(Icons.restart_alt_rounded, color: Color(0xFF94A3B8), size: 22),
             onPressed: () {
               showDialog(
                 context: context,
                 builder: (ctx) => AlertDialog(
-                  title: const Text("I-reset ang Tanim?"),
-                  content: const Text("Sigurado ka bang gusto mong burahin ang naka-save na petsa at mga natapos na gawain?"),
+                  title: const Text("I-reset ang Kasalukuyang Tanim?"),
+                  content: const Text("Buburahin lang ang kasalukuyang sinusubaybayang tanim. Naka-save pa rin ang iyong History."),
                   actions: [
                     TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Kansela")),
                     TextButton(
                       onPressed: () {
                         Navigator.pop(ctx);
-                        _resetAllData();
+                        _resetCurrentTanim();
                       },
                       child: const Text("I-reset", style: TextStyle(color: Colors.red)),
                     ),
@@ -343,34 +686,39 @@ class _GuidancePageState extends State<GuidancePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // HERO CALL-TO-ACTION BANNER
+              // HERO BANNER
               _buildHeroPlantingBanner(context, estimatedHarvestDate),
 
               const SizedBox(height: 14),
 
-              // CROP CONFIGURATION (VARIETY & METHOD SELECTOR)
+              // CROP CONFIGURATION
               _buildCropConfigurationCard(),
 
               const SizedBox(height: 14),
 
-              // REAL-TIME WEATHER & AGRI ADVISORY BANNER
+              // SMART CROP CALENDAR MATRIX
+              _buildSmartPhilriceCalendarSection(),
+
+              const SizedBox(height: 14),
+
+              // DAILY & WEATHER ADVISORY BANNER
               _buildRealtimeAdvisoryBanner(),
 
               const SizedBox(height: 16),
 
-              // STAGE TRACKER & SELECTOR
+              // STAGE TRACKER
               const Text("Mga Yugto ng Pagtatanim (Rice Stages)", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF334155))),
               const SizedBox(height: 8),
               _buildStageSelector(),
 
               const SizedBox(height: 20),
 
-              // INTERACTIVE STEP-BY-STEP CHECKLIST FOR CURRENT STAGE
+              // CHECKLIST
               _buildInteractiveTaskChecklist(),
 
               const SizedBox(height: 20),
 
-              // PHILRICE SCIENTIFIC CARDS & GUIDELINES
+              // EXPERT GUIDANCE CARDS
               const Text("Siyentipikong Gabay at Pamantayan", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF334155))),
               const SizedBox(height: 10),
               ..._buildExpertGuidanceCards(_selectedStage),
@@ -381,22 +729,27 @@ class _GuidancePageState extends State<GuidancePage> {
     );
   }
 
-  // BANNER SA TAAS
-  Widget _buildHeroPlantingBanner(BuildContext context, DateTime? harvestDate) {
-    final dayLabel = _isDirectSeeded ? "DAS" : "DAT";
+  // --- SMART PHILRICE CALENDAR SYSTEM ---
+  Widget _buildSmartPhilriceCalendarSection() {
+    final daysInMonth = DateUtils.getDaysInMonth(_focusedCalendarMonth.year, _focusedCalendarMonth.month);
+    final firstDayOffset = DateTime(_focusedCalendarMonth.year, _focusedCalendarMonth.month, 1).weekday % 7;
+
+    final monthNames = [
+      "Enero", "Pebredo", "Marso", "Abril", "Mayo", "Hunyo",
+      "Hulyo", "Agosto", "Setyembre", "Oktubre", "Nobyembre", "Disyembre"
+    ];
+
+    final currentMonthLabel = "${monthNames[_focusedCalendarMonth.month - 1]} ${_focusedCalendarMonth.year}";
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF15803D), Color(0xFF16A34A)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
         boxShadow: [
-          BoxShadow(color: const Color(0xFF16A34A).withValues(alpha: 0.25), blurRadius: 12, offset: const Offset(0, 4)),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4)),
         ],
       ),
       child: Column(
@@ -407,34 +760,430 @@ class _GuidancePageState extends State<GuidancePage> {
             children: [
               const Row(
                 children: [
-                  Icon(Icons.rocket_launch_rounded, color: Color(0xFFFEF08A), size: 22),
+                  Icon(Icons.calendar_month_rounded, color: Color(0xFF16A34A), size: 22),
                   SizedBox(width: 8),
-                  Text("Simulan ang Pagtatanim", style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800)),
+                  Text(
+                    "Smart Planting Calendar",
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                  ),
                 ],
               ),
-              ElevatedButton(
-                onPressed: () => _selectPlantingDate(context),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: const Color(0xFF15803D),
-                  elevation: 0,
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.chevron_left_rounded),
+                    onPressed: () {
+                      setState(() {
+                        _focusedCalendarMonth = DateTime(_focusedCalendarMonth.year, _focusedCalendarMonth.month - 1);
+                      });
+                    },
+                  ),
+                  Text(currentMonthLabel, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_right_rounded),
+                    onPressed: () {
+                      setState(() {
+                        _focusedCalendarMonth = DateTime(_focusedCalendarMonth.year, _focusedCalendarMonth.month + 1);
+                      });
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            "Pindutin ang alinmang araw sa kalendaryo upang makita ang buong dahilan:",
+            style: TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+          ),
+          const SizedBox(height: 10),
+
+          // LEGEND BAR
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFF1F5F9)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildCalendarLegendTile(const Color(0xFF16A34A), "🟢 Maganda"),
+                _buildCalendarLegendTile(Colors.amber.shade800, "🟡 Dilaw (Katamtaman)"),
+                _buildCalendarLegendTile(Colors.red.shade700, "🔴 Huwag Muna"),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // DAY OF WEEK LABELS
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: ["Ling", "Lun", "Mar", "Miy", "Huw", "Biy", "Sab"].map((d) {
+              return Expanded(
+                child: Center(
+                  child: Text(d, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF94A3B8))),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 8),
+
+          // MONTH GRID BUILDER
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: daysInMonth + firstDayOffset,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 7,
+              mainAxisSpacing: 6,
+              crossAxisSpacing: 6,
+            ),
+            itemBuilder: (context, index) {
+              if (index < firstDayOffset) {
+                return const SizedBox.shrink();
+              }
+
+              final dayNum = index - firstDayOffset + 1;
+              final cellDate = DateTime(_focusedCalendarMonth.year, _focusedCalendarMonth.month, dayNum);
+              final suitability = _getPhilriceCapalanganSuitability(cellDate);
+              final isSelectedDate = _plantingDate != null &&
+                  _plantingDate!.year == cellDate.year &&
+                  _plantingDate!.month == cellDate.month &&
+                  _plantingDate!.day == cellDate.day;
+
+              return InkWell(
+                onTap: () {
+                  _showCalendarDateDetailsModal(cellDate, suitability);
+                },
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isSelectedDate
+                        ? const Color(0xFF0F172A)
+                        : (suitability['color'] as Color).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: isSelectedDate
+                          ? Colors.black
+                          : (suitability['color'] as Color).withValues(alpha: 0.5),
+                      width: isSelectedDate ? 2 : 1,
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        "$dayNum",
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: isSelectedDate ? Colors.white : (suitability['color'] as Color),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Container(
+                        width: 5,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: isSelectedDate ? const Color(0xFFFEF08A) : (suitability['color'] as Color),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCalendarLegendTile(Color color, String label) {
+    return Row(
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 4),
+        Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF475569))),
+      ],
+    );
+  }
+
+  // --- MODAL POPUP KAPAG PININDOT ANG ISANG PETSA SA KALENDARYO ---
+  void _showCalendarDateDetailsModal(DateTime targetDate, Map<String, dynamic> suitability) {
+    final maturityDays = _selectedVariety.totalMaturityDays;
+    final estimatedStartHarvest = targetDate.add(Duration(days: maturityDays - 5));
+    final estimatedEndHarvest = targetDate.add(Duration(days: maturityDays + 5));
+
+    final vegDate = targetDate.add(Duration(days: (maturityDays * 0.35).round()));
+    final repDate = targetDate.add(Duration(days: (maturityDays * 0.65).round()));
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    "${targetDate.year}-${targetDate.month.toString().padLeft(2, '0')}-${targetDate.day.toString().padLeft(2, '0')}",
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: (suitability['color'] as Color).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      suitability['label'] as String,
+                      style: TextStyle(color: suitability['color'] as Color, fontSize: 11, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              
+              // DETAILS CONTAINER (EXPLANATION BOX)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: (suitability['color'] as Color).withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: (suitability['color'] as Color).withValues(alpha: 0.3)),
                 ),
                 child: Text(
-                  _plantingDate == null ? "Pumili ng Petsa" : "Palitan ang Petsa",
-                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                  suitability['reason'] as String,
+                  style: const TextStyle(fontSize: 12, color: Color(0xFF334155), height: 1.4, fontWeight: FontWeight.w500),
+                ),
+              ),
+
+              const Divider(height: 24),
+              const Text("ESTIMATED HARVEST DURATION & CROP PHASES", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF94A3B8))),
+              const SizedBox(height: 8),
+
+              // HARVEST RANGE CARD
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0FDF4),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFBBF7D0)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.grain_rounded, color: Color(0xFF16A34A), size: 24),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text("Tantyang Haba ng Ani (Harvest Window):", style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF166534))),
+                          Text(
+                            "${estimatedStartHarvest.month}/${estimatedStartHarvest.day}/${estimatedStartHarvest.year} — ${estimatedEndHarvest.month}/${estimatedEndHarvest.day}/${estimatedEndHarvest.year}",
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF15803D)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+
+              // PHASES SUMMARY
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildPhaseMiniBadge("Vegetative", "Hanggang ${vegDate.month}/${vegDate.day}"),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildPhaseMiniBadge("Reproductive", "Hanggang ${repDate.month}/${repDate.day}"),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF16A34A),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  icon: const Icon(Icons.check_circle_rounded, size: 18),
+                  label: const Text("PILIIN ITONG PETSA NG PAGTATANIM", style: TextStyle(fontWeight: FontWeight.bold)),
+                  onPressed: () {
+                    setState(() {
+                      _plantingDate = targetDate;
+                    });
+                    _saveRecordToHistory(targetDate);
+                    _updateCropAgeAndStage();
+                    _saveData();
+                    Navigator.pop(ctx);
+                  },
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+        );
+      },
+    );
+  }
+
+  Widget _buildPhaseMiniBadge(String title, String subtitle) {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF334155))),
+          Text(subtitle, style: const TextStyle(fontSize: 9, color: Color(0xFF64748B))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeroPlantingBanner(BuildContext context, DateTime? harvestDate) {
+    final dayLabel = _isDirectSeeded ? "DAS" : "DAT";
+    final maturity = _getCropMaturityStatus();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: _isFuturePlanting
+              ? [const Color(0xFF0284C7), const Color(0xFF0369A1)]
+              : [const Color(0xFF15803D), const Color(0xFF16A34A)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: (_isFuturePlanting ? const Color(0xFF0284C7) : const Color(0xFF16A34A)).withValues(alpha: 0.25),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Icon(_isFuturePlanting ? Icons.event_available_rounded : Icons.rocket_launch_rounded, color: const Color(0xFFFEF08A), size: 22),
+                  const SizedBox(width: 8),
+                  Text(
+                    _isFuturePlanting ? "Plano sa Hinaharap" : "Kasalukuyang Pagtatanim",
+                    style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          
+          if (_plantingDate != null && !_isFuturePlanting) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.25),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.eco_outlined, color: Color(0xFFFEF08A), size: 14),
+                  const SizedBox(width: 6),
+                  Text(
+                    "${maturity['varietyCategory']} • ${maturity['statusTag']}",
+                    style: const TextStyle(color: Color(0xFFFEF08A), fontSize: 10, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+
           Divider(color: Colors.white.withValues(alpha: 0.2), height: 1),
           const SizedBox(height: 12),
           if (_plantingDate == null)
             const Text(
-              "I-click ang button sa itaas para ilagay kung kailan ka magtatanim. Tutulungan ka ng aming AI Agronomist na planuhin ang abono, patubig, at pangkalahatang alaga batay sa pamantayan ng PhilRice.",
-              style: TextStyle(color: Colors.white70, fontSize: 11, height: 1.4),
+              "Pumili ng petsa sa Smart Calendar sa ibaba upang simulan ang pagsubaybay sa iyong palayan batay sa pamantayan ng PhilRice Capalangan.",
+              style: TextStyle(color: Colors.white, fontSize: 11, height: 1.4),
+            )
+          else if (_isFuturePlanting)
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("TARGET NA PETSA", style: TextStyle(color: Colors.white70, fontSize: 9, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 2),
+                      Text("${_plantingDate!.year}-${_plantingDate!.month.toString().padLeft(2, '0')}-${_plantingDate!.day.toString().padLeft(2, '0')}",
+                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+                Container(height: 28, width: 1, color: Colors.white24),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text("COUNTDOWN", style: TextStyle(color: Colors.white70, fontSize: 9, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 2),
+                        Text("May $_daysUntilPlanting araw pa",
+                            style: const TextStyle(color: Color(0xFFFEF08A), fontSize: 13, fontWeight: FontWeight.w900)),
+                      ],
+                    ),
+                  ),
+                ),
+                Container(height: 28, width: 1, color: Colors.white24),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text("TANTYANG ANI", style: TextStyle(color: Colors.white70, fontSize: 9, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 2),
+                        Text("${harvestDate?.month}/${harvestDate?.day}/${harvestDate?.year}",
+                            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             )
           else
             Row(
@@ -487,7 +1236,6 @@ class _GuidancePageState extends State<GuidancePage> {
     );
   }
 
-  // CROP CONFIGURATION SELECTOR
   Widget _buildCropConfigurationCard() {
     return Container(
       width: double.infinity,
@@ -554,6 +1302,7 @@ class _GuidancePageState extends State<GuidancePage> {
                       onChanged: (val) {
                         if (val != null) {
                           setState(() => _isDirectSeeded = val);
+                          _updateCropAgeAndStage();
                           _saveData();
                         }
                       },
@@ -568,27 +1317,28 @@ class _GuidancePageState extends State<GuidancePage> {
     );
   }
 
-  // REAL-TIME WEATHER ADVISORY BANNER
   Widget _buildRealtimeAdvisoryBanner() {
+    bool isAlert = (_weatherCode ?? 0) >= 61 || _realtimeAdvisory.contains("🚨") || _realtimeAdvisory.contains("⚠️");
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: (_weatherCode ?? 0) >= 61 ? const Color(0xFFFEF2F2) : const Color(0xFFF0FDF4),
+        color: isAlert ? const Color(0xFFFEF2F2) : const Color(0xFFF0FDF4),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: (_weatherCode ?? 0) >= 61 ? const Color(0xFFFCA5A5) : const Color(0xFFBBF7D0)),
+        border: Border.all(color: isAlert ? const Color(0xFFFCA5A5) : const Color(0xFFBBF7D0)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _isLoadingWeather
               ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF16A34A)))
-              : Icon((_weatherCode ?? 0) >= 61 ? Icons.warning_amber_rounded : Icons.sensors_rounded, color: (_weatherCode ?? 0) >= 61 ? const Color(0xFFDC2626) : const Color(0xFF16A34A), size: 22),
+              : Icon(isAlert ? Icons.warning_amber_rounded : Icons.sensors_rounded, color: isAlert ? const Color(0xFFDC2626) : const Color(0xFF16A34A), size: 22),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               _realtimeAdvisory,
-              style: TextStyle(color: (_weatherCode ?? 0) >= 61 ? const Color(0xFF991B1B) : const Color(0xFF166534), fontSize: 12, fontWeight: FontWeight.w600, height: 1.4),
+              style: TextStyle(color: isAlert ? const Color(0xFF991B1B) : const Color(0xFF166534), fontSize: 12, fontWeight: FontWeight.w600, height: 1.4),
             ),
           ),
         ],
@@ -596,7 +1346,6 @@ class _GuidancePageState extends State<GuidancePage> {
     );
   }
 
-  // HORIZONTAL STAGE SELECTOR
   Widget _buildStageSelector() {
     return SizedBox(
       height: 85,
@@ -637,7 +1386,6 @@ class _GuidancePageState extends State<GuidancePage> {
     );
   }
 
-  // INTERACTIVE CHECKLIST FOR THE SELECTED STAGE
   Widget _buildInteractiveTaskChecklist() {
     List<String> tasks = _getPhilriceTasksForStage(_selectedStage);
 
@@ -713,11 +1461,19 @@ class _GuidancePageState extends State<GuidancePage> {
     final dayType = _isDirectSeeded ? "DAS" : "DAP/DAT";
 
     switch (stage) {
+      case RiceStage.preparation:
+        return [
+          "Maghanap at bumili ng Certified Seeds (NSIC Rc) sa accredited seed grower.",
+          "Mag-araro ng lupa 14-21 araw bago magtanim upang mabulok ang mga lumang damo at dayami.",
+          "Mag-suyod ng palayan (1st & 2nd harrowing) pitong araw bago ang target na tanim.",
+          "Magpatubig nang bahagya upang maipahinga ang lupa at lumabas ang mga natutulog na binhi ng damo.",
+          "Ihanda ang Punas/Punlaan (Dapog o Traditional Bed) kung magli-lipat tanim.",
+        ];
       case RiceStage.planning:
         return [
-          "Pumili ng certified seeds (NSIC Rc) para sa mataas na ani at tibay sa peste.",
-          "Mag-araro 14 araw bago magtanim upang mabulok ang mga lumang dayami.",
-          "I-level nang maayos ang lupa gamit ang leveling board para sa pantay na patubig.",
+          "Pantayin nang maayos ang lupa gamit ang leveling board para pantay ang lalim ng tubig.",
+          "Isagawa ang germination test sa binhi upang masigurong mataas ang sproting rate (>85%).",
+          "Ihanda ang mga gagamiting abono at mga kagamitan sa pag-aabono.",
         ];
       case RiceStage.vegetative:
         return [
@@ -747,16 +1503,30 @@ class _GuidancePageState extends State<GuidancePage> {
 
   List<Widget> _buildExpertGuidanceCards(RiceStage stage) {
     switch (stage) {
+      case RiceStage.preparation:
+        return [
+          _buildGuidanceCard(
+            title: "Paghahanda Bago ang Pagtatanim (Pre-Planting)",
+            category: "PHILRICE LAND PREPARATION",
+            icon: Icons.engineering_rounded,
+            color: Colors.indigo,
+            bullets: [
+              "Ang maagang pag-aararo (14 araw bago magtanim) ay pumatay ng mga peste at nagpapanatili ng sustansya ng lupa.",
+              "Siguraduhing bumili lamang ng sertipikadong binhi (Certified Seeds) upang makaiwas sa halo-halong uri ng palay.",
+            ],
+          ),
+        ];
+
       case RiceStage.planning:
         return [
           _buildGuidanceCard(
-            title: "Paghahanda ng Lupa at Binhi",
+            title: "Pagpapatag ng Lupa at Pagpili ng Binhi",
             category: "PHILRICE KEY CHECK 1",
             icon: Icons.landscape_rounded,
             color: Colors.orange,
             bullets: [
-              "Mag-araro ng 14 araw bago magtanim upang mabulok ang mga dayami at maging organic fertilizer.",
-              "Gumamit ng Certified Seeds (tulad ng NSIC Rc 222 o Rc 160) na nakarehistro sa Bureau of Plant Industry.",
+              "Ang pantay na lupa ay nakakatipid ng hanggang 20% sa patubig at nakababawas sa pagdami ng damo.",
+              "Gumamit ng Certified Seeds (tulad ng NSIC Rc 222 o Rc 160).",
             ],
           ),
         ];
@@ -769,18 +1539,8 @@ class _GuidancePageState extends State<GuidancePage> {
             icon: Icons.science_rounded,
             color: Colors.green,
             bullets: [
-              "Suriin ang kulay ng dahon gamit ang LCC tuwing 7 araw mula 14 DAP/DAS hanggang panahong maglihi.",
+              "Suriin ang kulay ng dahon gamit ang LCC tuwing 7 araw mula 14 DAP/DAS.",
               "Unang Pag-aabono: Complete Fertilizer (14-14-14) para sa malulusog na ugat.",
-              "Pangalawang Pag-aabono: Urea (46-0-0) upang dumami ang mga suwi.",
-            ],
-          ),
-          _buildGuidanceCard(
-            title: "AWD Water Management System",
-            category: "IRRI SCIENTIFIC STANDARD",
-            icon: Icons.water_drop_rounded,
-            color: Colors.blue,
-            bullets: [
-              "Hayaang matuyo ang lupa hanggang 15 cm sa ilalim bago muling magpapasok ng tubig upang palamigin at patibayin ang ugat laban sa malakas na hangin.",
             ],
           ),
         ];
@@ -793,22 +1553,20 @@ class _GuidancePageState extends State<GuidancePage> {
             icon: Icons.eco_rounded,
             color: Colors.purple,
             bullets: [
-              "Huwag patutuyuan ang petak! Panatilihing may 3-5 cm na tubig upang hindi maging hapa o walang laman ang mga butil.",
-              "Mag-spray ng Potash (0-0-60) upang maging malusog at mabigat ang timbang ng bawat palay.",
+              "Huwag patutuyuan ang petak! Panatilihing may 3-5 cm na tubig.",
             ],
           ),
         ];
 
-     case RiceStage.ripening:
+      case RiceStage.ripening:
         return [
           _buildGuidanceCard(
             title: "Terminal Drainage at Pagpapatuyo",
             category: "PHILRICE KEY CHECK 5",
-            icon: Icons.grain_rounded,
+            icon: Icons.agriculture_rounded,
             color: Colors.amber,
             bullets: [
-              "Alisin ang tubig sa petak 7-10 araw bago ang target na ani para tumigas ang lupa at mabilis na makaikot ang harvester.",
-              "Siguraduhing malinis ang paligid laban sa mga ibon at daga habang naghihintay ng pag-ani.",
+              "Alisin ang tubig sa petak 7-10 araw bago ang target na ani.",
             ],
           ),
         ];
@@ -821,8 +1579,7 @@ class _GuidancePageState extends State<GuidancePage> {
             icon: Icons.inventory_2_rounded,
             color: Colors.teal,
             bullets: [
-              "Patuyuin agad ang palay sa 14% Moisture Content (MC) sa loob ng 24 oras upang maiwasan ang pagpula o pag-itim ng bigas.",
-              "I-post sa lokal na marketplace sa Capalangan para sa direktang benta nang walang middleman.",
+              "Patuyuin agad ang palay sa 14% Moisture Content (MC) sa loob ng 24 oras.",
             ],
           ),
         ];

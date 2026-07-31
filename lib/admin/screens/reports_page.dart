@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'order_page.dart'; // Siguraduhing tama ang path ng OrderModel mo
+import 'order_page.dart'; // Siguraduhing tama ang import path ng OrderModel mo
 
 class ReportsPage extends StatefulWidget {
   const ReportsPage({super.key});
@@ -10,165 +10,75 @@ class ReportsPage extends StatefulWidget {
 }
 
 class _ReportsPageState extends State<ReportsPage> {
-  static const Color _primaryBlue = Color(0xff2563EB);
-  static const Color _successGreen = Color(0xff16A34A);
-  static const Color _bgSurface = Color(0xffF8FAFC);
-  static const Color _textPrimary = Color(0xff0F172A);
-  static const Color _textSecondary = Color(0xff64748B);
-  static const Color _border = Color(0xffE2E8F0);
+  // Arroz Sistema - Fresh Green Theme Palette
+  static const Color _greenPrimary = Color(0xff16A34A); // Emerald Green
+  static const Color _greenLight = Color(0xffDCFCE7); // Soft Green Accent
+  static const Color _bgSage = Color(0xffF4F7F5); // Light Sage Background
+  static const Color _cardWhite = Colors.white;
+  static const Color _textDark = Color(0xff1E293B);
+  static const Color _textSubtle = Color(0xff64748B);
+  static const Color _barBg = Color(0xffE2E8F0);
 
-  // Time-frame filter state: '7days', '30days', 'all'
   String _selectedTimeFrame = 'all';
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _bgSurface,
+      backgroundColor: _bgSage,
       body: SafeArea(
         child: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection("orders")
-              .where('status', isEqualTo: 'completed')
-              .snapshots(),
-          builder: (context, snapshot) {
-            if (snapshot.hasError) {
-              return Center(child: Text("Error: ${snapshot.error}"));
+          stream: FirebaseFirestore.instance.collection("orders").limit(200).snapshots(),
+          builder: (context, ordersSnapshot) {
+            if (ordersSnapshot.hasError) {
+              return Center(child: Text("Error: ${ordersSnapshot.error}"));
             }
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator(color: _primaryBlue));
+            if (ordersSnapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator(color: _greenPrimary));
             }
 
-            final docs = snapshot.data?.docs ?? [];
-            List<OrderModel> completedOrders = docs.map((d) => OrderModel.fromFirestore(d)).toList();
+            final docs = ordersSnapshot.data?.docs ?? [];
+            List<OrderModel> allOrders = docs.map((d) => OrderModel.fromFirestore(d)).toList();
 
-            // Local filtering base sa napiling Time-frame
+            // Status Filter
+            List<OrderModel> completedOrders = allOrders.where((o) => o.status == OrderStatus.completed).toList();
             completedOrders = _filterOrdersByTimeFrame(completedOrders, _selectedTimeFrame);
 
-            // Compute Analytical Metrics
-            final double totalRevenue = completedOrders.fold(0.0, (sum, item) => sum + item.totalAmount);
-            
-            int totalSacksSold = 0;
-            final Map<String, int> productPerformance = {};
+            return StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance.collection("products").snapshots(),
+              builder: (context, productsSnapshot) {
+                final analytics = _computeAnalytics(completedOrders, productsSnapshot.data?.docs ?? []);
 
-            for (var order in completedOrders) {
-              for (var item in order.items) {
-                totalSacksSold += item.quantity;
-                productPerformance[item.productName] = (productPerformance[item.productName] ?? 0) + item.quantity;
-              }
-            }
+                return LayoutBuilder(
+                  builder: (context, constraints) {
+                    final bool isDesktop = constraints.maxWidth >= 900;
 
-            final sortedProducts = productPerformance.entries.toList()
-              ..sort((a, b) => b.value.compareTo(a.value));
+                    return SingleChildScrollView(
+                      padding: EdgeInsets.all(isDesktop ? 24.0 : 16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildTopBarHeader(),
+                          const SizedBox(height: 20),
 
-            return LayoutBuilder(
-              builder: (context, constraints) {
-                final bool isMobile = constraints.maxWidth < 768;
-
-                return SingleChildScrollView(
-                  padding: EdgeInsets.all(isMobile ? 16.0 : 24.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // HEADER LOGISTICS LAYER
-                      _buildHeader(isMobile),
-                      const SizedBox(height: 20),
-
-                      // EXECUTIVE KPI SUMMARY METRICS
-                      _buildMetricCardsGrid(
-                        isMobile: isMobile,
-                        totalRevenue: totalRevenue,
-                        totalSacksSold: totalSacksSold,
-                        ordersCount: completedOrders.length,
+                          // MAIN GRID LAYOUT
+                          if (isDesktop) ...[
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(flex: 3, child: _buildLeftMainColumn(analytics, completedOrders)),
+                                const SizedBox(width: 20),
+                                Expanded(flex: 1, child: _buildRightTransactionsColumn(completedOrders)),
+                              ],
+                            )
+                          ] else ...[
+                            _buildLeftMainColumn(analytics, completedOrders),
+                            const SizedBox(height: 20),
+                            _buildRightTransactionsColumn(completedOrders),
+                          ],
+                        ],
                       ),
-                      const SizedBox(height: 24),
-
-                      // TWO-SEGMENT CONTENT SECTION
-                      if (isMobile) ...[
-                        _SectionWrapper(
-                          title: "Product Volume Leaderboard",
-                          subtitle: "Ranking by total sacks dispatched",
-                          child: sortedProducts.isEmpty
-                              ? _buildEmptyState()
-                              : Column(
-                                  children: List.generate(
-                                    sortedProducts.length,
-                                    (index) => Padding(
-                                      padding: const EdgeInsets.only(bottom: 12.0),
-                                      child: _ProductRankRow(
-                                        rank: index + 1,
-                                        name: sortedProducts[index].key,
-                                        sacks: sortedProducts[index].value,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                        ),
-                        const SizedBox(height: 20),
-                        _SectionWrapper(
-                          title: "Audit Trail Ledger",
-                          subtitle: "Latest compiled closed transactions",
-                          child: completedOrders.isEmpty
-                              ? _buildEmptyState()
-                              : Column(
-                                  children: List.generate(
-                                    completedOrders.length,
-                                    (index) => _LedgerItem(order: completedOrders[index]),
-                                  ),
-                                ),
-                        ),
-                      ] else ...[
-                        SizedBox(
-                          height: 520, // Clean dynamic view height desktop
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // LEFT PANEL: Product Distribution Performance
-                              Expanded(
-                                flex: 2,
-                                child: _SectionWrapper(
-                                  title: "Product Volume Leaderboard",
-                                  subtitle: "Ranking by total sacks dispatched",
-                                  child: sortedProducts.isEmpty
-                                      ? _buildEmptyState()
-                                      : ListView.separated(
-                                          itemCount: sortedProducts.length,
-                                          separatorBuilder: (_, __) => const SizedBox(height: 12),
-                                          itemBuilder: (context, index) {
-                                            final entry = sortedProducts[index];
-                                            return _ProductRankRow(
-                                              rank: index + 1,
-                                              name: entry.key,
-                                              sacks: entry.value,
-                                            );
-                                          },
-                                        ),
-                                ),
-                              ),
-                              const SizedBox(width: 24),
-
-                              // RIGHT PANEL: Recent Revenue Micro-logs
-                              Expanded(
-                                flex: 3,
-                                child: _SectionWrapper(
-                                  title: "Audit Trail Ledger",
-                                  subtitle: "Latest compiled closed transactions",
-                                  child: completedOrders.isEmpty
-                                      ? _buildEmptyState()
-                                      : ListView.separated(
-                                          itemCount: completedOrders.length,
-                                          separatorBuilder: (_, __) => const SizedBox(height: 12),
-                                          itemBuilder: (context, index) {
-                                            return _LedgerItem(order: completedOrders[index]);
-                                          },
-                                        ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
+                    );
+                  },
                 );
               },
             );
@@ -178,7 +88,48 @@ class _ReportsPageState extends State<ReportsPage> {
     );
   }
 
-  // ==================== DATA PROCESSING ====================
+  // ==================== COMPUTATION ENGINE ====================
+  Map<String, dynamic> _computeAnalytics(List<OrderModel> orders, List<QueryDocumentSnapshot> productDocs) {
+    double totalRevenue = 0;
+    int totalItemsSold = 0;
+    final Map<String, _ProductStat> productStats = {};
+
+    for (var doc in productDocs) {
+      final data = doc.data() as Map<String, dynamic>?;
+      final id = doc.id;
+      final name = data?['name'] ?? data?['productName'] ?? 'Unknown Variety';
+      productStats[id] = _ProductStat(id: id, name: name, salesCount: 0);
+    }
+
+    for (var order in orders) {
+      totalRevenue += order.totalAmount;
+      for (var item in order.items) {
+        totalItemsSold += item.quantity;
+        String key = item.productId.isNotEmpty ? item.productId : item.productName;
+
+        if (productStats.containsKey(key)) {
+          productStats[key]!.salesCount += item.quantity;
+        } else {
+          productStats[key] = _ProductStat(id: key, name: item.productName, salesCount: item.quantity);
+        }
+      }
+    }
+
+    final sortedStats = productStats.values.toList()..sort((a, b) => b.salesCount.compareTo(a.salesCount));
+    int maxSales = sortedStats.isNotEmpty && sortedStats.first.salesCount > 0 ? sortedStats.first.salesCount : 1;
+
+    final topProducts = sortedStats.where((p) => p.salesCount > 0).toList();
+
+    return {
+      'totalRevenue': totalRevenue,
+      'totalItemsSold': totalItemsSold,
+      'ordersCount': orders.length,
+      'topProducts': topProducts,
+      'maxSales': maxSales,
+      'orders': orders,
+    };
+  }
+
   List<OrderModel> _filterOrdersByTimeFrame(List<OrderModel> orders, String timeFrame) {
     final now = DateTime.now();
     if (timeFrame == '7days') {
@@ -189,284 +140,348 @@ class _ReportsPageState extends State<ReportsPage> {
     return orders;
   }
 
-  // ==================== RESPONSIVE HEADER ====================
-  Widget _buildHeader(bool isMobile) {
-    if (isMobile) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            "Financial & Sales Intelligence",
-            style: TextStyle(color: _textPrimary, fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: -0.5),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            "Real-time performance distribution and volume metrics.",
-            style: TextStyle(color: _textSecondary, fontSize: 12),
-          ),
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: _buildTimeFrameDropdown(),
-          ),
-        ],
-      );
-    }
+  // ==================== UI BUILDERS (GREEN ARROZ THEME) ====================
 
+  Widget _buildTopBarHeader() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        Row(
           children: [
-            Text(
-              "Financial & Sales Intelligence",
-              style: TextStyle(color: _textPrimary, fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: -0.5),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: _greenPrimary, borderRadius: BorderRadius.circular(10)),
+              child: const Icon(Icons.grass_rounded, color: Colors.white, size: 22),
             ),
-            Text(
-              "Real-time performance distribution and volume metrics.",
-              style: TextStyle(color: _textSecondary, fontSize: 13),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Text("ARROZ MONITOR", style: TextStyle(color: _textDark, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                Text("Rice Sales & Inventory System", style: TextStyle(color: _textSubtle, fontSize: 11)),
+              ],
             ),
           ],
         ),
-        _buildTimeFrameDropdown(),
+        Row(
+          children: [
+            _buildHeaderIconButton(Icons.search),
+            _buildHeaderIconButton(Icons.notifications_none),
+            const SizedBox(width: 8),
+            _buildTimeFrameDropdown(),
+          ],
+        )
       ],
     );
   }
 
-  // ==================== METRICS GRID ====================
-  Widget _buildMetricCardsGrid({
-    required bool isMobile,
-    required double totalRevenue,
-    required int totalSacksSold,
-    required int ordersCount,
-  }) {
-    final cards = [
-      _MetricCard(title: "Gross Revenue", value: "₱ ${totalRevenue.toStringAsFixed(2)}", icon: Icons.payments_outlined, color: _successGreen),
-      _MetricCard(title: "Sacks Distributed", value: "$totalSacksSold Sacks", icon: Icons.inventory_2_outlined, color: _primaryBlue),
-      _MetricCard(title: "Invoices Settled", value: "$ordersCount Orders", icon: Icons.receipt_long_outlined, color: Colors.purple),
-    ];
+  Widget _buildLeftMainColumn(Map<String, dynamic> analytics, List<OrderModel> orders) {
+    return Column(
+      children: [
+        // 1. SALES MONITOR (BAR CHART)
+        _buildBarChartWidget(orders),
+        const SizedBox(height: 20),
 
-    if (isMobile) {
-      return Column(
-        children: cards.map((card) => Padding(padding: const EdgeInsets.only(bottom: 12.0), child: card)).toList(),
-      );
-    }
+        // 2. THREE MINI MONITOR CARDS
+        Row(
+          children: [
+            Expanded(child: _buildMiniProgressMonitor("DISPATCHED SACKS", "${analytics['totalItemsSold']} Units", 0.85)),
+            const SizedBox(width: 12),
+            Expanded(child: _buildMiniProgressMonitor("COMPLETED ORDERS", "${analytics['ordersCount']} Invoices", 0.70)),
+            const SizedBox(width: 12),
+            Expanded(child: _buildMiniProgressMonitor("TOTAL GROSS", "₱${(analytics['totalRevenue'] as double).toStringAsFixed(0)}", 0.90)),
+          ],
+        ),
+        const SizedBox(height: 20),
 
-    return Row(
-      children: cards.map((card) => Expanded(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 6.0), child: card))).toList(),
+        // 3. TWO CIRCULAR DONUT CHART CARDS
+        Row(
+          children: [
+            Expanded(child: _buildDonutChartCard("VARIETY MOVEMENT", "${(analytics['topProducts'] as List).length} Active", 0.80, "RICE STOCKS")),
+            const SizedBox(width: 16),
+            Expanded(child: _buildDonutChartCard("TOTAL REVENUE", "₱${(analytics['totalRevenue'] as double).toStringAsFixed(0)}", 0.92, "NET EARNINGS")),
+          ],
+        ),
+        const SizedBox(height: 20),
+
+        // 4. TOP SELLING RICE VARIETIES
+        _buildRiceVarietyList(analytics),
+      ],
+    );
+  }
+
+  // BAR CHART WIDGET
+  Widget _buildBarChartWidget(List<OrderModel> orders) {
+    final double maxRev = orders.isNotEmpty ? orders.map((e) => e.totalAmount).reduce((a, b) => a > b ? a : b) : 1;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: _cardBoxDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: const [
+              Text("DAILY SALES MONITOR", style: TextStyle(color: _greenPrimary, fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 0.5)),
+              Icon(Icons.tune_rounded, color: _greenPrimary, size: 18),
+            ],
+          ),
+          const Text("Recent order revenue performance", style: TextStyle(color: _textSubtle, fontSize: 11)),
+          const SizedBox(height: 24),
+          SizedBox(
+            height: 140,
+            child: orders.isEmpty
+                ? const Center(child: Text("No transaction logs available", style: TextStyle(color: _textSubtle, fontSize: 12)))
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: List.generate(orders.take(8).length, (index) {
+                      final order = orders[index];
+                      final double heightFactor = maxRev > 0 ? (order.totalAmount / maxRev) : 0.1;
+
+                      return Column(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Container(
+                            width: 22,
+                            height: 100 * heightFactor < 10 ? 10 : 100 * heightFactor,
+                            decoration: BoxDecoration(
+                              color: _greenPrimary,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text("${order.orderDate.day}/${order.orderDate.month}", style: const TextStyle(fontSize: 10, color: _textSubtle, fontWeight: FontWeight.bold)),
+                        ],
+                      );
+                    }),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // MINI PROGRESS MONITOR CARDS
+  Widget _buildMiniProgressMonitor(String title, String value, double progress) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: _cardBoxDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(color: _greenPrimary, fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+          const SizedBox(height: 4),
+          Text(value, style: const TextStyle(color: _textDark, fontSize: 13, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 10),
+          LinearProgressIndicator(
+            value: progress,
+            backgroundColor: _greenLight,
+            valueColor: const AlwaysStoppedAnimation<Color>(_greenPrimary),
+            minHeight: 6,
+          ),
+        ],
+      ),
+    );
+  }
+
+  // DONUT / RING CHART CARD
+  Widget _buildDonutChartCard(String title, String centerText, double percent, String subLabel) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: _cardBoxDecoration(),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(title, style: const TextStyle(color: _greenPrimary, fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 0.5)),
+              const Icon(Icons.pie_chart_outline_rounded, color: _greenPrimary, size: 16),
+            ],
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 110,
+            width: 110,
+            child: Stack(
+              children: [
+                Center(
+                  child: SizedBox(
+                    height: 100,
+                    width: 100,
+                    child: CircularProgressIndicator(
+                      value: percent,
+                      strokeWidth: 12,
+                      backgroundColor: _greenLight,
+                      valueColor: const AlwaysStoppedAnimation<Color>(_greenPrimary),
+                    ),
+                  ),
+                ),
+                Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(centerText, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: _textDark)),
+                      Text(subLabel, style: const TextStyle(fontSize: 8, color: _textSubtle, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                )
+              ],
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  // RIGHT COLUMN: SETTLED TRANSACTIONS
+  Widget _buildRightTransactionsColumn(List<OrderModel> orders) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: _cardBoxDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: const [
+              Text("RECENT TRANSACTIONS", style: TextStyle(color: _greenPrimary, fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 0.5)),
+              Icon(Icons.receipt_long_rounded, color: _greenPrimary, size: 16),
+            ],
+          ),
+          const Text("Real-time settled invoices", style: TextStyle(color: _textSubtle, fontSize: 10)),
+          const SizedBox(height: 16),
+          orders.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20),
+                  child: Center(child: Text("No transactions recorded.", style: TextStyle(color: _textSubtle, fontSize: 12))),
+                )
+              : ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: orders.take(7).length,
+                  separatorBuilder: (_, __) => const Divider(color: _bgSage, height: 16),
+                  itemBuilder: (context, index) {
+                    final order = orders[index];
+                    return Row(
+                      children: [
+                        const CircleAvatar(
+                          radius: 14,
+                          backgroundColor: _greenLight,
+                          child: Icon(Icons.shopping_bag_outlined, size: 14, color: _greenPrimary),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(order.customerName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: _textDark)),
+                              Text("₱${order.totalAmount.toStringAsFixed(2)}", style: const TextStyle(color: _greenPrimary, fontSize: 11, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.check_circle_rounded, color: _greenPrimary, size: 16),
+                      ],
+                    );
+                  },
+                )
+        ],
+      ),
+    );
+  }
+
+  // TOP SELLING RICE VARIETIES
+  Widget _buildRiceVarietyList(Map<String, dynamic> analytics) {
+    final topList = analytics['topProducts'] as List<_ProductStat>;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: _cardBoxDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: const [
+              Text("TOP SELLING RICE VARIETIES", style: TextStyle(color: _greenPrimary, fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 0.5)),
+              Icon(Icons.inventory_2_rounded, color: _greenPrimary, size: 16),
+            ],
+          ),
+          const SizedBox(height: 16),
+          topList.isEmpty
+              ? const Text("No sales recorded yet.", style: TextStyle(color: _textSubtle, fontSize: 12))
+              : Column(
+                  children: topList.take(5).map((p) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6.0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.grain_rounded, color: _greenPrimary, size: 16),
+                              const SizedBox(width: 8),
+                              Text(p.name, style: const TextStyle(color: _textDark, fontSize: 12, fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                            decoration: BoxDecoration(color: _greenLight, borderRadius: BorderRadius.circular(12)),
+                            child: Text("${p.salesCount} Dispatched", style: const TextStyle(color: _greenPrimary, fontSize: 10, fontWeight: FontWeight.bold)),
+                          )
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                )
+        ],
+      ),
+    );
+  }
+
+  // HELPER STYLES
+  BoxDecoration _cardBoxDecoration() {
+    return BoxDecoration(
+      color: _cardWhite,
+      borderRadius: BorderRadius.circular(12),
+      boxShadow: const [
+        BoxShadow(color: Color(0x06000000), blurRadius: 10, offset: Offset(0, 4)),
+      ],
+    );
+  }
+
+  Widget _buildHeaderIconButton(IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4.0),
+      child: Icon(icon, color: _textSubtle, size: 20),
     );
   }
 
   Widget _buildTimeFrameDropdown() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: _border)),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.black12)),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: _selectedTimeFrame,
-          icon: const Icon(Icons.calendar_today_outlined, size: 14, color: _textSecondary),
-          style: const TextStyle(color: _textPrimary, fontSize: 13, fontWeight: FontWeight.bold),
-          onChanged: (String? newValue) {
-            if (newValue != null) setState(() => _selectedTimeFrame = newValue);
-          },
+          style: const TextStyle(color: _textDark, fontSize: 11, fontWeight: FontWeight.bold),
+          onChanged: (v) => setState(() => _selectedTimeFrame = v!),
           items: const [
-            DropdownMenuItem(value: 'all', child: Text("All-Time Historical  ")),
-            DropdownMenuItem(value: '7days', child: Text("Last 7 Days  ")),
-            DropdownMenuItem(value: '30days', child: Text("Last 30 Days  ")),
+            DropdownMenuItem(value: 'all', child: Text("All-Time")),
+            DropdownMenuItem(value: '7days', child: Text("Last 7 Days")),
+            DropdownMenuItem(value: '30days', child: Text("Last 30 Days")),
           ],
         ),
       ),
     );
   }
-
-  static Widget _buildEmptyState() {
-    return const Center(
-      child: Padding(
-        padding: EdgeInsets.symmetric(vertical: 24.0),
-        child: Text(
-          "No transaction metrics recorded for this interval.",
-          style: TextStyle(color: _textSecondary, fontSize: 13),
-        ),
-      ),
-    );
-  }
 }
 
-// ==================== EXTRACTED PERFORMANCE COMPONENTS ====================
-
-class _MetricCard extends StatelessWidget {
-  final String title;
-  final String value;
-  final IconData icon;
-  final Color color;
-
-  const _MetricCard({
-    required this.title,
-    required this.value,
-    required this.icon,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xffE2E8F0)),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            backgroundColor: color.withValues(alpha: 0.1), // Fixed Deprecated method
-            radius: 20,
-            child: Icon(icon, color: color, size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(color: Color(0xff64748B), fontSize: 12, fontWeight: FontWeight.w500),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: const TextStyle(color: Color(0xff0F172A), fontSize: 16, fontWeight: FontWeight.bold),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          )
-        ],
-      ),
-    );
-  }
-}
-
-class _SectionWrapper extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final Widget child;
-
-  const _SectionWrapper({
-    required this.title,
-    required this.subtitle,
-    required this.child,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xffE2E8F0)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(title, style: const TextStyle(color: Color(0xff0F172A), fontSize: 15, fontWeight: FontWeight.bold)),
-          Text(subtitle, style: const TextStyle(color: Color(0xff64748B), fontSize: 12)),
-          const Divider(height: 24, color: Color(0xffE2E8F0)),
-          Flexible(fit: FlexFit.loose, child: child),
-        ],
-      ),
-    );
-  }
-}
-
-class _ProductRankRow extends StatelessWidget {
-  final int rank;
+class _ProductStat {
+  final String id;
   final String name;
-  final int sacks;
+  int salesCount;
 
-  const _ProductRankRow({
-    required this.rank,
-    required this.name,
-    required this.sacks,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: const Color(0xffF8FAFC), borderRadius: BorderRadius.circular(8)),
-      child: Row(
-        children: [
-          Container(
-            width: 28,
-            height: 28,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: rank == 1 ? const Color(0xffFEF3C7) : const Color(0xffE2E8F0),
-              shape: BoxShape.circle,
-            ),
-            child: Text(
-              "$rank",
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: rank == 1 ? const Color(0xffD97706) : const Color(0xff0F172A),
-                fontSize: 12,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              name,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xff0F172A)),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          Text("$sacks Sacks", style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xff2563EB))),
-        ],
-      ),
-    );
-  }
-}
-
-class _LedgerItem extends StatelessWidget {
-  final OrderModel order;
-
-  const _LedgerItem({required this.order});
-
-  @override
-  Widget build(BuildContext context) {
-    final displayId = order.id.length >= 6 ? order.id.substring(0, 6) : order.id;
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xffF8FAFC)))),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text("ID: #${displayId.toUpperCase()}", style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, fontSize: 13)),
-                const SizedBox(height: 2),
-                Text(
-                  order.customerName,
-                  style: const TextStyle(color: Color(0xff64748B), fontSize: 12),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-          Text(
-            "+₱${order.totalAmount.toStringAsFixed(2)}",
-            style: const TextStyle(color: Color(0xff16A34A), fontWeight: FontWeight.bold, fontSize: 14),
-          )
-        ],
-      ),
-    );
-  }
+  _ProductStat({required this.id, required this.name, required this.salesCount});
 }

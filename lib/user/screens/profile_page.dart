@@ -5,7 +5,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../../services/auth.service.dart';
+import '../../services/auth/auth.service.dart';
 import 'address_picker.dart';
 
 // ============================================================================

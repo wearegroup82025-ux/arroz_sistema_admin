@@ -1,5 +1,5 @@
-import '../domain/weather_entity.dart';
-import '../domain/weather_repository.dart';
+import '../../domain/weather_entity.dart';
+import '../../domain/weather_repository.dart';
 import 'weather_api_service.dart';
 
 class WeatherRepositoryImpl implements WeatherRepository {
