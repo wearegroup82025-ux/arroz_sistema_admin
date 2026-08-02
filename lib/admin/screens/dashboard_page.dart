@@ -1,17 +1,22 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
 
-import 'system_control_hub.dart';
+// Domain & Services
+import '../../domain/weather_entity.dart';
+import '../../domain/weather_repository.dart';
+import '../../services/weather/weather_api_service.dart';
+import '../../services/weather/weather_repository_impl.dart';
+
+// Pages
 import 'inventory_page.dart';
 import 'order_page.dart';
 import 'reports_page.dart';
 import 'weather_page.dart';
 import 'guidance_page.dart';
 import 'notification_page.dart';
-// TODO: Siguraduhing i-import ang tinanggal na file depende sa lokasyon nito:
-import 'user_management_page.dart'; 
+import 'user_management_page.dart';
 import '../../services/notification/notification_service.dart';
 
 class DashboardPage extends StatefulWidget {
@@ -28,101 +33,61 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   int _currentMenuIndex = 0;
-  late Timer _marketTimer;
   Timer? _inactivityTimer;
-  final Random _random = Random();
-  double _liveMarketRate = 32.00;
 
-  static const int _adminTimeoutSeconds = 15 * 60; // 15 mins inactivity timeout
+  static const int _adminTimeoutSeconds = 15 * 60;
 
-  static const Color _background = Color(0xffF8FAFC);
-  static const Color _surface = Color(0xffFFFFFF);
-  static const Color _primary = Color(0xff16A34A);
-  static const Color _textPrimary = Color(0xff0F172A);
-  static const Color _textSecondary = Color(0xff475569);
+  // Senior Developer Palette
+  static const Color _bg = Color(0xffF8FAFC);
+  static const Color _cardBg = Color(0xffFFFFFF);
+  static const Color _primary = Color(0xff059669);
+  static const Color _textMain = Color(0xff0F172A);
+  static const Color _textSub = Color(0xff64748B);
   static const Color _border = Color(0xffE2E8F0);
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-
-  // Messaging State Data
-  final List<Map<String, String>> _messages = [
-    {"sender": "System Support", "text": "Welcome to ArrozSistema! Let us know if you need help.", "time": "10:00 AM", "isMe": "false"},
-    {"sender": "Farm Supervisor", "text": "Mababa na po ang stock natin sa Warehouse B.", "time": "10:15 AM", "isMe": "false"},
-  ];
   final TextEditingController _messageController = TextEditingController();
-  int _unreadMessagesCount = 2;
 
-  // Realtime Subscriptions
-  StreamSubscription? _logSubscription;
-  StreamSubscription? _inventorySubscription;
-  StreamSubscription? _ordersSubscription;
-  StreamSubscription? _usersSubscription;
-  StreamSubscription? _weatherSubscription;
+  StreamSubscription? _inventorySub;
+  StreamSubscription? _ordersSub;
+  StreamSubscription? _weatherSub;
+
+  // Weather Repository Instance & Future
+  late final WeatherRepository _weatherRepository;
+  late Future<WeatherEntity> _weatherFuture;
+
+  static const double latitude = 14.9540;
+  static const double longitude = 120.7594;
 
   @override
   void initState() {
     super.initState();
-    _startMarketTicker();
-    _listenToSystemLogs();
+    
+    // Initialize Weather Service
+    final apiService = WeatherApiService(http.Client());
+    _weatherRepository = WeatherRepositoryImpl(apiService: apiService);
+    _fetchLiveWeather();
+
     _resetInactivityTimer();
-    _initAllRealtimeListeners();
+    _initRealtimeListeners();
   }
 
-  // --- PLANTING & SEASON HELPER LOGIC ---
-  String _getSeasonInfo() {
-    final month = DateTime.now().month;
-    if (month >= 6 && month <= 11) {
-      return "Wet / Tag-ulan Season";
-    } else {
-      return "Dry / Tag-araw Season";
-    }
-  }
-
-  Map<String, dynamic> _getPlantingRecommendation() {
-    final month = DateTime.now().month;
-
-    if (month >= 6 && month <= 7) {
-      return {
-        "status": "Napakaganda Magtanim! 🌾",
-        "description": "Tamang-tama ang simula ng tag-ulan para sa Wet Season planting.",
-        "color": const Color(0xff16A34A),
-        "icon": Icons.check_circle_outline_rounded,
-      };
-    } else if (month >= 11 || month <= 1) {
-      return {
-        "status": "Maganda Magtanim (Dry Crop) ☀️",
-        "description": "Ideal para sa Dry Season cropping kung may sapat na irigasyon.",
-        "color": Colors.amber.shade800,
-        "icon": Icons.wb_sunny_outlined,
-      };
-    } else if (month >= 8 && month <= 10) {
-      return {
-        "status": "Mag-ingat sa Pagtatanim ⚠️",
-        "description": "Peak ng bagyo at baha. Siguraduhing maayos ang drainage o gumamit ng flood-tolerant varieties.",
-        "color": Colors.orange.shade800,
-        "icon": Icons.warning_amber_rounded,
-      };
-    } else {
-      return {
-        "status": "Katamtaman / Off-Season 🚜",
-        "description": "Ihanda ang lupa o mag-fallow muna para makapahinga ang sakahan.",
-        "color": Colors.blueGrey,
-        "icon": Icons.info_outline,
-      };
-    }
+  void _fetchLiveWeather() {
+    setState(() {
+      _weatherFuture = _weatherRepository.getWeatherByCoordinates(latitude, longitude);
+    });
   }
 
   void _resetInactivityTimer() {
     _inactivityTimer?.cancel();
     if (widget.userRole == 'admin') {
       _inactivityTimer = Timer(const Duration(seconds: _adminTimeoutSeconds), () {
-        _handleAutoLogout();
+        if (mounted) _showAutoLogoutDialog();
       });
     }
   }
 
-  void _handleAutoLogout() {
-    if (!mounted) return;
+  void _showAutoLogoutDialog() {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -144,23 +109,19 @@ class _DashboardPageState extends State<DashboardPage> {
 
   void _performLogout() {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Naka-logout na ang Admin session.")),
+      const SnackBar(content: Text("Naka-logout na ang session.")),
     );
   }
 
-  void _initAllRealtimeListeners() {
-    _inventorySubscription = FirebaseFirestore.instance
-        .collection('inventory')
-        .snapshots()
-        .listen((snapshot) {
-      for (var change in snapshot.docChanges) {
+  void _initRealtimeListeners() {
+    _inventorySub = FirebaseFirestore.instance.collection('inventory').snapshots().listen((snap) {
+      for (var change in snap.docChanges) {
         if (change.type == DocumentChangeType.modified || change.type == DocumentChangeType.added) {
           final data = change.doc.data();
           if (data != null && (data['stock'] ?? 0) <= 10) {
-            _triggerAlert(
-              title: "⚠️ Low Stock Alert!",
-              body: "Mababa na ang stock ng '${data['name'] ?? 'Rice'}'. (${data['stock']} sacks nalang).",
-              type: "stock",
+            _sendSystemNotification(
+              title: "⚠️ Low Stock Alert",
+              body: "Mababa na ang stock ng '${data['name'] ?? 'Rice'}'.",
               channelId: NotificationService.channelAlerts,
             );
           }
@@ -168,288 +129,114 @@ class _DashboardPageState extends State<DashboardPage> {
       }
     });
 
-    _ordersSubscription = FirebaseFirestore.instance
-        .collection('orders')
-        .snapshots()
-        .listen((snapshot) {
-      for (var change in snapshot.docChanges) {
+    _ordersSub = FirebaseFirestore.instance.collection('orders').snapshots().listen((snap) {
+      for (var change in snap.docChanges) {
         if (change.type == DocumentChangeType.added) {
           final data = change.doc.data();
           if (data == null) continue;
-
-          final clientName = data['clientName'] ?? 'Unknown Customer';
-          final items = data['orderItems'] ?? 'Rice Sacks';
-          final total = data['totalAmount'] ?? '0.00';
-          final orderId = change.doc.id.length >= 6 ? change.doc.id.substring(0, 6).toUpperCase() : change.doc.id;
-
-          _triggerAlert(
-            title: "🛍️ Bagong Order mula kay $clientName!",
-            body: "Order #$orderId: $items | Total: ₱$total.",
-            type: "order",
+          _sendSystemNotification(
+            title: "🛍️ Bagong Order",
+            body: "Order mula kay ${data['clientName'] ?? 'Customer'}.",
             channelId: NotificationService.channelOrders,
           );
         }
       }
     });
 
-    _usersSubscription = FirebaseFirestore.instance
-        .collection('users')
-        .snapshots()
-        .listen((snapshot) {
-      for (var change in snapshot.docChanges) {
-        if (change.type == DocumentChangeType.added) {
-          final data = change.doc.data();
-          if (data == null) continue;
-
-          final name = data['fullName'] ?? data['email'] ?? 'Bagong User';
-          final role = data['role'] ?? 'Client';
-
-          _triggerAlert(
-            title: "👤 Bagong User Account!",
-            body: "Gumawa ng bagong account si $name ($role).",
-            type: "user",
-            channelId: NotificationService.channelUsers,
-          );
-        }
-      }
-    });
-
-    _weatherSubscription = FirebaseFirestore.instance
-        .collection('weather_alerts')
-        .snapshots()
-        .listen((snapshot) {
-      for (var change in snapshot.docChanges) {
+    _weatherSub = FirebaseFirestore.instance.collection('weather_alerts').snapshots().listen((snap) {
+      for (var change in snap.docChanges) {
         final data = change.doc.data();
-        if (data == null) continue;
-
-        final isTyphoon = data['isTyphoonWarning'] ?? false;
-        final typhoonName = data['typhoonName'] ?? 'Bagyo';
-        final forecastTomorrow = data['forecastTomorrow'] ?? 'Cagayan Valley Area';
-
-        if (isTyphoon) {
-          int sosId = 999111;
-          NotificationService.showNotification(
-            id: sosId,
-            title: "🚨 SOS EMERGENCY: PAPARATING NA BAGYO ($typhoonName)",
-            body: "BABALA: May malakas na bagyong papasok sa sakahan ($forecastTomorrow). Aksyunan agad!",
+        if (data != null && (data['isTyphoonWarning'] ?? false)) {
+          _sendSystemNotification(
+            title: "🚨 SOS: PAPARATING NA BAGYO",
+            body: "Babala: ${data['typhoonName'] ?? 'Bagyo'} sa sakahan.",
             channelId: NotificationService.channelTyphoonSOS,
-            isOngoing: true,
-          );
-          _showTyphoonEmergencyDialog(typhoonName, forecastTomorrow, sosId);
-        } else {
-          _triggerAlert(
-            title: "🌤️ Weather Forecast para Bukas",
-            body: "Inaasahang panahon bukas: $forecastTomorrow.",
-            type: "weather",
-            channelId: NotificationService.channelWeather,
           );
         }
       }
     });
   }
 
-  void _showTyphoonEmergencyDialog(String typhoonName, String details, int notificationId) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xffFEF2F2),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
-            children: [
-              Icon(Icons.warning_amber_rounded, color: Colors.red, size: 30),
-              SizedBox(width: 10),
-              Text("MMDRMC SOS ALARM", style: TextStyle(color: Colors.red, fontWeight: FontWeight.w900)),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text("MAY PAPARATING NA BAGYO: $typhoonName", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              const SizedBox(height: 8),
-              Text("Forecast Details: $details"),
-              const SizedBox(height: 12),
-              const Text(
-                "⚠️ Ang wang-wang alert ay titigil lamang kapag pinindot mo ang button sa ibaba.",
-                style: TextStyle(fontSize: 11, color: Colors.redAccent, fontWeight: FontWeight.bold),
-              ),
-            ],
-          ),
-          actions: [
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              ),
-              icon: const Icon(Icons.check_circle_outline),
-              label: const Text("KUMPIRMAHIN AT PATAYIN ANG ALARM"),
-              onPressed: () {
-                NotificationService.dismissNotification(notificationId);
-                Navigator.pop(context);
-              },
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Future<void> _triggerAlert({
+  Future<void> _sendSystemNotification({
     required String title,
     required String body,
-    required String type,
     required String channelId,
   }) async {
-    NotificationService.showNotification(
-      title: title,
-      body: body,
-      channelId: channelId,
-    );
-
+    NotificationService.showNotification(title: title, body: body, channelId: channelId);
     await FirebaseFirestore.instance.collection('notifications').add({
       'title': title,
       'body': body,
-      'type': type,
       'isRead': false,
       'timestamp': FieldValue.serverTimestamp(),
     });
   }
 
-  void _listenToSystemLogs() {
-    _logSubscription = SystemControlHub().logsStream.listen((logs) {
-      if (logs.isNotEmpty) {
-        final latestLog = logs.first;
-        NotificationService.showNotification(
-          id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-          title: "ArrozSistema: ${latestLog.title}",
-          body: "May bagong system log updates.",
-        );
-      }
-    });
-  }
-
   @override
   void dispose() {
-    _marketTimer.cancel();
     _inactivityTimer?.cancel();
-    _logSubscription?.cancel();
-    _inventorySubscription?.cancel();
-    _ordersSubscription?.cancel();
-    _usersSubscription?.cancel();
-    _weatherSubscription?.cancel();
+    _inventorySub?.cancel();
+    _ordersSub?.cancel();
+    _weatherSub?.cancel();
     _messageController.dispose();
     super.dispose();
   }
 
-  void _startMarketTicker() {
-    _marketTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
-      if (mounted) {
-        setState(() {
-          double change = (_random.nextDouble() * 0.8) - 0.40;
-          _liveMarketRate = max(28.00, min(40.00, _liveMarketRate + change));
-        });
-      }
-    });
-  }
-
-  void _navigateToPage(int index) {
-    setState(() {
-      _currentMenuIndex = index;
-    });
-  }
-
   List<_NavigationItem> get _navigationMenu {
     final list = [
-      const _NavigationItem(Icons.dashboard_rounded, "Dashboard", null),
+      const _NavigationItem(Icons.grid_view_rounded, "Dashboard", null),
       const _NavigationItem(Icons.inventory_2_outlined, "Inventory", InventoryPage()),
-      const _NavigationItem(Icons.shopping_cart_outlined, "Orders", OrdersPage()),
-      const _NavigationItem(Icons.bar_chart_rounded, "Reports", ReportsPage()),
+      const _NavigationItem(Icons.shopping_bag_outlined, "Orders", OrdersPage()),
+      const _NavigationItem(Icons.menu_book_outlined, "Guidance", GuidancePage()),
+      const _NavigationItem(Icons.analytics_outlined, "Reports", ReportsPage()),
       const _NavigationItem(Icons.cloud_outlined, "Weather", WeatherPage()),
-      const _NavigationItem(Icons.library_books_outlined, "Guidance Hub", GuidancePage()),
     ];
 
     if (widget.userRole == 'admin') {
-      list.add(const _NavigationItem(
-        Icons.admin_panel_settings_outlined, 
-        "User Controls", 
-        UserManagementPage()
-      ));
+      list.add(const _NavigationItem(Icons.admin_panel_settings_outlined, "Users", UserManagementPage()));
     }
 
     return list;
   }
 
-  void _openMessagesModal() {
-    setState(() {
-      _unreadMessagesCount = 0;
-    });
-
+  void _openChatModal() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      backgroundColor: _surface,
+      backgroundColor: _cardBg,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
-        return StatefulBuilder(
-          builder: (BuildContext context, StateSetter setModalState) {
-            void sendMessage() {
-              if (_messageController.text.trim().isEmpty) return;
-              
-              final now = TimeOfDay.now();
-              final timeString = "${now.hourOfPeriod}:${now.minute.toString().padLeft(2, '0')} ${now.period == DayPeriod.am ? 'AM' : 'PM'}";
-
-              setState(() {
-                _messages.add({
-                  "sender": "Admin",
-                  "text": _messageController.text.trim(),
-                  "time": timeString,
-                  "isMe": "true"
-                });
-              });
-
-              setModalState(() {
-                _messageController.clear();
-              });
-            }
-
-            return Padding(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom,
-              ),
-              child: Container(
-                height: MediaQuery.of(context).size.height * 0.65,
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+          child: Container(
+            height: MediaQuery.of(context).size.height * 0.65,
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Row(
-                          children: [
-                            Icon(Icons.chat_bubble_outline_rounded, color: _primary),
-                            SizedBox(width: 8),
-                            Text("System Messages", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _textPrimary)),
-                          ],
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close),
-                          onPressed: () => Navigator.pop(context),
-                        )
-                      ],
-                    ),
-                    const Divider(color: _border),
-                    Expanded(
-                      child: ListView.builder(
-                        itemCount: _messages.length,
+                    const Text("System Messages", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _textMain)),
+                    IconButton(icon: const Icon(Icons.close, size: 20), onPressed: () => Navigator.pop(context)),
+                  ],
+                ),
+                const Divider(color: _border),
+                Expanded(
+                  child: StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance.collection('messages').orderBy('timestamp', descending: true).snapshots(),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                      final docs = snapshot.data!.docs;
+                      
+                      if (docs.isEmpty) {
+                        return const Center(child: Text("Walang mensahe.", style: TextStyle(color: _textSub)));
+                      }
+
+                      return ListView.builder(
+                        reverse: true,
+                        itemCount: docs.length,
                         itemBuilder: (context, index) {
-                          final msg = _messages[index];
-                          final isMe = msg["isMe"] == "true";
+                          final data = docs[index].data() as Map<String, dynamic>;
+                          final isMe = data['senderRole'] == widget.userRole;
 
                           return Align(
                             alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -463,54 +250,54 @@ class _DashboardPageState extends State<DashboardPage> {
                               child: Column(
                                 crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                                 children: [
-                                  if (!isMe)
-                                    Text(msg["sender"]!, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
-                                  Text(
-                                    msg["text"]!,
-                                    style: TextStyle(color: isMe ? Colors.white : _textPrimary, fontSize: 13),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    msg["time"]!,
-                                    style: TextStyle(color: isMe ? Colors.white70 : _textSecondary, fontSize: 9),
-                                  ),
+                                  Text(data['senderName'] ?? 'User', style: TextStyle(fontSize: 10, color: isMe ? Colors.white70 : _textSub, fontWeight: FontWeight.bold)),
+                                  Text(data['text'] ?? '', style: TextStyle(color: isMe ? Colors.white : _textMain, fontSize: 13)),
                                 ],
                               ),
                             ),
                           );
                         },
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _messageController,
-                              decoration: InputDecoration(
-                                hintText: "Type a message...",
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(20),
-                                  borderSide: const BorderSide(color: _border),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          IconButton(
-                            icon: const Icon(Icons.send_rounded, color: _primary),
-                            onPressed: sendMessage,
-                          )
-                        ],
-                      ),
-                    )
-                  ],
+                      );
+                    },
+                  ),
                 ),
-              ),
-            );
-          },
+                Padding(
+                  padding: const EdgeInsets.only(top: 8.0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _messageController,
+                          decoration: InputDecoration(
+                            hintText: "Isulat ang mensahe...",
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            fillColor: _bg,
+                            filled: true,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        icon: const Icon(Icons.send_rounded, color: _primary),
+                        onPressed: () async {
+                          if (_messageController.text.trim().isEmpty) return;
+                          final text = _messageController.text.trim();
+                          _messageController.clear();
+                          await FirebaseFirestore.instance.collection('messages').add({
+                            'text': text,
+                            'senderName': widget.userRole == 'admin' ? 'Admin' : 'User',
+                            'senderRole': widget.userRole,
+                            'timestamp': FieldValue.serverTimestamp(),
+                          });
+                        },
+                      )
+                    ],
+                  ),
+                )
+              ],
+            ),
+          ),
         );
       },
     );
@@ -520,33 +307,27 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget build(BuildContext context) {
     return Listener(
       onPointerDown: (_) => _resetInactivityTimer(),
-      onPointerMove: (_) => _resetInactivityTimer(),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final isDesktop = constraints.maxWidth >= 1000;
-
-          final Widget activeBody = _currentMenuIndex == 0
-              ? _buildMainDashboardContent(isDesktop)
-              : (_navigationMenu[_currentMenuIndex].page ?? _buildMainDashboardContent(isDesktop));
+          final isDesktop = constraints.maxWidth >= 900;
+          
+          final Widget activeBody = AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            child: _currentMenuIndex == 0
+                ? _buildDashboardHome(isDesktop)
+                : (_navigationMenu[_currentMenuIndex].page ?? _buildDashboardHome(isDesktop)),
+          );
 
           return Scaffold(
             key: _scaffoldKey,
-            backgroundColor: _background,
-            endDrawer: _buildProfileDrawer(),
-            bottomNavigationBar: !isDesktop ? _buildBottomNavigationBar() : null,
+            backgroundColor: _bg,
+            endDrawer: _buildDrawer(),
             body: SafeArea(
               child: Column(
                 children: [
-                  _buildTopGlobalNavbar(isDesktop),
-                  Expanded(
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 200),
-                      child: KeyedSubtree(
-                        key: ValueKey<int>(_currentMenuIndex),
-                        child: activeBody,
-                      ),
-                    ),
-                  ),
+                  _buildHeader(isDesktop),
+                  Expanded(child: activeBody),
+                  _buildUniversalNavBar(isDesktop),
                 ],
               ),
             ),
@@ -556,144 +337,63 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildTopGlobalNavbar(bool isDesktop) {
+  Widget _buildHeader(bool isDesktop) {
     return Container(
-      height: 65,
-      padding: EdgeInsets.symmetric(horizontal: isDesktop ? 32 : 16),
+      height: 60,
+      padding: EdgeInsets.symmetric(horizontal: isDesktop ? 24 : 16),
       decoration: const BoxDecoration(
-        color: _surface,
-        border: Border(bottom: BorderSide(color: _border, width: 1.5)),
+        color: _cardBg,
+        border: Border(bottom: BorderSide(color: _border)),
       ),
       child: Row(
         children: [
-          InkWell(
-            onTap: () => _navigateToPage(0),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: _primary.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.eco_rounded, color: _primary, size: 22),
-                ),
-                const SizedBox(width: 10),
-                const Text(
-                  "ArrozSistema",
-                  style: TextStyle(color: _textPrimary, fontSize: 18, fontWeight: FontWeight.w900),
-                ),
-              ],
-            ),
-          ),
-          const Spacer(),
-          if (isDesktop)
-            Row(
-              children: List.generate(_navigationMenu.length, (index) {
-                final isSelected = _currentMenuIndex == index;
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 2),
-                  child: TextButton(
-                    onPressed: () => _navigateToPage(index),
-                    style: TextButton.styleFrom(
-                      backgroundColor: isSelected ? _primary.withOpacity(0.1) : Colors.transparent,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: Text(
-                      _navigationMenu[index].title,
-                      style: TextStyle(
-                        color: isSelected ? _primary : _textSecondary,
-                        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                );
-              }),
-            ),
-          if (isDesktop) const SizedBox(width: 16),
-          Stack(
+          Row(
             children: [
-              IconButton(
-                icon: const Icon(Icons.chat_bubble_outline_rounded, color: _textSecondary),
-                onPressed: _openMessagesModal,
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(color: _primary.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                child: const Icon(Icons.eco_rounded, color: _primary, size: 20),
               ),
-              if (_unreadMessagesCount > 0)
-                Positioned(
-                  right: 8,
-                  top: 8,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(
-                      color: Colors.redAccent,
-                      shape: BoxShape.circle,
-                    ),
-                    constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                    child: Text(
-                      '$_unreadMessagesCount',
-                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
+              const SizedBox(width: 8),
+              const Text("ArrozSistema", style: TextStyle(color: _textMain, fontSize: 16, fontWeight: FontWeight.bold)),
             ],
           ),
+          const Spacer(),
+          IconButton(
+            icon: const Icon(Icons.chat_bubble_outline_rounded, color: _textSub, size: 20),
+            onPressed: _openChatModal,
+          ),
           StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('notifications')
-                .where('isRead', isEqualTo: false)
-                .snapshots(),
+            stream: FirebaseFirestore.instance.collection('notifications').where('isRead', isEqualTo: false).snapshots(),
             builder: (context, snapshot) {
-              final unreadCount = snapshot.hasData ? snapshot.data!.docs.length : 0;
-
+              final count = snapshot.hasData ? snapshot.data!.docs.length : 0;
               return Stack(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.notifications_none_rounded, color: _textSecondary),
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const NotificationPage()),
-                      );
-                    },
+                    icon: const Icon(Icons.notifications_none_rounded, color: _textSub, size: 22),
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationPage())),
                   ),
-                  if (unreadCount > 0)
+                  if (count > 0)
                     Positioned(
                       right: 8,
                       top: 8,
                       child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(
-                          color: _primary,
-                          shape: BoxShape.circle,
-                        ),
-                        constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                        child: Text(
-                          '$unreadCount',
-                          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                          textAlign: TextAlign.center,
-                        ),
+                        padding: const EdgeInsets.all(3),
+                        decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
+                        constraints: const BoxConstraints(minWidth: 12, minHeight: 12),
                       ),
                     ),
                 ],
               );
             },
           ),
-          const SizedBox(width: 8),
-          InkWell(
+          const SizedBox(width: 4),
+          GestureDetector(
             onTap: () => _scaffoldKey.currentState?.openEndDrawer(),
-            borderRadius: BorderRadius.circular(20),
-            child: Container(
-              padding: const EdgeInsets.all(2),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: _primary, width: 2),
-              ),
-              child: const CircleAvatar(
-                radius: 16,
-                backgroundColor: _border,
-                child: Icon(Icons.person, size: 18, color: _textSecondary),
-              ),
+            child: const CircleAvatar(
+              radius: 14,
+              backgroundColor: _border,
+              child: Icon(Icons.person, size: 16, color: _textSub),
             ),
           ),
         ],
@@ -701,94 +401,239 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildBottomNavigationBar() {
-    int selectedIndex = _currentMenuIndex;
-    if (_currentMenuIndex > 3) {
-      selectedIndex = 4;
-    }
+  Widget _buildDashboardHome(bool isDesktop) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("Control Hub Overview 👋", style: TextStyle(color: _textMain, fontSize: 20, fontWeight: FontWeight.bold)),
+          const Text("Real-time monitoring & operations", style: TextStyle(color: _textSub, fontSize: 12)),
+          const SizedBox(height: 16),
+          
+          _buildGoogleStyleWeatherCard(),
+          const SizedBox(height: 16),
 
-    return Container(
-      decoration: const BoxDecoration(
-        color: _surface,
-        border: Border(top: BorderSide(color: _border, width: 1)),
-      ),
-      child: BottomNavigationBar(
-        currentIndex: selectedIndex,
-        onTap: (index) {
-          if (index == 4) {
-            _showMoreMenuModal();
-          } else {
-            _navigateToPage(index);
-          }
-        },
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: _surface,
-        selectedItemColor: _primary,
-        unselectedItemColor: _textSecondary,
-        selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
-        unselectedLabelStyle: const TextStyle(fontSize: 11),
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.dashboard_rounded), label: 'Dashboard'),
-          BottomNavigationBarItem(icon: Icon(Icons.inventory_2_outlined), label: 'Inventory'),
-          BottomNavigationBarItem(icon: Icon(Icons.shopping_cart_outlined), label: 'Orders'),
-          BottomNavigationBarItem(icon: Icon(Icons.bar_chart_rounded), label: 'Reports'),
-          BottomNavigationBarItem(icon: Icon(Icons.widgets_outlined), label: 'More'),
+          StreamBuilder<DocumentSnapshot>(
+            stream: FirebaseFirestore.instance.collection('market').doc('rates').snapshots(),
+            builder: (context, snapshot) {
+              final rate = snapshot.hasData && snapshot.data!.exists
+                  ? snapshot.data!.get('currentRate') ?? '32.08'
+                  : '32.08';
+              return Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: _cardBg,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: _border),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: _primary.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.trending_up_rounded, color: _primary, size: 24),
+                    ),
+                    const SizedBox(width: 16),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text("LIVE FARM MARKET RATE", style: TextStyle(color: _textSub, fontSize: 10, fontWeight: FontWeight.bold)),
+                        Text("₱$rate / kg", style: const TextStyle(color: _textMain, fontSize: 18, fontWeight: FontWeight.bold)),
+                        const Text("Updated live from market hubs", style: TextStyle(color: _textSub, fontSize: 11)),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 20),
+
+          const Text("System Operations", style: TextStyle(color: _textMain, fontSize: 15, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 10),
+          GridView.count(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisCount: isDesktop ? 4 : 2,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            childAspectRatio: 1.5,
+            children: [
+              _buildNavTile(Icons.inventory_2_outlined, "Inventory", "Stock & Supplies", 1),
+              _buildNavTile(Icons.shopping_bag_outlined, "Orders", "Track Orders", 2),
+              _buildNavTile(Icons.menu_book_outlined, "Guidance Hub", "Docs & Standards", 3),
+              _buildNavTile(Icons.cloud_outlined, "Weather", "Live Forecast", 5),
+            ],
+          ),
         ],
       ),
     );
   }
 
-  void _showMoreMenuModal() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      backgroundColor: _surface,
-      builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+  // Synchronized Dynamic Weather Card - 100% Accurate API Fetch
+  Widget _buildGoogleStyleWeatherCard() {
+    return FutureBuilder<WeatherEntity>(
+      future: _weatherFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Container(
+            height: 140,
+            decoration: BoxDecoration(
+              color: const Color(0xff047857),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Center(
+              child: CircularProgressIndicator(color: Colors.white),
+            ),
+          );
+        }
+
+        if (snapshot.hasError || !snapshot.hasData) {
+          return Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xff047857),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.cloud_off_rounded, color: Colors.white),
+                const SizedBox(width: 12),
+                const Text("Hindi maikonekta sa Weather API", style: TextStyle(color: Colors.white)),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.refresh, color: Colors.white),
+                  onPressed: _fetchLiveWeather,
+                ),
+              ],
+            ),
+          );
+        }
+
+        final weather = snapshot.data!;
+
+        return InkWell(
+          onTap: () => setState(() => _currentMenuIndex = 5),
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xff065F46), Color(0xff047857)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xff059669).withOpacity(0.25),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  "Other Modules",
-                  style: TextStyle(color: _textPrimary, fontSize: 16, fontWeight: FontWeight.bold),
+                Row(
+                  children: [
+                    const Icon(Icons.location_on_rounded, color: Colors.white70, size: 18),
+                    const SizedBox(width: 6),
+                    const Text(
+                      "Capalangan, Pampanga",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Text(
+                        "Live Weather",
+                        style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    const Spacer(),
+                    PopupMenuButton<String>(
+                      icon: const Icon(Icons.more_vert, color: Colors.white70, size: 20),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      onSelected: (value) {
+                        if (value == 'details') {
+                          setState(() => _currentMenuIndex = 5);
+                        } else if (value == 'refresh') {
+                          _fetchLiveWeather();
+                        }
+                      },
+                      itemBuilder: (BuildContext context) => [
+                        const PopupMenuItem(value: 'details', child: Text('View Full Forecast')),
+                        const PopupMenuItem(value: 'refresh', child: Text('Refresh Data')),
+                      ],
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 12),
-                ListTile(
-                  leading: const Icon(Icons.cloud_outlined, color: Colors.amber),
-                  title: const Text("Weather Forecast", style: TextStyle(fontWeight: FontWeight.w600)),
-                  selected: _currentMenuIndex == 4,
-                  selectedTileColor: _primary.withOpacity(0.08),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _navigateToPage(4);
-                  },
+                const SizedBox(height: 16),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    _getWeatherIcon(weather.condition),
+                    const SizedBox(width: 12),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          weather.temperature.toStringAsFixed(1),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 40,
+                            fontWeight: FontWeight.bold,
+                            height: 1,
+                          ),
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.only(top: 2, left: 2),
+                          child: Text(
+                            "°C",
+                            style: TextStyle(color: Colors.white70, fontSize: 16, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(width: 16),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text("Humidity: ${weather.humidity}%", style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                        const SizedBox(height: 2),
+                        Text("Feels Like: ${weather.feelsLike}°C", style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                        const SizedBox(height: 2),
+                        Text("Code: ${weather.weatherCode}", style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                      ],
+                    ),
+                    const Spacer(),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          weather.condition,
+                          style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                        Text("Realtime Sync", style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                      ],
+                    ),
+                  ],
                 ),
-                ListTile(
-                  leading: const Icon(Icons.library_books_outlined, color: Colors.teal),
-                  title: const Text("Guidance Hub & Docs", style: TextStyle(fontWeight: FontWeight.w600)),
-                  selected: _currentMenuIndex == 5,
-                  selectedTileColor: _primary.withOpacity(0.08),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _navigateToPage(5);
-                  },
-                ),
-                if (widget.userRole == 'admin')
-                  ListTile(
-                    leading: const Icon(Icons.admin_panel_settings_outlined, color: Colors.redAccent),
-                    title: const Text("User Controls (Scam Prevention)", style: TextStyle(fontWeight: FontWeight.w600)),
-                    selected: _currentMenuIndex == 6,
-                    selectedTileColor: _primary.withOpacity(0.08),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _navigateToPage(6);
-                    },
-                  ),
               ],
             ),
           ),
@@ -797,421 +642,232 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildProfileDrawer() {
-    return Drawer(
-      backgroundColor: _surface,
-      child: SafeArea(
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: const BoxDecoration(
-                color: _background,
-                border: Border(bottom: BorderSide(color: _border)),
-              ),
-              child: Row(
-                children: [
-                  const CircleAvatar(
-                    radius: 24,
-                    backgroundColor: _primary,
-                    child: Icon(Icons.person, color: Colors.white, size: 28),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          "System Admin",
-                          style: TextStyle(color: _textPrimary, fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 2),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: _primary.withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            widget.userRole.toUpperCase(),
-                            style: const TextStyle(color: _primary, fontSize: 10, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.dashboard_outlined, color: _textSecondary),
-                    title: const Text("Overview Dashboard", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _navigateToPage(0);
-                    },
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.library_books_outlined, color: Colors.teal),
-                    title: const Text("Guidance Hub & Docs", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _navigateToPage(5);
-                    },
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.notifications_outlined, color: _textSecondary),
-                    title: const Text("System Alerts", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                    onTap: () {
-                      Navigator.pop(context);
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const NotificationPage()),
-                      );
-                    },
-                  ),
-                  if (widget.userRole == 'admin')
-                    ListTile(
-                      leading: const Icon(Icons.admin_panel_settings_outlined, color: Colors.redAccent),
-                      title: const Text("Manage Users & Anti-Scam", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                      onTap: () {
-                        Navigator.pop(context);
-                        _navigateToPage(6);
-                      },
-                    ),
-                ],
-              ),
-            ),
-            const Divider(color: _border, height: 1),
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red.shade50,
-                    foregroundColor: Colors.redAccent,
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  icon: const Icon(Icons.logout_rounded, size: 18),
-                  label: const Text("Logout Session", style: TextStyle(fontWeight: FontWeight.bold)),
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _performLogout();
-                  },
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+  Widget _getWeatherIcon(String condition) {
+    final lower = condition.toLowerCase();
+    if (lower.contains('rain') || lower.contains('drizzle')) {
+      return const Icon(Icons.grain_rounded, color: Color(0xff93C5FD), size: 40);
+    } else if (lower.contains('cloud')) {
+      return const Icon(Icons.cloud_queue_rounded, color: Colors.white70, size: 40);
+    } else if (lower.contains('thunder') || lower.contains('storm')) {
+      return const Icon(Icons.thunderstorm_rounded, color: Color(0xffF87171), size: 40);
+    }
+    return const Icon(Icons.wb_sunny_rounded, color: Color(0xffFDE047), size: 40);
   }
 
-  Widget _buildMainDashboardContent(bool isDesktop) {
-    return SingleChildScrollView(
-      padding: EdgeInsets.all(isDesktop ? 32 : 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildHeaderSection(),
-          const SizedBox(height: 20),
-          _buildMetricsRow(isDesktop),
-          const SizedBox(height: 16),
-          _buildPlantingAdvisoryCard(),
-          const SizedBox(height: 24),
-          _buildQuickAccessSection(isDesktop),
-          const SizedBox(height: 24),
-          _buildLogsSection(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeaderSection() {
-    return const Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          "Control Hub Overview 👋",
-          style: TextStyle(color: _textPrimary, fontSize: 22, fontWeight: FontWeight.w900),
-        ),
-        SizedBox(height: 4),
-        Text(
-          "Real-time monitoring of operations, market rates, and supply chain analytics.",
-          style: TextStyle(color: _textSecondary, fontSize: 13),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMetricsRow(bool isDesktop) {
-    final contents = [
-      Expanded(
-        flex: isDesktop ? 1 : 0,
-        child: StreamBuilder<String>(
-          stream: SystemControlHub().weatherStream,
-          initialData: SystemControlHub().currentWeather,
-          builder: (context, snapshot) {
-            return InkWell(
-              onTap: () => _navigateToPage(4),
-              borderRadius: BorderRadius.circular(16),
-              child: _buildMetricTile(
-                icon: Icons.cloud_queue_rounded,
-                iconColor: Colors.blue.shade600,
-                bgColor: const Color(0xffEFF6FF),
-                label: "ENVIRONMENT WEATHER",
-                value: snapshot.data ?? "Loading Weather...",
-                contextualText: "Click for complete forecast",
-              ),
-            );
-          },
-        ),
-      ),
-      SizedBox(width: isDesktop ? 16 : 0, height: isDesktop ? 0 : 12),
-      Expanded(
-        flex: isDesktop ? 1 : 0,
-        child: _buildMetricTile(
-          icon: Icons.insights_rounded,
-          iconColor: _primary,
-          bgColor: const Color(0xffF0FDF4),
-          label: "LIVE FARM MARKET RATE",
-          value: "₱${_liveMarketRate.toStringAsFixed(2)} / kg",
-          contextualText: "Updated live from market hubs",
-        ),
-      ),
-    ];
-
-    return isDesktop
-        ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: contents)
-        : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: contents);
-  }
-
-  Widget _buildMetricTile({
-    required IconData icon,
-    required Color iconColor,
-    required Color bgColor,
-    required String label,
-    required String value,
-    required String contextualText,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: _cardStyle(),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(12)),
-            child: Icon(icon, color: iconColor, size: 24),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(color: _textSecondary.withOpacity(0.7), fontSize: 10, fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 2),
-                Text(value, style: const TextStyle(color: _textPrimary, fontSize: 18, fontWeight: FontWeight.w900)),
-                Text(contextualText, style: const TextStyle(color: _textSecondary, fontSize: 11)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPlantingAdvisoryCard() {
-    final season = _getSeasonInfo();
-    final recommendation = _getPlantingRecommendation();
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: _cardStyle(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Icon(recommendation['icon'] as IconData, color: recommendation['color'] as Color, size: 22),
-                  const SizedBox(width: 8),
-                  Text(
-                    "SEASON & PLANTING ADVISORY",
-                    style: TextStyle(
-                      color: _textSecondary.withOpacity(0.8),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ],
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: (recommendation['color'] as Color).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  season,
-                  style: TextStyle(
-                    color: recommendation['color'] as Color,
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            recommendation['status'] as String,
-            style: const TextStyle(
-              color: _textPrimary,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            recommendation['description'] as String,
-            style: const TextStyle(
-              color: _textSecondary,
-              fontSize: 12,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildQuickAccessSection(bool isDesktop) {
-    int gridCount = isDesktop ? (widget.userRole == 'admin' ? 5 : 4) : 2;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text("System Operations", style: TextStyle(color: _textPrimary, fontSize: 16, fontWeight: FontWeight.w800)),
-        const SizedBox(height: 12),
-        GridView.count(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          crossAxisCount: gridCount,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-          childAspectRatio: isDesktop ? 1.8 : 1.5,
-          children: [
-            _buildNavCard(Icons.inventory_2_rounded, "Inventory", "Stock & Supplies", _primary, 1),
-            _buildNavCard(Icons.shopping_cart_outlined, "Orders", "Track Orders", Colors.indigo, 2),
-            _buildNavCard(Icons.bar_chart_rounded, "Reports", "Audits & Metrics", Colors.blue.shade600, 3),
-            _buildNavCard(Icons.library_books_outlined, "Guidance Hub", "Docs & Standards", Colors.teal.shade600, 5),
-            if (widget.userRole == 'admin')
-              _buildNavCard(Icons.admin_panel_settings_outlined, "User Controls", "Anti-Scam Panel", Colors.redAccent, 6),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildNavCard(IconData icon, String title, String subtitle, Color color, int menuIndex) {
+  Widget _buildNavTile(IconData icon, String title, String subtitle, int index) {
     return InkWell(
+      onTap: () => setState(() => _currentMenuIndex = index),
       borderRadius: BorderRadius.circular(14),
-      onTap: () => _navigateToPage(menuIndex),
       child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: _cardStyle(),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(color: _cardBg, borderRadius: BorderRadius.circular(14), border: Border.all(color: _border)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
-              child: Icon(icon, color: color, size: 20),
-            ),
-            const SizedBox(height: 10),
-            Text(title, style: const TextStyle(color: _textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
-            Text(subtitle, style: const TextStyle(color: _textSecondary, fontSize: 11)),
+            Icon(icon, color: _primary, size: 22),
+            const SizedBox(height: 8),
+            Text(title, style: const TextStyle(color: _textMain, fontSize: 13, fontWeight: FontWeight.bold)),
+            Text(subtitle, style: const TextStyle(color: _textSub, fontSize: 10)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildLogsSection() {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: _cardStyle(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text("Live System Logs", style: TextStyle(color: _textPrimary, fontSize: 15, fontWeight: FontWeight.bold)),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(color: _primary.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
-                child: const Text("Syncing", style: TextStyle(color: _primary, fontSize: 10, fontWeight: FontWeight.bold)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          StreamBuilder<List<LogEntry>>(
-            stream: SystemControlHub().logsStream,
-            initialData: SystemControlHub().currentLogs,
-            builder: (context, snapshot) {
-              final logs = snapshot.data ?? [];
-              if (logs.isEmpty) {
-                return const Text("No logs recorded.", style: TextStyle(color: _textSecondary, fontSize: 12));
-              }
+  // RESPONSIVE UNIVERSAL NAVIGATION BAR
+  Widget _buildUniversalNavBar(bool isDesktop) {
+    final primaryItems = [
+      {'index': 0, 'icon': Icons.grid_view_rounded, 'label': 'Dashboard'},
+      {'index': 1, 'icon': Icons.inventory_2_outlined, 'label': 'Inventory'},
+      {'index': 2, 'icon': Icons.shopping_bag_outlined, 'label': 'Orders'},
+      {'index': 3, 'icon': Icons.menu_book_outlined, 'label': 'Guidance'},
+    ];
 
-              return ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: min(3, logs.length),
-                separatorBuilder: (context, index) => const Divider(height: 16, color: _border),
-                itemBuilder: (context, index) {
-                  final log = logs[index];
-                  return Row(
-                    children: [
-                      const Icon(Icons.info_outline, size: 16, color: _primary),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          log.title,
-                          style: const TextStyle(color: _textPrimary, fontSize: 12, fontWeight: FontWeight.w600),
-                        ),
+    return Container(
+      decoration: const BoxDecoration(
+        color: _cardBg,
+        border: Border(top: BorderSide(color: _border)),
+      ),
+      padding: EdgeInsets.symmetric(horizontal: isDesktop ? 40 : 8, vertical: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          ...primaryItems.map((item) {
+            final isSelected = _currentMenuIndex == item['index'];
+            return InkWell(
+              onTap: () => setState(() => _currentMenuIndex = item['index'] as int),
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: isSelected
+                    ? BoxDecoration(color: _primary.withOpacity(0.12), borderRadius: BorderRadius.circular(12))
+                    : null,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      item['icon'] as IconData,
+                      color: isSelected ? _primary : _textSub,
+                      size: 20,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      item['label'] as String,
+                      style: TextStyle(
+                        color: isSelected ? _primary : _textSub,
+                        fontSize: 11,
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                       ),
-                      Text(log.time, style: const TextStyle(color: _textSecondary, fontSize: 10)),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
+
+          PopupMenuButton<int>(
+            onSelected: (index) => setState(() => _currentMenuIndex = index),
+            icon: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.more_horiz_rounded,
+                  color: _currentMenuIndex >= 4 ? _primary : _textSub,
+                  size: 20,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'More',
+                  style: TextStyle(
+                    color: _currentMenuIndex >= 4 ? _primary : _textSub,
+                    fontSize: 11,
+                    fontWeight: _currentMenuIndex >= 4 ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
+              ],
+            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 4,
+                child: Row(
+                  children: [
+                    Icon(Icons.analytics_outlined, color: _primary, size: 18),
+                    SizedBox(width: 10),
+                    Text("Reports"),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 5,
+                child: Row(
+                  children: [
+                    Icon(Icons.cloud_outlined, color: _primary, size: 18),
+                    SizedBox(width: 10),
+                    Text("Weather Forecast"),
+                  ],
+                ),
+              ),
+              if (widget.userRole == 'admin')
+                const PopupMenuItem(
+                  value: 6,
+                  child: Row(
+                    children: [
+                      Icon(Icons.admin_panel_settings_outlined, color: Colors.redAccent, size: 18),
+                      SizedBox(width: 10),
+                      Text("Managing Accounts"),
                     ],
-                  );
-                },
-              );
-            },
+                  ),
+                ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  static BoxDecoration _cardStyle() {
-    return BoxDecoration(
-      color: _surface,
-      borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: _border, width: 1.2),
+  Widget _buildDrawer() {
+    return Drawer(
+      backgroundColor: _cardBg,
+      child: SafeArea(
+        child: Column(
+          children: [
+            const UserAccountsDrawerHeader(
+              decoration: BoxDecoration(color: _bg),
+              accountName: Text("System Admin", style: TextStyle(color: _textMain, fontWeight: FontWeight.bold)),
+              accountEmail: Text("admin@arrozsistema.com", style: TextStyle(color: _textSub)),
+              currentAccountPicture: CircleAvatar(backgroundColor: _primary, child: Icon(Icons.person, color: Colors.white)),
+            ),
+            ListTile(
+              leading: const Icon(Icons.grid_view_rounded),
+              title: const Text("Dashboard Overview"),
+              onTap: () {
+                Navigator.pop(context);
+                setState(() => _currentMenuIndex = 0);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.inventory_2_outlined),
+              title: const Text("Inventory"),
+              onTap: () {
+                Navigator.pop(context);
+                setState(() => _currentMenuIndex = 1);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.shopping_bag_outlined),
+              title: const Text("Orders"),
+              onTap: () {
+                Navigator.pop(context);
+                setState(() => _currentMenuIndex = 2);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.menu_book_outlined),
+              title: const Text("Guidance Hub"),
+              onTap: () {
+                Navigator.pop(context);
+                setState(() => _currentMenuIndex = 3);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.analytics_outlined),
+              title: const Text("Reports"),
+              onTap: () {
+                Navigator.pop(context);
+                setState(() => _currentMenuIndex = 4);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.cloud_outlined),
+              title: const Text("Weather Forecast"),
+              onTap: () {
+                Navigator.pop(context);
+                setState(() => _currentMenuIndex = 5);
+              },
+            ),
+            if (widget.userRole == 'admin')
+              ListTile(
+                leading: const Icon(Icons.admin_panel_settings_outlined, color: Colors.redAccent),
+                title: const Text("Managing Accounts"),
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() => _currentMenuIndex = 6);
+                },
+              ),
+            const Spacer(),
+            ListTile(
+              leading: const Icon(Icons.logout_rounded, color: Colors.redAccent),
+              title: const Text("Logout", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+              onTap: () {
+                Navigator.pop(context);
+                _performLogout();
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -1,66 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import '../../models/product_model.dart';
 
-enum ProductType { palay, rice }
-
-// ==================== SENIOR DATA MODEL LAYER ====================
-class ProductModel {
-  final String? id;
-  final String name;
-  final ProductType type;
-  final String category;
-  final String metricDetail;
-  final double price;
-  final int stock;
-  final int lowStockThreshold;
-  final DateTime createdAt;
-  final String imageUrl;
-
-  ProductModel({
-    this.id,
-    required this.name,
-    required this.type,
-    required this.category,
-    required this.metricDetail,
-    required this.price,
-    required this.stock,
-    this.lowStockThreshold = 50,
-    required this.createdAt,
-    this.imageUrl = "",
-  });
-
-  factory ProductModel.fromFirestore(DocumentSnapshot doc) {
-    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-    return ProductModel(
-      id: doc.id,
-      name: data['name'] ?? '',
-      type: data['type'] == 'rice' ? ProductType.rice : ProductType.palay,
-      category: data['category'] ?? 'General',
-      metricDetail: data['metricDetail'] ?? '',
-      price: (data['price'] ?? 0).toDouble(),
-      stock: data['stock'] ?? 0,
-      lowStockThreshold: data['lowStockThreshold'] ?? 50,
-      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      imageUrl: data['imageUrl'] ?? '',
-    );
-  }
-
-  Map<String, dynamic> toFirestore() {
-    return {
-      'name': name.trim(),
-      'type': type.name, 
-      'category': category.trim(),
-      'metricDetail': metricDetail.trim(),
-      'price': price,
-      'stock': stock,
-      'lowStockThreshold': lowStockThreshold,
-      'createdAt': Timestamp.fromDate(createdAt),
-      'imageUrl': imageUrl,
-    };
-  }
-}
-
-// ==================== MAIN PAGE VIEW LAYER ====================
 class InventoryPage extends StatefulWidget {
   const InventoryPage({super.key});
 
@@ -69,244 +10,201 @@ class InventoryPage extends StatefulWidget {
 }
 
 class _InventoryPageState extends State<InventoryPage> {
-  static const Color _primaryGreen = Color(0xff16A34A); 
-  static const Color _bgSurface = Color(0xffF8FAFC); 
-  static const Color _textPrimary = Color(0xff0F172A); 
-  static const Color _textSecondary = Color(0xff64748B); 
-  static const Color _border = Color(0xffE2E8F0);
-  static const Color _dangerColor = Color(0xffEF4444);
-  static const Color _warningColor = Color(0xffF59E0B);
+  // Soft Modern Color Palette (Aesthetic & Relaxing)
+  static const Color _bgCanvas = Color(0xffF1F5F9);      // Soft Slate Gray
+  static const Color _cardBg = Color(0xffFFFFFF);        // Pure White
+  static const Color _brandGreen = Color(0xff16A34A);    // Emerald
+  static const Color _softGreenBg = Color(0xffDCFCE7);   // Pastel Green Accent
+  static const Color _textDark = Color(0xff0F172A);      // Deep Slate
+  static const Color _textMuted = Color(0xff64748B);     // Cool Gray
+  static const Color _dangerSoft = Color(0xffFEE2E2);    // Pastel Red
+  static const Color _dangerText = Color(0xffDC2626);    // Rich Red
+  static const Color _borderSoft = Color(0xffE2E8F0);    // Light Border
 
-  ProductType _selectedFilter = ProductType.palay;
   String _searchQuery = "";
+  String _selectedCategory = "All";
 
-  // IN-UPDATE NA MGA LISTAHAN NG PALAY AT BIGAS NA TINDA MO
-  final List<String> _palayVarieties = [
-    "C4 Palay",
-    "C18 Palay",
-    "Jasmine Palay",
-    "R10 Palay",
-    "R42 Palay",
-    "R45 Palay",
-    "216 Palay"
+  final List<String> _categories = ["All", "Premium", "Regular", "Local", "Imported"];
+  final List<String> _palayNames = [
+    "C4 Palay", "C18 Palay", "Jasmine Palay", "R10 Palay", "R42 Palay", "216 Palay"
   ];
-
-  final List<String> _riceVarieties = [
-    "C4 Rice",
-    "C18 Rice",
-    "Jasmine Rice",
-    "R10 Rice",
-    "R42 Rice",
-    "R45 Rice",
-    "216 Rice"
-  ];
-  
-  final List<String> _categories = ["Premium", "Regular", "Local", "Imported"];
-  
-  final List<String> _metricSpecs = [
-    "14% Moisture (Dry)", 
-    "Well-Milled", 
-    "Premium Grade", 
-    "Freshly Harvested", 
-    "Double Polished"
-  ];
-  final List<int> _thresholdOptions = [20, 30, 50, 100, 150];
 
   @override
   Widget build(BuildContext context) {
-    double screenWidth = MediaQuery.of(context).size.width;
-    final isDesktop = screenWidth >= 1000;
-    final isMobile = screenWidth < 600;
-
-    int crossAxisCount = screenWidth > 1400 ? 4 : (screenWidth > 900 ? 3 : (screenWidth > 600 ? 2 : 1));
-    double childAspectRatio = isMobile ? 1.6 : (screenWidth > 1200 ? 1.4 : 1.25);
-
     return Scaffold(
-      backgroundColor: _bgSurface,
+      backgroundColor: _bgCanvas,
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _openAddProductModal(context),
-        backgroundColor: _primaryGreen,
+        elevation: 2,
+        backgroundColor: _brandGreen,
+        onPressed: () => _showAddPalaySheet(context),
         icon: const Icon(Icons.add, color: Colors.white),
-        label: Text(
-          isMobile ? "Add Stock" : "Add New Stock", 
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)
-        ),
+        label: const Text("Magdagdag ng Palay", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
       ),
       body: SafeArea(
         child: StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance.collection("products").snapshots(),
           builder: (context, snapshot) {
-            if (snapshot.hasError) return Center(child: Text("Error: ${snapshot.error}"));
+            if (snapshot.hasError) return const Center(child: Text("May problema sa koneksyon."));
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator(color: _primaryGreen));
+              return const Center(child: CircularProgressIndicator(color: _brandGreen));
             }
 
-            final allDocs = snapshot.data?.docs ?? [];
+            final docs = snapshot.data?.docs ?? [];
+            final products = docs.map((doc) => ProductModel.fromFirestore(doc)).toList();
 
-            final filteredDocs = allDocs.where((doc) {
-              final data = doc.data() as Map<String, dynamic>;
-              final String dbType = data['type'] ?? 'palay';
-              final itemType = dbType == 'rice' ? ProductType.rice : ProductType.palay;
-              
-              if (itemType != _selectedFilter) return false;
+            // Dynamic Calculations
+            int totalStock = 0;
+            int lowStockItems = 0;
+            double totalValue = 0;
 
-              final String name = (data['name'] ?? '').toLowerCase();
-              final String metric = (data['metricDetail'] ?? '').toLowerCase();
-              return name.contains(_searchQuery.toLowerCase()) || metric.contains(_searchQuery.toLowerCase());
+            for (var p in products) {
+              totalStock += p.stock;
+              totalValue += (p.stock * p.price);
+              if (p.stock <= p.lowStockThreshold) lowStockItems++;
+            }
+
+            // Smart Filter
+            final filteredList = products.where((p) {
+              final matchesSearch = p.name.toLowerCase().contains(_searchQuery.toLowerCase());
+              final matchesCat = _selectedCategory == "All" || p.category == _selectedCategory;
+              return matchesSearch && matchesCat;
             }).toList();
 
-            int totalSacks = 0;
-            int lowStockCount = 0;
-
-            for (var doc in allDocs) {
-              final data = doc.data() as Map<String, dynamic>;
-              final String dbType = data['type'] ?? 'palay';
-              final itemType = dbType == 'rice' ? ProductType.rice : ProductType.palay;
-
-              if (itemType == _selectedFilter) {
-                int stock = data['stock'] ?? 0;
-                int threshold = data['lowStockThreshold'] ?? 50;
-                totalSacks += stock;
-                if (stock <= threshold) lowStockCount++;
-              }
-            }
-
-            return Padding(
-              padding: EdgeInsets.symmetric(horizontal: isDesktop ? 32 : 16, vertical: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // HEADER SECTION
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "Inventory Dashboard",
-                        style: TextStyle(
-                          color: _textPrimary, 
-                          fontSize: isMobile ? 22 : 26, 
-                          fontWeight: FontWeight.bold, 
-                          letterSpacing: -0.5
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        "Monitor stockpile, process yields, and run operations smoothly.",
-                        style: TextStyle(color: _textSecondary, fontSize: isMobile ? 12 : 13),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  // KPI CARDS ROW
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      if (constraints.maxWidth < 500) {
-                        return Column(
+            return CustomScrollView(
+              slivers: [
+                // Clean Header
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _buildKPICard("Total On-Hand Sacks", totalSacks.toString(), Icons.layers, _primaryGreen),
-                            const SizedBox(height: 10),
-                            _buildKPICard(
-                              "Low Stock Warnings", 
-                              lowStockCount.toString(), 
-                              Icons.gpp_maybe_outlined, 
-                              lowStockCount > 0 ? _dangerColor : _textSecondary
-                            ),
+                            Text("Smart Inventory", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: _textDark)),
+                            SizedBox(height: 2),
+                            Text("Subaybayan at pamahalaan ang iyong stocks", style: TextStyle(fontSize: 12, color: _textMuted)),
                           ],
-                        );
-                      }
-                      return Row(
+                        ),
+                        CircleAvatar(
+                          backgroundColor: Colors.white,
+                          child: Icon(Icons.inventory, color: _brandGreen),
+                        )
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Smart Alert Box (Lalabas lang pag may kailangang i-restock)
+                if (lowStockItems > 0)
+                  SliverToBoxAdapter(
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: _dangerSoft,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
                         children: [
-                          Expanded(child: _buildKPICard("Total On-Hand Sacks", totalSacks.toString(), Icons.layers, _primaryGreen)),
-                          const SizedBox(width: 12),
+                          const Icon(Icons.error_outline, color: _dangerText, size: 20),
+                          const SizedBox(width: 10),
                           Expanded(
-                            child: _buildKPICard(
-                              "Low Stock Warnings", 
-                              lowStockCount.toString(), 
-                              Icons.gpp_maybe_outlined, 
-                              lowStockCount > 0 ? _dangerColor : _textSecondary
-                            )
+                            child: Text(
+                              "Pansin: May $lowStockItems uri ng palay na mababa na ang stock!",
+                              style: const TextStyle(color: _dangerText, fontSize: 12, fontWeight: FontWeight.w600),
+                            ),
                           ),
                         ],
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 16),
-
-                  // CONTROLS BAR (TABS + SEARCH FIELD)
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    alignment: WrapAlignment.spaceBetween,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white, 
-                          borderRadius: BorderRadius.circular(12), 
-                          border: Border.all(color: _border)
-                        ),
-                        padding: const EdgeInsets.all(4),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _buildTabButton("🌾 Palay", ProductType.palay),
-                            _buildTabButton("🍚 Rice", ProductType.rice),
-                          ],
-                        ),
                       ),
-                      
-                      SizedBox(
-                        width: isDesktop ? 300 : (isMobile ? double.infinity : 250),
-                        height: 42,
-                        child: TextField(
+                    ),
+                  ),
+
+                // Clean Summary Cards
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    child: Row(
+                      children: [
+                        _buildSummaryCard("Kabuuan", "$totalStock Sako", Icons.widgets_outlined, _softGreenBg, _brandGreen),
+                        const SizedBox(width: 12),
+                        _buildSummaryCard("Halaga", "₱${(totalValue/1000).toStringAsFixed(1)}k", Icons.payments_outlined, Colors.blue.shade50, Colors.blue.shade700),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Controls Bar (Search + Chips)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      children: [
+                        // Soft Search Field
+                        TextField(
                           onChanged: (val) => setState(() => _searchQuery = val),
                           decoration: InputDecoration(
-                            hintText: "Search stock...",
-                            hintStyle: const TextStyle(color: _textSecondary, fontSize: 13),
-                            prefixIcon: const Icon(Icons.search, size: 18, color: _textSecondary),
+                            hintText: "Maghanap ng palay...",
+                            hintStyle: const TextStyle(fontSize: 13, color: _textMuted),
+                            prefixIcon: const Icon(Icons.search, color: _textMuted, size: 20),
                             filled: true,
-                            fillColor: Colors.white,
+                            fillColor: _cardBg,
                             contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: _border)),
-                            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: _primaryGreen, width: 1.5)),
+                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: _borderSoft)),
+                            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: _brandGreen)),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  // GRID VIEW FOR STOCKS
-                  Expanded(
-                    child: filteredDocs.isEmpty
-                        ? Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.inventory_2_outlined, size: 48, color: _textSecondary.withValues(alpha: 0.4)),
-                                const SizedBox(height: 12),
-                                Text("No stock entries matched your scope.", style: TextStyle(color: _textSecondary, fontSize: 14)),
-                              ],
-                            ),
-                          )
-                        : GridView.builder(
-                            itemCount: filteredDocs.length,
-                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: crossAxisCount,
-                              crossAxisSpacing: 12,
-                              mainAxisSpacing: 12,
-                              childAspectRatio: childAspectRatio, 
-                            ),
-                            itemBuilder: (context, index) {
-                              final doc = filteredDocs[index];
-                              final data = doc.data() as Map<String, dynamic>;
-                              return _buildPremiumStockCard(data, doc.id);
-                            },
+                        const SizedBox(height: 12),
+                        // Soft Filter Chips
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: _categories.map((cat) {
+                              final isSelected = _selectedCategory == cat;
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: ChoiceChip(
+                                  label: Text(cat),
+                                  selected: isSelected,
+                                  selectedColor: _brandGreen,
+                                  backgroundColor: _cardBg,
+                                  side: BorderSide(color: isSelected ? _brandGreen : _borderSoft),
+                                  labelStyle: TextStyle(
+                                    color: isSelected ? Colors.white : _textMuted,
+                                    fontSize: 12,
+                                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                  ),
+                                  onSelected: (_) => setState(() => _selectedCategory = cat),
+                                ),
+                              );
+                            }).toList(),
                           ),
+                        )
+                      ],
+                    ),
                   ),
-                ],
-              ),
+                ),
+
+                // Responsive Cards Grid
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  sliver: filteredList.isEmpty
+                      ? const SliverToBoxAdapter(child: Center(child: Text("Walang nahanap na stock.", style: TextStyle(color: _textMuted))))
+                      : SliverGrid(
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: MediaQuery.of(context).size.width > 700 ? 3 : (MediaQuery.of(context).size.width > 500 ? 2 : 1),
+                            mainAxisSpacing: 12,
+                            crossAxisSpacing: 12,
+                            childAspectRatio: 1.6,
+                          ),
+                          delegate: SliverChildBuilderDelegate(
+                            (context, index) => _buildMinimalCard(filteredList[index]),
+                            childCount: filteredList.length,
+                          ),
+                        ),
+                )
+              ],
             );
           },
         ),
@@ -314,258 +212,153 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
-  // ==================== WIDGET BUILDERS ====================
-  Widget _buildKPICard(String title, String value, IconData icon, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: _border)),
-      child: Row(
-        children: [
-          CircleAvatar(backgroundColor: color.withValues(alpha: 0.1), radius: 20, child: Icon(icon, color: color, size: 20)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(title, style: const TextStyle(color: _textSecondary, fontSize: 11, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 2),
-                Text(value, style: const TextStyle(color: _textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
-              ],
-            ),
-          )
-        ],
-      ),
-    );
-  }
+  // ================= UI HELPER WIDGETS =================
 
-  Widget _buildTabButton(String label, ProductType type) {
-    final isActive = _selectedFilter == type;
-    return GestureDetector(
-      onTap: () => setState(() { _selectedFilter = type; _searchQuery = ""; }),
+  Widget _buildSummaryCard(String title, String val, IconData icon, Color bg, Color iconColor) {
+    return Expanded(
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: isActive ? _bgSurface : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
+          color: _cardBg,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: _borderSoft),
         ),
-        child: Text(
-          label,
-          style: TextStyle(color: isActive ? _primaryGreen : _textPrimary, fontWeight: isActive ? FontWeight.bold : FontWeight.w500, fontSize: 13),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
+              child: Icon(icon, color: iconColor, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(fontSize: 11, color: _textMuted)),
+                Text(val, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _textDark)),
+              ],
+            )
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildPremiumStockCard(Map<String, dynamic> data, String docId) {
-    int currentStock = data['stock'] ?? 0;
-    int threshold = data['lowStockThreshold'] ?? 50;
-    bool isLowStock = currentStock <= threshold;
+  Widget _buildMinimalCard(ProductModel product) {
+    bool isLow = product.stock <= product.lowStockThreshold;
 
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: isLowStock ? _warningColor.withValues(alpha: 0.5) : _border, width: isLowStock ? 1.5 : 1),
+        color: _cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: isLow ? Colors.orange.shade200 : _borderSoft, width: isLow ? 1.5 : 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      data['name'] ?? 'No Name', 
-                      style: const TextStyle(color: _textPrimary, fontSize: 14, fontWeight: FontWeight.bold),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      data['metricDetail'] ?? 'No Details', 
-                      style: const TextStyle(color: _textSecondary, fontSize: 11),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
+              Text(product.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: _textDark)),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: isLowStock ? _dangerColor.withValues(alpha: 0.1) : _primaryGreen.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(6),
+                  color: isLow ? _dangerSoft : _softGreenBg,
+                  borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
-                  isLowStock ? "Low Stock" : "Healthy",
-                  style: TextStyle(color: isLowStock ? _dangerColor : _primaryGreen, fontSize: 10, fontWeight: FontWeight.bold),
+                  isLow ? "Low Stock" : "Sapat",
+                  style: TextStyle(color: isLow ? _dangerText : _brandGreen, fontSize: 10, fontWeight: FontWeight.bold),
                 ),
-              ),
+              )
             ],
           ),
-          const Spacer(),
+          Text("${product.category} • ${product.metricDetail}", style: const TextStyle(color: _textMuted, fontSize: 11)),
+          const Divider(height: 10, color: _borderSoft),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const Text("On Hand:", style: TextStyle(color: _textSecondary, fontSize: 12, fontWeight: FontWeight.w500)),
-              Text(
-                "$currentStock Sacks",
-                style: TextStyle(color: isLowStock ? _warningColor : _textPrimary, fontSize: 18, fontWeight: FontWeight.w900),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("Presyo/kg", style: TextStyle(fontSize: 10, color: _textMuted)),
+                  Text("₱${product.price}", style: const TextStyle(fontWeight: FontWeight.bold, color: _textDark)),
+                ],
               ),
+              InkWell(
+                onTap: () => _showQuickAdjustModal(product),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: _bgCanvas,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Text("${product.stock} Sako", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: _textDark)),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.edit_outlined, size: 14, color: _brandGreen),
+                    ],
+                  ),
+                ),
+              )
             ],
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            height: 34,
-            child: OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: _border),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                foregroundColor: _textPrimary,
-                padding: EdgeInsets.zero,
-              ),
-              onPressed: () => _openStockManagementPanel(data, docId),
-              icon: const Icon(Icons.tune, size: 14),
-              label: const Text("Manage Stock", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-            ),
           )
         ],
       ),
     );
   }
 
-  void _openStockManagementPanel(Map<String, dynamic> data, String docId) {
-    int adjustmentValue = 0;
-    bool isStockIn = true; 
-    final textController = TextEditingController(text: "0");
-    int currentStock = data['stock'] ?? 0;
-
+  // Quick Stock Adjustment Bottom Sheet
+  void _showQuickAdjustModal(ProductModel p) {
+    int current = p.stock;
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
         return StatefulBuilder(
-          builder: (BuildContext context, StateSetter setModalState) {
+          builder: (context, setModalState) {
             return Padding(
-              padding: EdgeInsets.only(top: 20, left: 20, right: 20, bottom: MediaQuery.of(context).viewInsets.bottom + 20),
+              padding: const EdgeInsets.all(24),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text("Stock Adjustment Hub", style: TextStyle(color: _textSecondary, fontSize: 12, fontWeight: FontWeight.w500)),
-                            const SizedBox(height: 2),
-                            Text(data['name'] ?? '', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis),
-                          ],
-                        ),
-                      ),
-                      IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: _textSecondary))
-                    ],
-                  ),
-                  const Divider(height: 24),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ChoiceChip(
-                          avatar: Icon(Icons.add, color: isStockIn ? Colors.white : _primaryGreen, size: 16),
-                          label: const Center(child: Text("STOCK IN")),
-                          selected: isStockIn,
-                          selectedColor: _primaryGreen,
-                          backgroundColor: _bgSurface,
-                          labelStyle: TextStyle(color: isStockIn ? Colors.white : _textPrimary, fontWeight: FontWeight.bold, fontSize: 12),
-                          onSelected: (val) => setModalState(() => isStockIn = true),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ChoiceChip(
-                          avatar: Icon(Icons.remove, color: !isStockIn ? Colors.white : _dangerColor, size: 16),
-                          label: const Center(child: Text("STOCK OUT")),
-                          selected: !isStockIn,
-                          selectedColor: _dangerColor,
-                          backgroundColor: _bgSurface,
-                          labelStyle: TextStyle(color: !isStockIn ? Colors.white : _textPrimary, fontWeight: FontWeight.bold, fontSize: 12),
-                          onSelected: (val) => setModalState(() => isStockIn = false),
-                        ),
-                      ),
-                    ],
-                  ),
+                  Text("I-adjust ang Stock para sa ${p.name}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                   const SizedBox(height: 20),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      IconButton(
+                      IconButton.filledTonal(
                         onPressed: () {
-                          if (adjustmentValue > 0) {
-                            setModalState(() { adjustmentValue--; textController.text = adjustmentValue.toString(); });
-                          }
+                          if (current > 0) setModalState(() => current--);
                         },
-                        icon: const Icon(Icons.remove_circle_outline, size: 32, color: _textSecondary),
+                        icon: const Icon(Icons.remove),
                       ),
-                      Container(
-                        width: 90,
-                        alignment: Alignment.center,
-                        child: TextField(
-                          controller: textController,
-                          keyboardType: TextInputType.number,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: _textPrimary),
-                          onChanged: (val) { adjustmentValue = int.tryParse(val) ?? 0; },
-                          decoration: const InputDecoration(border: InputBorder.none),
-                        ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Text("$current Sako", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                       ),
-                      IconButton(
-                        onPressed: () {
-                          setModalState(() { adjustmentValue++; textController.text = adjustmentValue.toString(); });
-                        },
-                        icon: const Icon(Icons.add_circle_outline, size: 32, color: _primaryGreen),
+                      IconButton.filledTonal(
+                        onPressed: () => setModalState(() => current++),
+                        icon: const Icon(Icons.add),
                       ),
                     ],
                   ),
                   const SizedBox(height: 20),
                   SizedBox(
                     width: double.infinity,
-                    height: 46,
+                    height: 44,
                     child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(backgroundColor: isStockIn ? _primaryGreen : _textPrimary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                      style: ElevatedButton.styleFrom(backgroundColor: _brandGreen, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                       onPressed: () async {
-                        if (adjustmentValue <= 0) return;
-
-                        int finalNewStock = isStockIn ? (currentStock + adjustmentValue) : (currentStock - adjustmentValue);
-
-                        if (!isStockIn && currentStock < adjustmentValue) {
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Insufficient stocks!"), backgroundColor: _dangerColor));
-                          return;
+                        if (p.id != null) {
+                          await FirebaseFirestore.instance.collection("products").doc(p.id).update({'stock': current});
                         }
-
-                        await FirebaseFirestore.instance
-                            .collection("products")
-                            .doc(docId)
-                            .update({'stock': finalNewStock});
-                        
-                        if (context.mounted) {
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text("Inventory Updated successfully!"), backgroundColor: _primaryGreen, behavior: SnackBarBehavior.floating),
-                          );
-                        }
+                        if (context.mounted) Navigator.pop(context);
                       },
-                      child: const Text("Apply Inventory Changes", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      child: const Text("I-save ang Stock", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                     ),
                   )
                 ],
@@ -577,289 +370,79 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
-  // ==================== ALL-DROPDOWN ADD PRODUCT ENGINE ====================
-  void _openAddProductModal(BuildContext context) {
-    final formKey = GlobalKey<FormState>();
-    
+  // Quick Add Sheet
+  void _showAddPalaySheet(BuildContext context) {
+    String name = _palayNames.first;
+    String cat = "Premium";
     final stockController = TextEditingController();
     final priceController = TextEditingController();
-
-    ProductType selectedType = ProductType.palay;
-    
-    String selectedName = _palayVarieties.first; 
-    String selectedCategory = _categories.first; 
-    String selectedMetric = _metricSpecs.first; 
-    int selectedThreshold = _thresholdOptions[2]; // Default: 50
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
-        return StatefulBuilder(
-          builder: (BuildContext context, StateSetter setModalState) {
-            bool isMobileModal = MediaQuery.of(context).size.width < 600;
-
-            return Padding(
-              padding: EdgeInsets.only(
-                top: 20, left: 20, right: 20,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 20
+        return Padding(
+          padding: EdgeInsets.only(top: 20, left: 20, right: 20, bottom: MediaQuery.of(context).viewInsets.bottom + 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text("Dagdag Bagong Palay Batch", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                value: name,
+                decoration: const InputDecoration(labelText: "Uri ng Palay", border: OutlineInputBorder()),
+                items: _palayNames.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                onChanged: (val) => name = val!,
               ),
-              child: Form(
-                key: formKey,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Center(child: Container(width: 36, height: 4, decoration: BoxDecoration(color: const Color(0xffCBD5E1), borderRadius: BorderRadius.circular(2)))),
-                      const SizedBox(height: 12),
-                      const Text(
-                        "Register New Batch / Variety",
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: _textPrimary, letterSpacing: -0.5),
-                      ),
-                      const Text("Select configuration parameters below.", style: TextStyle(color: _textSecondary, fontSize: 12)),
-                      const Divider(height: 24, color: _border),
-
-                      // 1. CLASSIFICATION TOGGLE
-                      const Text("Classification", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xff334155))),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: ChoiceChip(
-                              label: const Center(child: Text("🌾 PALAY")),
-                              selected: selectedType == ProductType.palay,
-                              selectedColor: _primaryGreen,
-                              onSelected: (val) {
-                                setModalState(() {
-                                  selectedType = ProductType.palay;
-                                  selectedName = _palayVarieties.first;
-                                });
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: ChoiceChip(
-                              label: const Center(child: Text("🍚 RICE")),
-                              selected: selectedType == ProductType.rice,
-                              selectedColor: _primaryGreen,
-                              onSelected: (val) {
-                                setModalState(() {
-                                  selectedType = ProductType.rice;
-                                  selectedName = _riceVarieties.first;
-                                });
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-
-                      // 2. PRODUCT NAME DROPDOWN (MGA SPECIFIC PALAY/BIGAS VARIETIES MO)
-                      const Text("Product Variety Name", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xff334155))),
-                      const SizedBox(height: 6),
-                      DropdownButtonFormField<String>(
-                        value: selectedName,
-                        decoration: _inputDecoration(""),
-                        items: (selectedType == ProductType.rice ? _riceVarieties : _palayVarieties).map((String name) {
-                          return DropdownMenuItem(value: name, child: Text(name, style: const TextStyle(fontSize: 13)));
-                        }).toList(),
-                        onChanged: (val) => setModalState(() => selectedName = val ?? selectedName),
-                      ),
-                      const SizedBox(height: 14),
-
-                      // 3. CATEGORY & QUALITY SPECS
-                      if (isMobileModal) ...[
-                        const Text("Category Tag", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xff334155))),
-                        const SizedBox(height: 6),
-                        DropdownButtonFormField<String>(
-                          value: selectedCategory,
-                          decoration: _inputDecoration(""),
-                          items: _categories.map((String cat) {
-                            return DropdownMenuItem(value: cat, child: Text(cat, style: const TextStyle(fontSize: 13)));
-                          }).toList(),
-                          onChanged: (val) => setModalState(() => selectedCategory = val ?? selectedCategory),
-                        ),
-                        const SizedBox(height: 14),
-                        const Text("Quality Metric Spec", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xff334155))),
-                        const SizedBox(height: 6),
-                        DropdownButtonFormField<String>(
-                          value: selectedMetric,
-                          decoration: _inputDecoration(""),
-                          items: _metricSpecs.map((String spec) {
-                            return DropdownMenuItem(value: spec, child: Text(spec, style: const TextStyle(fontSize: 13)));
-                          }).toList(),
-                          onChanged: (val) => setModalState(() => selectedMetric = val ?? selectedMetric),
-                        ),
-                      ] else ...[
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text("Category Tag", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xff334155))),
-                                  const SizedBox(height: 6),
-                                  DropdownButtonFormField<String>(
-                                    value: selectedCategory,
-                                    decoration: _inputDecoration(""),
-                                    items: _categories.map((String cat) {
-                                      return DropdownMenuItem(value: cat, child: Text(cat, style: const TextStyle(fontSize: 13)));
-                                    }).toList(),
-                                    onChanged: (val) => setModalState(() => selectedCategory = val ?? selectedCategory),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text("Quality Metric Spec", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xff334155))),
-                                  const SizedBox(height: 6),
-                                  DropdownButtonFormField<String>(
-                                    value: selectedMetric,
-                                    decoration: _inputDecoration(""),
-                                    items: _metricSpecs.map((String spec) {
-                                      return DropdownMenuItem(value: spec, child: Text(spec, style: const TextStyle(fontSize: 13)));
-                                    }).toList(),
-                                    onChanged: (val) => setModalState(() => selectedMetric = val ?? selectedMetric),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                      const SizedBox(height: 14),
-
-                      // 4. INITIAL STOCKS & PRICE
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text("Initial Stock (Sacks)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xff334155))),
-                                const SizedBox(height: 6),
-                                TextFormField(
-                                  controller: stockController,
-                                  keyboardType: TextInputType.number,
-                                  style: const TextStyle(fontSize: 13, color: _textPrimary),
-                                  decoration: _inputDecoration("0"),
-                                  validator: (val) => int.tryParse(val ?? '') == null ? "Required integer" : null,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text("Price / Kilo (₱)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xff334155))),
-                                const SizedBox(height: 6),
-                                TextFormField(
-                                  controller: priceController,
-                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                  style: const TextStyle(fontSize: 13, color: _textPrimary),
-                                  decoration: _inputDecoration("0.00"),
-                                  validator: (val) => double.tryParse(val ?? '') == null ? "Required price" : null,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
-
-                      // 5. LOW STOCK ALERT DROPDOWN
-                      const Text("Low Stock Warning Level", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xff334155))),
-                      const SizedBox(height: 6),
-                      DropdownButtonFormField<int>(
-                        value: selectedThreshold,
-                        decoration: _inputDecoration(""),
-                        items: _thresholdOptions.map((int value) {
-                          return DropdownMenuItem(value: value, child: Text("$value Sacks Limit", style: const TextStyle(fontSize: 13)));
-                        }).toList(),
-                        onChanged: (val) => setModalState(() => selectedThreshold = val ?? selectedThreshold),
-                      ),
-                      const SizedBox(height: 24),
-
-                      // SUBMIT BUTTON
-                      SizedBox(
-                        width: double.infinity,
-                        height: 48,
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _textPrimary, 
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), 
-                            elevation: 0
-                          ),
-                          onPressed: () async {
-                            if (formKey.currentState!.validate()) {
-                              final newProduct = ProductModel(
-                                name: selectedName,
-                                type: selectedType,
-                                category: selectedCategory,
-                                metricDetail: selectedMetric,
-                                price: double.parse(priceController.text),
-                                stock: int.parse(stockController.text),
-                                lowStockThreshold: selectedThreshold,
-                                createdAt: DateTime.now(),
-                              );
-
-                              try {
-                                await FirebaseFirestore.instance
-                                    .collection("products")
-                                    .add(newProduct.toFirestore());
-
-                                if (context.mounted) {
-                                  Navigator.pop(context);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text("Stock Item Added Successfully!"), 
-                                      backgroundColor: _primaryGreen, 
-                                      behavior: SnackBarBehavior.floating
-                                    ),
-                                  );
-                                }
-                              } catch (e) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text("Database Error: $e"), backgroundColor: _dangerColor),
-                                );
-                              }
-                            }
-                          },
-                          child: const Text("Deploy Variety to Pipeline", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                        ),
-                      ),
-                    ],
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: stockController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: "Ilang Sako", border: OutlineInputBorder()),
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextField(
+                      controller: priceController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: "Presyo/Kilo", border: OutlineInputBorder()),
+                    ),
+                  ),
+                ],
               ),
-            );
-          },
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                height: 44,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: _brandGreen),
+                  onPressed: () async {
+                    if (stockController.text.isNotEmpty && priceController.text.isNotEmpty) {
+                      final newProduct = ProductModel(
+                        name: name,
+                        category: cat,
+                        metricDetail: "Fresh Dry",
+                        price: double.parse(priceController.text),
+                        stock: int.parse(stockController.text),
+                        createdAt: DateTime.now(),
+                      );
+                      await FirebaseFirestore.instance.collection("products").add(newProduct.toFirestore());
+                      if (context.mounted) Navigator.pop(context);
+                    }
+                  },
+                  child: const Text("I-Save sa Inventory", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              )
+            ],
+          ),
         );
       },
-    );
-  }
-
-  InputDecoration _inputDecoration(String hint) {
-    return InputDecoration(
-      hintText: hint,
-      hintStyle: const TextStyle(color: Color(0xff94A3B8), fontSize: 12),
-      filled: true,
-      fillColor: Colors.white,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _border)),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _primaryGreen, width: 1.5)),
-      errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _dangerColor, width: 1)),
-      focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _dangerColor, width: 1.5)),
     );
   }
 }
