@@ -19,12 +19,10 @@ class OrderItem {
 
   factory OrderItem.fromMap(Map<String, dynamic> map) {
     return OrderItem(
-      productId: map['productId'] ?? '',
-      // Binabasa ang 'name' mula sa Customer App o 'productName' mula sa Admin
-      productName: map['name'] ?? map['productName'] ?? 'Unknown Item',
-      quantity: map['quantity'] ?? 1,
-      // Binabasa ang 'price' mula sa Customer App o 'pricePerUnit' mula sa Admin
-      pricePerUnit: ((map['price'] ?? map['pricePerUnit']) ?? 0).toDouble(),
+      productId: map['productId'] ?? map['id'] ?? '',
+      productName: map['name'] ?? map['productName'] ?? map['title'] ?? 'Unknown Item',
+      quantity: int.tryParse(map['quantity']?.toString() ?? '1') ?? 1,
+      pricePerUnit: double.tryParse(map['price']?.toString() ?? map['pricePerUnit']?.toString() ?? '0') ?? 0.0,
     );
   }
 
@@ -76,7 +74,7 @@ class OrderModel {
     
     List<OrderItem> parsedItems = [];
 
-    // Check kung Map o List ang laman ng items
+    // Flexible Parsing ng Items
     if (data['items'] is Map) {
       Map<String, dynamic> itemsMap = data['items'] as Map<String, dynamic>;
       itemsMap.forEach((key, value) {
@@ -92,39 +90,45 @@ class OrderModel {
       parsedItems = list.map((i) => OrderItem.fromMap(i as Map<String, dynamic>)).toList();
     }
 
-    // ROBUST STATUS PARSER (Compatible sa Customer App status names)
+    // Advanced Status Matcher
     OrderStatus parsedStatus = OrderStatus.toPay;
-    String rawStatus = (data['orderStatus'] ?? data['status'] ?? 'Pending').toString().toLowerCase();
+    String rawStatus = (data['orderStatus'] ?? data['status'] ?? 'Pending').toString().toLowerCase().trim();
 
-    if (rawStatus == 'pending' || rawStatus == 'topay' || rawStatus == 'unpaid') {
+    if (rawStatus == 'pending' || rawStatus == 'topay' || rawStatus == 'to pay' || rawStatus == 'unpaid') {
       parsedStatus = OrderStatus.toPay;
-    } else if (rawStatus == 'toship' || rawStatus == 'paid' || rawStatus == 'processing') {
+    } else if (rawStatus == 'toship' || rawStatus == 'to ship' || rawStatus == 'paid' || rawStatus == 'processing') {
       parsedStatus = OrderStatus.toShip;
-    } else if (rawStatus == 'toreceive' || rawStatus == 'shipping' || rawStatus == 'shipped' || rawStatus == 'delivered') {
+    } else if (rawStatus == 'toreceive' || rawStatus == 'to receive' || rawStatus == 'shipping' || rawStatus == 'shipped' || rawStatus == 'delivered') {
       parsedStatus = OrderStatus.toReceive;
-    } else if (rawStatus == 'completed') {
+    } else if (rawStatus == 'completed' || rawStatus == 'done') {
       parsedStatus = OrderStatus.completed;
-    } else if (rawStatus == 'cancelled') {
+    } else if (rawStatus == 'cancelled' || rawStatus == 'canceled') {
       parsedStatus = OrderStatus.cancelled;
     }
 
-    // Safe Timestamp Fallback ('createdAt' o 'orderDate')
-    Timestamp? rawTimestamp = data['createdAt'] ?? data['orderDate'];
+    // Auto Computation ng Total Amount kung 0 o null sa Firestore
+    double calculatedTotal = double.tryParse(data['totalAmount']?.toString() ?? data['totalPrice']?.toString() ?? data['total']?.toString() ?? '0') ?? 0.0;
+    if (calculatedTotal == 0.0 && parsedItems.isNotEmpty) {
+      for (var item in parsedItems) {
+        calculatedTotal += (item.pricePerUnit * item.quantity);
+      }
+    }
+
+    Timestamp? rawTimestamp = data['createdAt'] ?? data['orderDate'] ?? data['date'];
 
     return OrderModel(
       id: doc.id,
       userId: data['userId'] ?? '',
-      customerName: data['customerName'] ?? data['userName'] ?? 'Anonymous Buyer',
+      customerName: data['customerName'] ?? data['userName'] ?? data['name'] ?? 'Anonymous Buyer',
       deliveryAddress: data['deliveryAddress'] ?? data['address'] ?? 'No Address Provided',
       items: parsedItems,
       status: parsedStatus,
-      totalAmount: (data['totalAmount'] ?? 0).toDouble(),
+      totalAmount: calculatedTotal,
       orderDate: rawTimestamp?.toDate() ?? DateTime.now(),
     );
   }
 }
 
-// ==================== MAIN ORDERS DASHBOARD INTERFACE ====================
 class OrdersPage extends StatefulWidget {
   const OrdersPage({super.key});
 
@@ -161,7 +165,6 @@ class _OrdersPageState extends State<OrdersPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // HEADER CONTEXT
               const Text(
                 "Order Fulfillment Center",
                 style: TextStyle(color: _textPrimary, fontSize: 26, fontWeight: FontWeight.bold, letterSpacing: -0.5),
@@ -189,9 +192,7 @@ class _OrdersPageState extends State<OrdersPage> {
               // REAL-TIME ORDERS STREAM MONITOR
               Expanded(
                 child: StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection("orders")
-                      .snapshots(), // Tinanggal ang .orderBy para maipakita lahat nang walang index issue
+                  stream: FirebaseFirestore.instance.collection("orders").snapshots(),
                   builder: (context, snapshot) {
                     if (snapshot.hasError) return Center(child: Text("Error: ${snapshot.error}"));
                     if (snapshot.connectionState == ConnectionState.waiting) {
@@ -201,10 +202,8 @@ class _OrdersPageState extends State<OrdersPage> {
                     final docs = snapshot.data?.docs ?? [];
                     List<OrderModel> orders = docs.map((d) => OrderModel.fromFirestore(d)).toList();
 
-                    // Dart-level Sorting para sa pinakabagong order muna
                     orders.sort((a, b) => b.orderDate.compareTo(a.orderDate));
 
-                    // Apply active status filters dynamically locally
                     if (_selectedStatusFilter != null) {
                       orders = orders.where((o) => o.status == _selectedStatusFilter).toList();
                     }
@@ -239,7 +238,6 @@ class _OrdersPageState extends State<OrdersPage> {
     );
   }
 
-  // ==================== CORE COMPONENT LAYER ====================
   Widget _buildFilterChip(String label, OrderStatus? status) {
     final isSelected = _selectedStatusFilter == status;
     return Padding(
@@ -273,7 +271,6 @@ class _OrdersPageState extends State<OrdersPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // TOP SEGMENT: ORDER ID & STATUS BADGE
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -286,16 +283,11 @@ class _OrdersPageState extends State<OrdersPage> {
             ],
           ),
           const SizedBox(height: 12),
-
-          // CUSTOMER METADATA
           Text("Client: ${order.customerName}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: _textPrimary)),
           Text("Route: ${order.deliveryAddress}", style: const TextStyle(fontSize: 12, color: _textSecondary)),
           const Divider(height: 24, color: _border),
-
-          // INTERNAL DYNAMIC ORDERLIST GENERATOR
           const Text("MANIFEST / ITEMS:", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _textSecondary, letterSpacing: 0.5)),
           const SizedBox(height: 6),
-          
           ...order.items.map((item) {
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
@@ -315,8 +307,6 @@ class _OrdersPageState extends State<OrdersPage> {
             );
           }),
           const Divider(height: 24, color: _border),
-
-          // FOOTER CONTROL LAYER
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -345,7 +335,6 @@ class _OrdersPageState extends State<OrdersPage> {
     );
   }
 
-  // ==================== CONTROL SHEET ENGINE (STATUS MANAGER) ====================
   void _openPipelineManager(BuildContext parentContext, OrderModel order) {
     OrderStatus temporaryStatus = order.status;
 
@@ -365,7 +354,6 @@ class _OrdersPageState extends State<OrdersPage> {
                   const Text("Modify Dispatch Stage", style: TextStyle(color: _textSecondary, fontSize: 12, fontWeight: FontWeight.w500)),
                   Text("Order #${order.id.toUpperCase()}", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _textPrimary)),
                   const Divider(height: 24),
-                  
                   const Text("Pipeline Status", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: _textPrimary)),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<OrderStatus>(
@@ -377,24 +365,19 @@ class _OrdersPageState extends State<OrdersPage> {
                       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: _border)),
                     ),
                     items: OrderStatus.values.map((status) {
-                      return DropdownMenuItem(
-                        value: status, 
-                        child: Text(_getStatusLabel(status))
-                      );
+                      return DropdownMenuItem(value: status, child: Text(_getStatusLabel(status)));
                     }).toList(),
                     onChanged: (val) => setModalState(() => temporaryStatus = val ?? temporaryStatus),
                   ),
                   const SizedBox(height: 24),
-                  
                   SizedBox(
                     width: double.infinity,
                     height: 48,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(backgroundColor: _primaryBlue, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                       onPressed: () async {
-                        // Sinasave rin ang status name na readable sa parehong Customer at Admin
                         String statusString = "Pending";
-                        if (temporaryStatus == OrderStatus.toShip) statusString = "Pending"; // o "Paid"
+                        if (temporaryStatus == OrderStatus.toShip) statusString = "To Ship";
                         if (temporaryStatus == OrderStatus.toReceive) statusString = "Shipping";
                         if (temporaryStatus == OrderStatus.completed) statusString = "Completed";
                         if (temporaryStatus == OrderStatus.cancelled) statusString = "Cancelled";
@@ -405,7 +388,7 @@ class _OrdersPageState extends State<OrdersPage> {
                             .update({
                               'status': statusString,
                               'orderStatus': statusString,
-                              if (temporaryStatus == OrderStatus.toShip) 'prepareToShip': true,
+                              'isPaid': temporaryStatus == OrderStatus.completed,
                             });
 
                         if (!context.mounted) return;
@@ -414,7 +397,7 @@ class _OrdersPageState extends State<OrdersPage> {
                         if (!parentContext.mounted) return;
                         ScaffoldMessenger.of(parentContext).showSnackBar(
                           const SnackBar(
-                            content: Text("🚀 Order workflow state modified!"), 
+                            content: Text("🚀 Order status updated!"), 
                             backgroundColor: Colors.green, 
                             behavior: SnackBarBehavior.floating
                           ),

@@ -37,7 +37,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   static const int _adminTimeoutSeconds = 15 * 60;
 
-  // Senior Developer Palette
+  // Modern Enterprise Palette
   static const Color _bg = Color(0xffF8FAFC);
   static const Color _cardBg = Color(0xffFFFFFF);
   static const Color _primary = Color(0xff059669);
@@ -52,7 +52,6 @@ class _DashboardPageState extends State<DashboardPage> {
   StreamSubscription? _ordersSub;
   StreamSubscription? _weatherSub;
 
-  // Weather Repository Instance & Future
   late final WeatherRepository _weatherRepository;
   late Future<WeatherEntity> _weatherFuture;
 
@@ -63,7 +62,6 @@ class _DashboardPageState extends State<DashboardPage> {
   void initState() {
     super.initState();
     
-    // Initialize Weather Service
     final apiService = WeatherApiService(http.Client());
     _weatherRepository = WeatherRepositoryImpl(apiService: apiService);
     _fetchLiveWeather();
@@ -114,21 +112,28 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   void _initRealtimeListeners() {
-    _inventorySub = FirebaseFirestore.instance.collection('inventory').snapshots().listen((snap) {
+    // 1. INVENTORY LISTENER (products collection)
+    _inventorySub = FirebaseFirestore.instance.collection('products').snapshots().listen((snap) {
       for (var change in snap.docChanges) {
         if (change.type == DocumentChangeType.modified || change.type == DocumentChangeType.added) {
           final data = change.doc.data();
-          if (data != null && (data['stock'] ?? 0) <= 10) {
-            _sendSystemNotification(
-              title: "⚠️ Low Stock Alert",
-              body: "Mababa na ang stock ng '${data['name'] ?? 'Rice'}'.",
-              channelId: NotificationService.channelAlerts,
-            );
+          if (data != null) {
+            final stockVal = int.tryParse(data['stock']?.toString() ?? '0') ?? 0;
+            final lowThreshold = int.tryParse(data['lowStockThreshold']?.toString() ?? '10') ?? 10;
+            
+            if (stockVal <= lowThreshold) {
+              _sendSystemNotification(
+                title: "⚠️ Low Stock Alert",
+                body: "Mababa na ang stock ng '${data['name'] ?? data['productName'] ?? 'Rice'}'.",
+                channelId: NotificationService.channelAlerts,
+              );
+            }
           }
         }
       }
     });
 
+    // 2. ORDERS LISTENER
     _ordersSub = FirebaseFirestore.instance.collection('orders').snapshots().listen((snap) {
       for (var change in snap.docChanges) {
         if (change.type == DocumentChangeType.added) {
@@ -136,13 +141,14 @@ class _DashboardPageState extends State<DashboardPage> {
           if (data == null) continue;
           _sendSystemNotification(
             title: "🛍️ Bagong Order",
-            body: "Order mula kay ${data['clientName'] ?? 'Customer'}.",
+            body: "Order mula kay ${data['customerName'] ?? data['clientName'] ?? 'Customer'}.",
             channelId: NotificationService.channelOrders,
           );
         }
       }
     });
 
+    // 3. WEATHER ALERTS LISTENER
     _weatherSub = FirebaseFirestore.instance.collection('weather_alerts').snapshots().listen((snap) {
       for (var change in snap.docChanges) {
         final data = change.doc.data();
@@ -310,12 +316,16 @@ class _DashboardPageState extends State<DashboardPage> {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final isDesktop = constraints.maxWidth >= 900;
+          final isTablet = constraints.maxWidth >= 600 && constraints.maxWidth < 900;
           
+          final menuList = _navigationMenu;
+          final safeIndex = _currentMenuIndex < menuList.length ? _currentMenuIndex : 0;
+
           final Widget activeBody = AnimatedSwitcher(
             duration: const Duration(milliseconds: 200),
-            child: _currentMenuIndex == 0
-                ? _buildDashboardHome(isDesktop)
-                : (_navigationMenu[_currentMenuIndex].page ?? _buildDashboardHome(isDesktop)),
+            child: safeIndex == 0
+                ? _buildDashboardHome(isDesktop, isTablet)
+                : (menuList[safeIndex].page ?? _buildDashboardHome(isDesktop, isTablet)),
           );
 
           return Scaffold(
@@ -340,25 +350,32 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _buildHeader(bool isDesktop) {
     return Container(
       height: 60,
-      padding: EdgeInsets.symmetric(horizontal: isDesktop ? 24 : 16),
+      padding: EdgeInsets.symmetric(horizontal: isDesktop ? 24 : 12),
       decoration: const BoxDecoration(
         color: _cardBg,
         border: Border(bottom: BorderSide(color: _border)),
       ),
       child: Row(
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(color: _primary.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                child: const Icon(Icons.eco_rounded, color: _primary, size: 20),
-              ),
-              const SizedBox(width: 8),
-              const Text("ArrozSistema", style: TextStyle(color: _textMain, fontSize: 16, fontWeight: FontWeight.bold)),
-            ],
+          Expanded(
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(color: _primary.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                  child: const Icon(Icons.eco_rounded, color: _primary, size: 20),
+                ),
+                const SizedBox(width: 8),
+                const Flexible(
+                  child: Text(
+                    "ArrozSistema",
+                    style: TextStyle(color: _textMain, fontSize: 16, fontWeight: FontWeight.bold),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
           ),
-          const Spacer(),
           IconButton(
             icon: const Icon(Icons.chat_bubble_outline_rounded, color: _textSub, size: 20),
             onPressed: _openChatModal,
@@ -401,72 +418,310 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildDashboardHome(bool isDesktop) {
+  Widget _buildDashboardHome(bool isDesktop, bool isTablet) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(isDesktop ? 24 : 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("Control Hub Overview 👋", style: TextStyle(color: _textMain, fontSize: 20, fontWeight: FontWeight.bold)),
-          const Text("Real-time monitoring & operations", style: TextStyle(color: _textSub, fontSize: 12)),
-          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("Admin Command Center 👋", style: TextStyle(color: _textMain, fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text("Live metrics & operational status", style: TextStyle(color: _textSub, fontSize: 11)),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: _primary.withOpacity(0.3)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.circle, color: _primary, size: 8),
+                    SizedBox(width: 4),
+                    Text("LIVE", style: TextStyle(color: _primary, fontSize: 10, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              )
+            ],
+          ),
+          const SizedBox(height: 14),
           
           _buildGoogleStyleWeatherCard(),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
 
-          StreamBuilder<DocumentSnapshot>(
-            stream: FirebaseFirestore.instance.collection('market').doc('rates').snapshots(),
+          // LIVE FARM MARKET RATE CARD (REALTIME ACCURATE DATA)
+          StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance.collection('products').snapshots(),
             builder: (context, snapshot) {
-              final rate = snapshot.hasData && snapshot.data!.exists
-                  ? snapshot.data!.get('currentRate') ?? '32.08'
-                  : '32.08';
+              String rateDisplay = "₱0.00 / kg";
+              String productName = "No Product Registered";
+
+              if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+                final docData = snapshot.data!.docs.first.data() as Map<String, dynamic>;
+                final price = docData['price']?.toString() ?? '0';
+                productName = docData['name'] ?? docData['productName'] ?? 'Palay';
+                rateDisplay = "₱$price.00 / kg";
+              }
+
               return Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   color: _cardBg,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: _border),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 6, offset: const Offset(0, 2)),
+                  ],
                 ),
                 child: Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
                         color: _primary.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(Icons.trending_up_rounded, color: _primary, size: 24),
+                      child: const Icon(Icons.trending_up_rounded, color: _primary, size: 22),
                     ),
-                    const SizedBox(width: 16),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text("LIVE FARM MARKET RATE", style: TextStyle(color: _textSub, fontSize: 10, fontWeight: FontWeight.bold)),
-                        Text("₱$rate / kg", style: const TextStyle(color: _textMain, fontSize: 18, fontWeight: FontWeight.bold)),
-                        const Text("Updated live from market hubs", style: TextStyle(color: _textSub, fontSize: 11)),
-                      ],
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.amber.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text("MARKET RATE", style: TextStyle(color: Colors.amber, fontSize: 9, fontWeight: FontWeight.bold)),
+                              ),
+                              const SizedBox(width: 6),
+                              Text("• $productName", style: const TextStyle(color: _textSub, fontSize: 10, fontWeight: FontWeight.w500)),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Text(rateDisplay, style: const TextStyle(color: _textMain, fontSize: 18, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
                     ),
                   ],
                 ),
               );
             },
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 18),
 
-          const Text("System Operations", style: TextStyle(color: _textMain, fontSize: 15, fontWeight: FontWeight.bold)),
+          const Text("Operations & Metrics Overview", style: TextStyle(color: _textMain, fontSize: 15, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
-          GridView.count(
+          
+          // RESPONSIVE INTERACTIVE KPI GRID
+          GridView(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: isDesktop ? 4 : 2,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: 1.5,
+            gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: isDesktop ? 280 : (isTablet ? 250 : 180),
+              mainAxisExtent: 125,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+            ),
             children: [
-              _buildNavTile(Icons.inventory_2_outlined, "Inventory", "Stock & Supplies", 1),
-              _buildNavTile(Icons.shopping_bag_outlined, "Orders", "Track Orders", 2),
-              _buildNavTile(Icons.menu_book_outlined, "Guidance Hub", "Docs & Standards", 3),
-              _buildNavTile(Icons.cloud_outlined, "Weather", "Live Forecast", 5),
+              // 1. INVENTORY MODULE KPI
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance.collection('products').snapshots(),
+                builder: (context, snapshot) {
+                  int totalStock = 0;
+                  bool hasLowStock = false;
+
+                  if (snapshot.hasData) {
+                    for (var doc in snapshot.data!.docs) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final stockVal = int.tryParse(data['stock']?.toString() ?? '0') ?? 0;
+                      final lowThreshold = int.tryParse(data['lowStockThreshold']?.toString() ?? '10') ?? 10;
+                      
+                      totalStock += stockVal;
+                      if (stockVal <= lowThreshold) hasLowStock = true;
+                    }
+                  }
+
+                  return _buildInteractiveKpiCard(
+                    categoryLabel: "INVENTORY",
+                    title: "Total Rice Stocks",
+                    value: "$totalStock Sacks",
+                    subtitle: hasLowStock ? "Low Stock Alert!" : "Optimal Supply Level",
+                    icon: Icons.inventory_2_rounded,
+                    color: Colors.blue,
+                    hasAlert: hasLowStock,
+                    alertText: "LOW",
+                    onTap: () => setState(() => _currentMenuIndex = 1),
+                  );
+                },
+              ),
+
+              // 2. ORDERS MODULE KPI (MGA UNPAID / TO PAY ORDERS LAMANG)
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance.collection('orders').snapshots(),
+                builder: (context, snapshot) {
+                  int toPayCount = 0;
+
+                  if (snapshot.hasData) {
+                    for (var doc in snapshot.data!.docs) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final status = (data['status'] ?? '').toString().toLowerCase();
+                      final isPaid = data['isPaid'] ?? true;
+
+                      // KUKUNIN LANG ANG MGA HINDI PA PAID (isPaid == false O status na 'to pay' / 'pending')
+                      if (isPaid == false || status == 'to pay' || status == 'pending' || status == 'unpaid') {
+                        toPayCount++;
+                      }
+                    }
+                  }
+
+                  return _buildInteractiveKpiCard(
+                    categoryLabel: "ORDERS",
+                    title: "New Orders (To Pay)",
+                    value: "$toPayCount Orders",
+                    subtitle: toPayCount > 0 ? "Awaiting Payment" : "No Pending Orders",
+                    icon: Icons.shopping_bag_rounded,
+                    color: Colors.orange,
+                    hasAlert: toPayCount > 0,
+                    alertText: "$toPayCount TO PAY",
+                    onTap: () => setState(() => _currentMenuIndex = 2),
+                  );
+                },
+              ),
+
+              // 3. GUIDANCE MODULE KPI (100% REALTIME DYNAMICAL DATA)
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance.collection('crop_tracker').limit(1).snapshots(),
+                builder: (context, snapshot) {
+                  String cropAgeText = "No Active Crop";
+                  String conditionText = "Optimal Condition";
+                  bool hasWarning = false;
+
+                  if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+                    final data = snapshot.data!.docs.first.data() as Map<String, dynamic>?;
+                    final days = int.tryParse(data?['plantingDays']?.toString() ?? '0') ?? 0;
+                    
+                    if (days > 0) {
+                      if (days <= 15) {
+                        cropAgeText = "Vegetative (Day $days)";
+                        conditionText = "Optimal Condition";
+                      } else if (days <= 60) {
+                        cropAgeText = "Reproductive (Day $days)";
+                        conditionText = "Watch Water Level";
+                      } else {
+                        cropAgeText = "Ripening (Day $days)";
+                        conditionText = "Ready for Harvest";
+                      }
+                    }
+
+                    if (data?['warning'] != null && data!['warning'].toString().isNotEmpty) {
+                      conditionText = data['warning'];
+                      hasWarning = true;
+                    }
+                  }
+
+                  return _buildInteractiveKpiCard(
+                    categoryLabel: "GUIDANCE",
+                    title: "Crop Health Status",
+                    value: cropAgeText,
+                    subtitle: conditionText,
+                    icon: Icons.eco_rounded,
+                    color: Colors.teal,
+                    hasAlert: hasWarning,
+                    alertText: "ALERT",
+                    onTap: () => setState(() => _currentMenuIndex = 3),
+                  );
+                },
+              ),
+
+              // 4. REPORTS MODULE KPI (MGA COMPLETED / PAID ORDERS LAMANG - ACCURATE)
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance.collection('orders').snapshots(),
+                builder: (context, snapshot) {
+                  double totalCompletedRevenue = 0.0;
+
+                  if (snapshot.hasData) {
+                    for (var doc in snapshot.data!.docs) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final isPaid = data['isPaid'] ?? false;
+                      final status = (data['status'] ?? '').toString().toLowerCase();
+
+                      // BABASAHIN LANG ANG REVENUE KUNG NAKUMPLETO O NABAYARAN NA ANG ORDER (isPaid == true)
+                      if (isPaid == true || status == 'completed' || status == 'paid' || status == 'delivered') {
+                        double orderTotal = double.tryParse(data['totalAmount']?.toString() ?? data['totalPrice']?.toString() ?? '0') ?? 0.0;
+                        
+                        // Kung walang direct total sum sa top field, kwentahin mula sa items list
+                        if (orderTotal == 0.0 && data['items'] != null && data['items'] is List) {
+                          final items = data['items'] as List<dynamic>;
+                          for (var item in items) {
+                            final price = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
+                            final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+                            orderTotal += (price * qty);
+                          }
+                        }
+
+                        totalCompletedRevenue += orderTotal;
+                      }
+                    }
+                  }
+
+                  return _buildInteractiveKpiCard(
+                    categoryLabel: "REPORTS",
+                    title: "Completed Revenue",
+                    value: "₱${totalCompletedRevenue.toStringAsFixed(2)}",
+                    subtitle: "100% Realtime Sales",
+                    icon: Icons.analytics_rounded,
+                    color: Colors.green,
+                    hasAlert: false,
+                    alertText: "",
+                    onTap: () => setState(() => _currentMenuIndex = 4),
+                  );
+                },
+              ),
+
+              // 5. USER MANAGEMENT MODULE KPI
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance.collection('users').snapshots(),
+                builder: (context, snapshot) {
+                  int totalUsers = 0;
+                  bool hasNewUser = false;
+
+                  if (snapshot.hasData) {
+                    totalUsers = snapshot.data!.docs.length;
+                    for (var doc in snapshot.data!.docs) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      if (data['isNew'] == true) hasNewUser = true;
+                    }
+                  }
+
+                  return _buildInteractiveKpiCard(
+                    categoryLabel: "USERS",
+                    title: "Registered Users",
+                    value: "$totalUsers Accounts",
+                    subtitle: "Active System Users",
+                    icon: Icons.people_alt_rounded,
+                    color: Colors.indigo,
+                    hasAlert: hasNewUser,
+                    alertText: "NEW",
+                    onTap: () {
+                      if (widget.userRole == 'admin') {
+                        setState(() => _currentMenuIndex = 6);
+                      }
+                    },
+                  );
+                },
+              ),
             ],
           ),
         ],
@@ -474,41 +729,132 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // Synchronized Dynamic Weather Card - 100% Accurate API Fetch
+  Widget _buildInteractiveKpiCard({
+    required String categoryLabel,
+    required String title,
+    required String value,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+    required bool hasAlert,
+    required String alertText,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Stack(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: _cardBg,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: hasAlert ? Colors.redAccent.withOpacity(0.5) : _border),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.02),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(5),
+                          decoration: BoxDecoration(
+                            color: color.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Icon(icon, size: 16, color: color),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          categoryLabel,
+                          style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                        ),
+                      ],
+                    ),
+                    const Icon(Icons.arrow_forward_ios_rounded, size: 10, color: _textSub),
+                  ],
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      value,
+                      style: const TextStyle(color: _textMain, fontSize: 15, fontWeight: FontWeight.bold),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(color: hasAlert ? Colors.redAccent : _textSub, fontSize: 10, fontWeight: FontWeight.w500),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          if (hasAlert)
+            Positioned(
+              top: 8,
+              right: 24,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.redAccent,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  alertText,
+                  style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildGoogleStyleWeatherCard() {
     return FutureBuilder<WeatherEntity>(
       future: _weatherFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return Container(
-            height: 140,
+            height: 120,
             decoration: BoxDecoration(
               color: const Color(0xff047857),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(14),
             ),
-            child: const Center(
-              child: CircularProgressIndicator(color: Colors.white),
-            ),
+            child: const Center(child: CircularProgressIndicator(color: Colors.white)),
           );
         }
 
         if (snapshot.hasError || !snapshot.hasData) {
           return Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: const Color(0xff047857),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(14),
             ),
             child: Row(
               children: [
                 const Icon(Icons.cloud_off_rounded, color: Colors.white),
-                const SizedBox(width: 12),
-                const Text("Hindi maikonekta sa Weather API", style: TextStyle(color: Colors.white)),
-                const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.refresh, color: Colors.white),
-                  onPressed: _fetchLiveWeather,
-                ),
+                const SizedBox(width: 10),
+                const Expanded(child: Text("Offline / Weather Unavailable", style: TextStyle(color: Colors.white, fontSize: 12))),
+                IconButton(icon: const Icon(Icons.refresh, color: Colors.white, size: 18), onPressed: _fetchLiveWeather),
               ],
             ),
           );
@@ -518,122 +864,64 @@ class _DashboardPageState extends State<DashboardPage> {
 
         return InkWell(
           onTap: () => setState(() => _currentMenuIndex = 5),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(14),
           child: Container(
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
                 colors: [Color(0xff065F46), Color(0xff047857)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(14),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xff059669).withOpacity(0.25),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
+                  color: const Color(0xff059669).withOpacity(0.2),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
                 ),
               ],
             ),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Icon(Icons.location_on_rounded, color: Colors.white70, size: 18),
-                    const SizedBox(width: 6),
-                    const Text(
-                      "Capalangan, Pampanga",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.3,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Text(
-                        "Live Weather",
-                        style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    const Spacer(),
-                    PopupMenuButton<String>(
-                      icon: const Icon(Icons.more_vert, color: Colors.white70, size: 20),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                      onSelected: (value) {
-                        if (value == 'details') {
-                          setState(() => _currentMenuIndex = 5);
-                        } else if (value == 'refresh') {
-                          _fetchLiveWeather();
-                        }
-                      },
-                      itemBuilder: (BuildContext context) => [
-                        const PopupMenuItem(value: 'details', child: Text('View Full Forecast')),
-                        const PopupMenuItem(value: 'refresh', child: Text('Refresh Data')),
+                    const Row(
+                      children: [
+                        Icon(Icons.location_on_rounded, color: Colors.white70, size: 14),
+                        SizedBox(width: 4),
+                        Text("Capalangan, Pampanga", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
                       ],
                     ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(6)),
+                      child: const Text("WEATHER MODULE", style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold)),
+                    )
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 10),
                 Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _getWeatherIcon(weather.condition),
-                    const SizedBox(width: 12),
                     Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          weather.temperature.toStringAsFixed(1),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 40,
-                            fontWeight: FontWeight.bold,
-                            height: 1,
-                          ),
-                        ),
-                        const Padding(
-                          padding: EdgeInsets.only(top: 2, left: 2),
-                          child: Text(
-                            "°C",
-                            style: TextStyle(color: Colors.white70, fontSize: 16, fontWeight: FontWeight.w600),
-                          ),
-                        ),
+                        _getWeatherIcon(weather.condition),
+                        const SizedBox(width: 10),
+                        Text("${weather.temperature.toStringAsFixed(1)}°C", style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
                       ],
                     ),
-                    const SizedBox(width: 16),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text("Humidity: ${weather.humidity}%", style: const TextStyle(color: Colors.white70, fontSize: 11)),
-                        const SizedBox(height: 2),
-                        Text("Feels Like: ${weather.feelsLike}°C", style: const TextStyle(color: Colors.white70, fontSize: 11)),
-                        const SizedBox(height: 2),
-                        Text("Code: ${weather.weatherCode}", style: const TextStyle(color: Colors.white70, fontSize: 11)),
-                      ],
-                    ),
-                    const Spacer(),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text(
-                          weather.condition,
-                          style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
-                        Text("Realtime Sync", style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                        Text(weather.condition, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                        Text("Humidity: ${weather.humidity}%", style: const TextStyle(color: Colors.white70, fontSize: 10)),
+                        Text("Feels Like: ${weather.feelsLike}°C", style: const TextStyle(color: Colors.white70, fontSize: 10)),
                       ],
-                    ),
+                    )
                   ],
-                ),
+                )
               ],
             ),
           ),
@@ -644,38 +932,11 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _getWeatherIcon(String condition) {
     final lower = condition.toLowerCase();
-    if (lower.contains('rain') || lower.contains('drizzle')) {
-      return const Icon(Icons.grain_rounded, color: Color(0xff93C5FD), size: 40);
-    } else if (lower.contains('cloud')) {
-      return const Icon(Icons.cloud_queue_rounded, color: Colors.white70, size: 40);
-    } else if (lower.contains('thunder') || lower.contains('storm')) {
-      return const Icon(Icons.thunderstorm_rounded, color: Color(0xffF87171), size: 40);
-    }
-    return const Icon(Icons.wb_sunny_rounded, color: Color(0xffFDE047), size: 40);
+    if (lower.contains('rain')) return const Icon(Icons.grain_rounded, color: Color(0xff93C5FD), size: 32);
+    if (lower.contains('cloud')) return const Icon(Icons.cloud_queue_rounded, color: Colors.white70, size: 32);
+    return const Icon(Icons.wb_sunny_rounded, color: Color(0xffFDE047), size: 32);
   }
 
-  Widget _buildNavTile(IconData icon, String title, String subtitle, int index) {
-    return InkWell(
-      onTap: () => setState(() => _currentMenuIndex = index),
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: _cardBg, borderRadius: BorderRadius.circular(14), border: Border.all(color: _border)),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: _primary, size: 22),
-            const SizedBox(height: 8),
-            Text(title, style: const TextStyle(color: _textMain, fontSize: 13, fontWeight: FontWeight.bold)),
-            Text(subtitle, style: const TextStyle(color: _textSub, fontSize: 10)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // RESPONSIVE UNIVERSAL NAVIGATION BAR
   Widget _buildUniversalNavBar(bool isDesktop) {
     final primaryItems = [
       {'index': 0, 'icon': Icons.grid_view_rounded, 'label': 'Dashboard'},
@@ -685,102 +946,44 @@ class _DashboardPageState extends State<DashboardPage> {
     ];
 
     return Container(
-      decoration: const BoxDecoration(
-        color: _cardBg,
-        border: Border(top: BorderSide(color: _border)),
-      ),
-      padding: EdgeInsets.symmetric(horizontal: isDesktop ? 40 : 8, vertical: 6),
+      decoration: const BoxDecoration(color: _cardBg, border: Border(top: BorderSide(color: _border))),
+      padding: EdgeInsets.symmetric(horizontal: isDesktop ? 40 : 4, vertical: 4),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
           ...primaryItems.map((item) {
             final isSelected = _currentMenuIndex == item['index'];
-            return InkWell(
-              onTap: () => setState(() => _currentMenuIndex = item['index'] as int),
-              borderRadius: BorderRadius.circular(12),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: isSelected
-                    ? BoxDecoration(color: _primary.withOpacity(0.12), borderRadius: BorderRadius.circular(12))
-                    : null,
+            return Expanded(
+              child: InkWell(
+                onTap: () => setState(() => _currentMenuIndex = item['index'] as int),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
-                      item['icon'] as IconData,
-                      color: isSelected ? _primary : _textSub,
-                      size: 20,
-                    ),
+                    Icon(item['icon'] as IconData, color: isSelected ? _primary : _textSub, size: 18),
                     const SizedBox(height: 2),
-                    Text(
-                      item['label'] as String,
-                      style: TextStyle(
-                        color: isSelected ? _primary : _textSub,
-                        fontSize: 11,
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                      ),
-                    ),
+                    Text(item['label'] as String, style: TextStyle(color: isSelected ? _primary : _textSub, fontSize: 10, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
                   ],
                 ),
               ),
             );
           }),
-
-          PopupMenuButton<int>(
-            onSelected: (index) => setState(() => _currentMenuIndex = index),
-            icon: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.more_horiz_rounded,
-                  color: _currentMenuIndex >= 4 ? _primary : _textSub,
-                  size: 20,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'More',
-                  style: TextStyle(
-                    color: _currentMenuIndex >= 4 ? _primary : _textSub,
-                    fontSize: 11,
-                    fontWeight: _currentMenuIndex >= 4 ? FontWeight.bold : FontWeight.normal,
-                  ),
-                ),
+          Expanded(
+            child: PopupMenuButton<int>(
+              onSelected: (index) => setState(() => _currentMenuIndex = index),
+              icon: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.more_horiz_rounded, color: _currentMenuIndex >= 4 ? _primary : _textSub, size: 18),
+                  const SizedBox(height: 2),
+                  Text('More', style: TextStyle(color: _currentMenuIndex >= 4 ? _primary : _textSub, fontSize: 10)),
+                ],
+              ),
+              itemBuilder: (context) => [
+                const PopupMenuItem(value: 4, child: Text("Reports")),
+                const PopupMenuItem(value: 5, child: Text("Weather Forecast")),
+                if (widget.userRole == 'admin') const PopupMenuItem(value: 6, child: Text("Managing Accounts")),
               ],
             ),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 4,
-                child: Row(
-                  children: [
-                    Icon(Icons.analytics_outlined, color: _primary, size: 18),
-                    SizedBox(width: 10),
-                    Text("Reports"),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: 5,
-                child: Row(
-                  children: [
-                    Icon(Icons.cloud_outlined, color: _primary, size: 18),
-                    SizedBox(width: 10),
-                    Text("Weather Forecast"),
-                  ],
-                ),
-              ),
-              if (widget.userRole == 'admin')
-                const PopupMenuItem(
-                  value: 6,
-                  child: Row(
-                    children: [
-                      Icon(Icons.admin_panel_settings_outlined, color: Colors.redAccent, size: 18),
-                      SizedBox(width: 10),
-                      Text("Managing Accounts"),
-                    ],
-                  ),
-                ),
-            ],
           ),
         ],
       ),
@@ -849,8 +1052,8 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
             if (widget.userRole == 'admin')
               ListTile(
-                leading: const Icon(Icons.admin_panel_settings_outlined, color: Colors.redAccent),
-                title: const Text("Managing Accounts"),
+                leading: const Icon(Icons.admin_panel_settings_outlined),
+                title: const Text("User Management"),
                 onTap: () {
                   Navigator.pop(context);
                   setState(() => _currentMenuIndex = 6);
@@ -859,7 +1062,7 @@ class _DashboardPageState extends State<DashboardPage> {
             const Spacer(),
             ListTile(
               leading: const Icon(Icons.logout_rounded, color: Colors.redAccent),
-              title: const Text("Logout", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+              title: const Text("Logout"),
               onTap: () {
                 Navigator.pop(context);
                 _performLogout();

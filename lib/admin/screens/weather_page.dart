@@ -209,263 +209,295 @@ class _WeatherPageState extends State<WeatherPage> {
           final weather = snapshot.data!;
           final selectedDay = weather.forecast[_selectedDayIndex];
 
-          // Auto-sync sa System Control Hub
           WidgetsBinding.instance.addPostFrameCallback((_) {
             SystemControlHub().updateWeather('${weather.temperature.toStringAsFixed(1)}°C — ${weather.condition}');
           });
 
-          return SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 🌤️ GOOGLE EMERALD HERO CARD
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF047857), Color(0xFF059669), Color(0xFF10B981)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(28),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF059669).withOpacity(0.25),
-                        blurRadius: 16,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+          return LayoutBuilder(
+            builder: (context, constraints) {
+              final isWide = constraints.maxWidth > 600;
+
+              return SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                padding: EdgeInsets.symmetric(
+                  horizontal: isWide ? 32 : 16,
+                  vertical: 12,
+                ),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 900),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 🌤️ GOOGLE EMERALD HERO CARD (Responsive Layout)
+                        Container(
+                          width: double.infinity,
+                          padding: EdgeInsets.all(isWide ? 32 : 20),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF047857), Color(0xFF059669), Color(0xFF10B981)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(28),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF059669).withOpacity(0.25),
+                                blurRadius: 16,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
+                          ),
+                          child: Column(
                             children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white.withOpacity(0.2),
+                                            borderRadius: BorderRadius.circular(20),
+                                          ),
+                                          child: const Text(
+                                            'Live Weather Sync',
+                                            style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 12),
+                                        FittedBox(
+                                          fit: BoxFit.scaleDown,
+                                          child: Text(
+                                            '${weather.temperature.toStringAsFixed(1)}°',
+                                            style: const TextStyle(fontSize: 56, fontWeight: FontWeight.w800, color: Colors.white, height: 1),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          weather.condition,
+                                          style: TextStyle(color: Colors.white.withOpacity(0.9), fontWeight: FontWeight.w600, fontSize: 16),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Icon(_getWeatherIcon(weather.condition), size: isWide ? 88 : 64, color: const Color(0xFFFDE047)),
+                                ],
+                              ),
+                              const SizedBox(height: 24),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.2),
+                                  color: Colors.black.withOpacity(0.12),
                                   borderRadius: BorderRadius.circular(20),
                                 ),
-                                child: const Text(
-                                  'Live Weather Sync',
-                                  style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                '${weather.temperature.toStringAsFixed(1)}°',
-                                style: const TextStyle(fontSize: 56, fontWeight: FontWeight.w800, color: Colors.white, height: 1),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                weather.condition,
-                                style: TextStyle(color: Colors.white.withOpacity(0.9), fontWeight: FontWeight.w600, fontSize: 16),
+                                child: isWide
+                                    ? Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                                        children: _buildMetricsList(weather),
+                                      )
+                                    : GridView.count(
+                                        shrinkWrap: true,
+                                        physics: const NeverScrollableScrollPhysics(),
+                                        crossAxisCount: 2,
+                                        childAspectRatio: 2.5,
+                                        mainAxisSpacing: 8,
+                                        crossAxisSpacing: 8,
+                                        children: _buildMetricsList(weather),
+                                      ),
                               ),
                             ],
                           ),
-                          Icon(_getWeatherIcon(weather.condition), size: 72, color: const Color(0xFFFDE047)),
-                        ],
-                      ),
-                      const SizedBox(height: 24),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(20),
                         ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceAround,
-                          children: [
-                            _buildInteractiveMetric(
-                              icon: Icons.thermostat_rounded,
-                              label: "Feels Like",
-                              value: "${weather.feelsLike}°C",
-                              onTap: () => _showMetricInfoDialog(
-                                title: "Feels Like Temperature",
-                                definition: "Ito ang aktwal na 'damang temperatura' ng katawan batay sa paghahalo ng tunay na init ng hangin, humidity, at hangin sa paligid.",
-                                farmingImpact: "Kapag sobrang taas nito kumpara sa totoong temperatura, mabilis ma-dehydrate ang mga magsasaka at ang mga punla sa bukid.",
-                              ),
-                            ),
-                            _buildInteractiveMetric(
-                              icon: Icons.water_drop_rounded,
-                              label: "Humidity",
-                              value: "${weather.humidity}%",
-                              onTap: () => _showMetricInfoDialog(
-                                title: "Relative Humidity (%)",
-                                definition: "Ito ang sukat ng dami ng singaw ng tubig sa hangin.",
-                                farmingImpact: "Ang mataas na humidity (>80%) ay lumilikha ng basang paligid na paboritong bahayan ng mga fungal at bacterial diseases sa palay.",
-                              ),
-                            ),
-                            _buildInteractiveMetric(
-                              icon: Icons.air_rounded,
-                              label: "Wind Speed",
-                              value: "${weather.windSpeed} km/h",
-                              onTap: () => _showMetricInfoDialog(
-                                title: "Wind Speed (Bilis ng Hangin)",
-                                definition: "Ito ang bilis ng galaw ng hangin sa iyong lugar.",
-                                farmingImpact: "Kapag malakas ang hangin (>15-20 km/h), hindi inirerekomenda ang pag-spray ng pestisidyo o abono.",
-                              ),
-                            ),
-                            _buildInteractiveMetric(
-                              icon: Icons.qr_code_rounded,
-                              label: "WMO Code",
-                              value: "${weather.weatherCode}",
-                              onTap: () => _showMetricInfoDialog(
-                                title: "WMO Weather Code",
-                                definition: "Numerong pamantayan ng World Meteorological Organization para sa pag-uuri ng estado ng panahon.",
-                                farmingImpact: "Awtomatikong binabasa ng ArrozSistema ang code na ito upang maglabas ng realtime alerts sa dashboard.",
-                              ),
-                            ),
-                          ],
+
+                        const SizedBox(height: 24),
+
+                        // 🌾 FARMING ADVISORIES SECTION
+                        const Text(
+                          "Farming Advisories & Operations",
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
+                        const SizedBox(height: 2),
+                        const Text(
+                          "Mga gabay at babala sa pagsasaka base sa kasalukuyang panahon:",
+                          style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                        ),
+                        const SizedBox(height: 10),
 
-                const SizedBox(height: 24),
+                        _buildFarmingAdvisoryCard(weather),
 
-                // 🌾 FARMING ADVISORIES SECTION
-                const Text(
-                  "Farming Advisories & Operations",
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                ),
-                const SizedBox(height: 2),
-                const Text(
-                  "Mga gabay at babala sa pagsasaka base sa kasalukuyang panahon:",
-                  style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
-                ),
-                const SizedBox(height: 10),
-                
-                _buildFarmingAdvisoryCard(weather),
+                        const SizedBox(height: 24),
 
-                const SizedBox(height: 24),
+                        // 📅 7-DAY FORECAST
+                        const Text('7-Day Forecast', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          height: 115,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            physics: const BouncingScrollPhysics(),
+                            itemCount: weather.forecast.length,
+                            itemBuilder: (context, index) {
+                              final day = weather.forecast[index];
+                              final isSelected = _selectedDayIndex == index;
+                              String dayLabel = index == 0 ? 'Ngayon' : day.date.substring(5);
 
-                // 📅 7-DAY FORECAST (Google Clean Emerald Pill Style)
-                const Text('7-Day Forecast', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-                const SizedBox(height: 12),
-                SizedBox(
-                  height: 115,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    physics: const BouncingScrollPhysics(),
-                    itemCount: weather.forecast.length,
-                    itemBuilder: (context, index) {
-                      final day = weather.forecast[index];
-                      final isSelected = _selectedDayIndex == index;
-                      String dayLabel = index == 0 ? 'Ngayon' : day.date.substring(5);
+                              return GestureDetector(
+                                onTap: () => setState(() => _selectedDayIndex = index),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  width: 76,
+                                  margin: const EdgeInsets.only(right: 12),
+                                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+                                  decoration: BoxDecoration(
+                                    color: isSelected ? const Color(0xFF059669) : Colors.white,
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: isSelected ? const Color(0xFF059669) : const Color(0xFFE2E8F0),
+                                      width: 1.5,
+                                    ),
+                                    boxShadow: isSelected
+                                        ? [
+                                            BoxShadow(
+                                              color: const Color(0xFF059669).withOpacity(0.3),
+                                              blurRadius: 10,
+                                              offset: const Offset(0, 4),
+                                            )
+                                          ]
+                                        : [],
+                                  ),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        dayLabel,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                                          color: isSelected ? Colors.white : const Color(0xFF64748B),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Icon(
+                                        _getWeatherIcon(_mapCodeToString(day.weatherCode)),
+                                        size: 24,
+                                        color: isSelected ? Colors.white : const Color(0xFF0284C7),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        '${day.maxTemp.toStringAsFixed(0)}°C',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                          color: isSelected ? Colors.white : const Color(0xFF0F172A),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
 
-                      return GestureDetector(
-                        onTap: () => setState(() => _selectedDayIndex = index),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          width: 72,
-                          margin: const EdgeInsets.only(right: 12),
-                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+                        const SizedBox(height: 24),
+
+                        // 🕒 HOURLY OUTLOOK
+                        Text('Oras-oras na Panahon (${selectedDay.date})', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
                           decoration: BoxDecoration(
-                            color: isSelected ? const Color(0xFF059669) : Colors.white,
+                            color: Colors.white,
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: isSelected ? const Color(0xFF059669) : const Color(0xFFE2E8F0),
-                              width: 1.5,
-                            ),
-                            boxShadow: isSelected
-                                ? [
-                                    BoxShadow(
-                                      color: const Color(0xFF059669).withOpacity(0.3),
-                                      blurRadius: 10,
-                                      offset: const Offset(0, 4),
-                                    )
-                                  ]
-                                : [],
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
                           ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                dayLabel,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                                  color: isSelected ? Colors.white : const Color(0xFF64748B),
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Icon(
-                                _getWeatherIcon(_mapCodeToString(day.weatherCode)),
-                                size: 24,
-                                color: isSelected ? Colors.white : const Color(0xFF0284C7),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                '${day.maxTemp.toStringAsFixed(0)}°C',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                  color: isSelected ? Colors.white : const Color(0xFF0F172A),
-                                ),
-                              ),
-                            ],
+                          child: SizedBox(
+                            height: 80,
+                            child: ListView.builder(
+                              scrollDirection: Axis.horizontal,
+                              physics: const BouncingScrollPhysics(),
+                              itemCount: selectedDay.hourlyData.length,
+                              itemBuilder: (context, hIndex) {
+                                final hourItem = selectedDay.hourlyData[hIndex];
+                                String rawTime = hourItem.time.length >= 16 ? hourItem.time.substring(11, 16) : hourItem.time;
+
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(rawTime, style: const TextStyle(fontSize: 10, color: Color(0xFF64748B), fontWeight: FontWeight.bold)),
+                                      const SizedBox(height: 8),
+                                      Icon(_getWeatherIcon(_mapCodeToString(hourItem.weatherCode)), size: 20, color: const Color(0xFF0284C7)),
+                                      const SizedBox(height: 8),
+                                      Text('${hourItem.temp.toStringAsFixed(1)}°', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
                           ),
                         ),
-                      );
-                    },
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-
-                // 🕒 HOURLY OUTLOOK (Google Material Clean Card)
-                Text('Oras-oras na Panahon (${selectedDay.date})', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
-                  ),
-                  child: SizedBox(
-                    height: 80,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      physics: const BouncingScrollPhysics(),
-                      itemCount: selectedDay.hourlyData.length,
-                      itemBuilder: (context, hIndex) {
-                        final hourItem = selectedDay.hourlyData[hIndex];
-                        String rawTime = hourItem.time.length >= 16 ? hourItem.time.substring(11, 16) : hourItem.time;
-
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(rawTime, style: const TextStyle(fontSize: 10, color: Color(0xFF64748B), fontWeight: FontWeight.bold)),
-                              const SizedBox(height: 8),
-                              Icon(_getWeatherIcon(_mapCodeToString(hourItem.weatherCode)), size: 20, color: const Color(0xFF0284C7)),
-                              const SizedBox(height: 8),
-                              Text('${hourItem.temp.toStringAsFixed(1)}°', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-                            ],
-                          ),
-                        );
-                      },
+                        const SizedBox(height: 16),
+                      ],
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
-              ],
-            ),
+              );
+            },
           );
         },
       ),
     );
+  }
+
+  List<Widget> _buildMetricsList(WeatherEntity weather) {
+    return [
+      _buildInteractiveMetric(
+        icon: Icons.thermostat_rounded,
+        label: "Feels Like",
+        value: "${weather.feelsLike}°C",
+        onTap: () => _showMetricInfoDialog(
+          title: "Feels Like Temperature",
+          definition: "Ito ang aktwal na 'damang temperatura' ng katawan batay sa paghahalo ng tunay na init ng hangin, humidity, at hangin sa paligid.",
+          farmingImpact: "Kapag sobrang taas nito kumpara sa totoong temperatura, mabilis ma-dehydrate ang mga magsasaka at ang mga punla sa bukid.",
+        ),
+      ),
+      _buildInteractiveMetric(
+        icon: Icons.water_drop_rounded,
+        label: "Humidity",
+        value: "${weather.humidity}%",
+        onTap: () => _showMetricInfoDialog(
+          title: "Relative Humidity (%)",
+          definition: "Ito ang sukat ng dami ng singaw ng tubig sa hangin.",
+          farmingImpact: "Ang mataas na humidity (>80%) ay lumilikha ng basang paligid na paboritong bahayan ng mga fungal at bacterial diseases sa palay.",
+        ),
+      ),
+      _buildInteractiveMetric(
+        icon: Icons.air_rounded,
+        label: "Wind Speed",
+        value: "${weather.windSpeed} km/h",
+        onTap: () => _showMetricInfoDialog(
+          title: "Wind Speed (Bilis ng Hangin)",
+          definition: "Ito ang bilis ng galaw ng hangin sa iyong lugar.",
+          farmingImpact: "Kapag malakas ang hangin (>15-20 km/h), hindi inirerekomenda ang pag-spray ng pestisidyo o abono.",
+        ),
+      ),
+      _buildInteractiveMetric(
+        icon: Icons.qr_code_rounded,
+        label: "WMO Code",
+        value: "${weather.weatherCode}",
+        onTap: () => _showMetricInfoDialog(
+          title: "WMO Weather Code",
+          definition: "Numerong pamantayan ng World Meteorological Organization para sa pag-uuri ng estado ng panahon.",
+          farmingImpact: "Awtomatikong binabasa ng ArrozSistema ang code na ito upang maglabas ng realtime alerts sa dashboard.",
+        ),
+      ),
+    ];
   }
 
   Widget _buildInteractiveMetric({
@@ -480,13 +512,20 @@ class _WeatherPageState extends State<WeatherPage> {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(icon, color: Colors.white, size: 14),
                 const SizedBox(width: 4),
-                Text(label, style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 10)),
+                Flexible(
+                  child: Text(
+                    label,
+                    style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 10),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 4),
@@ -588,7 +627,7 @@ class _WeatherPageState extends State<WeatherPage> {
             ],
           ),
           const SizedBox(height: 16),
-          ...bullets.map((text) => _buildAdvisoryBullet(text, bulletColor)).toList(),
+          ...bullets.map((text) => _buildAdvisoryBullet(text, bulletColor)),
         ],
       ),
     );

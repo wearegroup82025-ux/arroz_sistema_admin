@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../models/product_model.dart';
 
 class InventoryPage extends StatefulWidget {
@@ -10,41 +11,56 @@ class InventoryPage extends StatefulWidget {
 }
 
 class _InventoryPageState extends State<InventoryPage> {
-  // Soft Modern Color Palette (Aesthetic & Relaxing)
-  static const Color _bgCanvas = Color(0xffF1F5F9);      // Soft Slate Gray
-  static const Color _cardBg = Color(0xffFFFFFF);        // Pure White
-  static const Color _brandGreen = Color(0xff16A34A);    // Emerald
-  static const Color _softGreenBg = Color(0xffDCFCE7);   // Pastel Green Accent
-  static const Color _textDark = Color(0xff0F172A);      // Deep Slate
-  static const Color _textMuted = Color(0xff64748B);     // Cool Gray
-  static const Color _dangerSoft = Color(0xffFEE2E2);    // Pastel Red
-  static const Color _dangerText = Color(0xffDC2626);    // Rich Red
+  // Ultra-Clean Modern Responsive Palette
+  static const Color _bgCanvas = Color(0xffF8FAFC);      // Off-White Background
+  static const Color _cardBg = Color(0xffFFFFFF);        // White Card
+  static const Color _brandGreen = Color(0xff16A34A);    // Primary Emerald Green
+  static const Color _softGreenBg = Color(0xffDCFCE7);   // Soft Green Tint
+  static const Color _textDark = Color(0xff0F172A);      // Dark Text
+  static const Color _textMuted = Color(0xff64748B);     // Soft Gray Text
+  static const Color _dangerSoft = Color(0xffFEE2E2);    // Red Tint for Warnings
+  static const Color _dangerText = Color(0xffDC2626);    // Bright Warning Red
   static const Color _borderSoft = Color(0xffE2E8F0);    // Light Border
 
   String _searchQuery = "";
-  String _selectedCategory = "All";
 
-  final List<String> _categories = ["All", "Premium", "Regular", "Local", "Imported"];
   final List<String> _palayNames = [
     "C4 Palay", "C18 Palay", "Jasmine Palay", "R10 Palay", "R42 Palay", "216 Palay"
   ];
 
   @override
   Widget build(BuildContext context) {
+    // Responsive Screen Width Check
+    final double screenWidth = MediaQuery.of(context).size.width;
+    int crossAxisCount = 1; // Default sa CP
+    if (screenWidth > 1024) {
+      crossAxisCount = 3; // Laptop / Large Screen
+    } else if (screenWidth > 600) {
+      crossAxisCount = 2; // Tablet / iPad Screen
+    }
+
     return Scaffold(
       backgroundColor: _bgCanvas,
+      // Floating Action Button (Malaki at madaling pindutin sa CP)
       floatingActionButton: FloatingActionButton.extended(
-        elevation: 2,
+        elevation: 3,
         backgroundColor: _brandGreen,
         onPressed: () => _showAddPalaySheet(context),
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text("Magdagdag ng Palay", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+        icon: const Icon(Icons.add_rounded, color: Colors.white, size: 26),
+        label: const Text(
+          "Magdagdag ng Palay",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+        ),
       ),
       body: SafeArea(
         child: StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance.collection("products").snapshots(),
           builder: (context, snapshot) {
-            if (snapshot.hasError) return const Center(child: Text("May problema sa koneksyon."));
+            if (snapshot.hasError) {
+              return const Center(
+                child: Text("May problema sa koneksyon.", style: TextStyle(color: _dangerText, fontWeight: FontWeight.bold)),
+              );
+            }
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator(color: _brandGreen));
             }
@@ -52,27 +68,26 @@ class _InventoryPageState extends State<InventoryPage> {
             final docs = snapshot.data?.docs ?? [];
             final products = docs.map((doc) => ProductModel.fromFirestore(doc)).toList();
 
-            // Dynamic Calculations
-            int totalStock = 0;
+            // Total Computations
+            int totalStockCount = 0;
             int lowStockItems = 0;
-            double totalValue = 0;
+            double totalInventoryValue = 0;
 
             for (var p in products) {
-              totalStock += p.stock;
-              totalValue += (p.stock * p.price);
+              totalStockCount += p.stock;
+              totalInventoryValue += (p.stock * p.price);
               if (p.stock <= p.lowStockThreshold) lowStockItems++;
             }
 
-            // Smart Filter
+            // Direct Search Filtering (No Categories)
             final filteredList = products.where((p) {
-              final matchesSearch = p.name.toLowerCase().contains(_searchQuery.toLowerCase());
-              final matchesCat = _selectedCategory == "All" || p.category == _selectedCategory;
-              return matchesSearch && matchesCat;
+              return p.name.toLowerCase().contains(_searchQuery.toLowerCase());
             }).toList();
 
             return CustomScrollView(
+              physics: const BouncingScrollPhysics(),
               slivers: [
-                // Clean Header
+                // 1. HEADER TITLE
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
@@ -82,38 +97,50 @@ class _InventoryPageState extends State<InventoryPage> {
                         const Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text("Smart Inventory", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: _textDark)),
+                            Text(
+                              "Inbentaryo ng Palay",
+                              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: _textDark),
+                            ),
                             SizedBox(height: 2),
-                            Text("Subaybayan at pamahalaan ang iyong stocks", style: TextStyle(fontSize: 12, color: _textMuted)),
+                            Text(
+                              "Madaling pagsubaybay sa bodega",
+                              style: TextStyle(fontSize: 12, color: _textMuted),
+                            ),
                           ],
                         ),
-                        CircleAvatar(
-                          backgroundColor: Colors.white,
-                          child: Icon(Icons.inventory, color: _brandGreen),
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: _borderSoft),
+                          ),
+                          child: const Icon(Icons.warehouse_rounded, color: _brandGreen, size: 22),
                         )
                       ],
                     ),
                   ),
                 ),
 
-                // Smart Alert Box (Lalabas lang pag may kailangang i-restock)
+                // 2. WARNING BANNER (KAPAG KONTI NALANG ANG STOCK)
                 if (lowStockItems > 0)
                   SliverToBoxAdapter(
                     child: Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: _dangerSoft,
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: _dangerText.withOpacity(0.3)),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.error_outline, color: _dangerText, size: 20),
+                          const Icon(Icons.warning_amber_rounded, color: _dangerText, size: 22),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              "Pansin: May $lowStockItems uri ng palay na mababa na ang stock!",
-                              style: const TextStyle(color: _dangerText, fontSize: 12, fontWeight: FontWeight.w600),
+                              "Pansin: May $lowStockItems uri ng palay na kakaunti nalang ang sako!",
+                              style: const TextStyle(color: _dangerText, fontSize: 12, fontWeight: FontWeight.bold),
                             ),
                           ),
                         ],
@@ -121,85 +148,67 @@ class _InventoryPageState extends State<InventoryPage> {
                     ),
                   ),
 
-                // Clean Summary Cards
+                // 3. DASHBOARD SUMMARY CARDS (RESPONSIVE)
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                     child: Row(
                       children: [
-                        _buildSummaryCard("Kabuuan", "$totalStock Sako", Icons.widgets_outlined, _softGreenBg, _brandGreen),
-                        const SizedBox(width: 12),
-                        _buildSummaryCard("Halaga", "₱${(totalValue/1000).toStringAsFixed(1)}k", Icons.payments_outlined, Colors.blue.shade50, Colors.blue.shade700),
+                        _buildSimpleStatCard("Kabuuang Sako", "$totalStockCount Sako", Icons.inventory_2_outlined, _softGreenBg, _brandGreen),
+                        const SizedBox(width: 10),
+                        _buildSimpleStatCard("Halaga sa Bodega", "₱${(totalInventoryValue / 1000).toStringAsFixed(1)}k", Icons.payments_outlined, Colors.blue.shade50, Colors.blue.shade700),
                       ],
                     ),
                   ),
                 ),
 
-                // Controls Bar (Search + Chips)
+                // 4. CLEAN SEARCH BAR (WALANG MAGULONG CATEGORY BUTTONS)
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      children: [
-                        // Soft Search Field
-                        TextField(
-                          onChanged: (val) => setState(() => _searchQuery = val),
-                          decoration: InputDecoration(
-                            hintText: "Maghanap ng palay...",
-                            hintStyle: const TextStyle(fontSize: 13, color: _textMuted),
-                            prefixIcon: const Icon(Icons.search, color: _textMuted, size: 20),
-                            filled: true,
-                            fillColor: _cardBg,
-                            contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: _borderSoft)),
-                            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: _brandGreen)),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        // Soft Filter Chips
-                        SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(
-                            children: _categories.map((cat) {
-                              final isSelected = _selectedCategory == cat;
-                              return Padding(
-                                padding: const EdgeInsets.only(right: 8),
-                                child: ChoiceChip(
-                                  label: Text(cat),
-                                  selected: isSelected,
-                                  selectedColor: _brandGreen,
-                                  backgroundColor: _cardBg,
-                                  side: BorderSide(color: isSelected ? _brandGreen : _borderSoft),
-                                  labelStyle: TextStyle(
-                                    color: isSelected ? Colors.white : _textMuted,
-                                    fontSize: 12,
-                                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                  ),
-                                  onSelected: (_) => setState(() => _selectedCategory = cat),
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                        )
-                      ],
+                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
+                    child: TextField(
+                      onChanged: (val) => setState(() => _searchQuery = val),
+                      decoration: InputDecoration(
+                        hintText: "Maghanap ng pangalan ng palay...",
+                        hintStyle: const TextStyle(fontSize: 13, color: _textMuted),
+                        prefixIcon: const Icon(Icons.search_rounded, color: _textMuted, size: 20),
+                        suffixIcon: _searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear, size: 18, color: _textMuted),
+                                onPressed: () => setState(() => _searchQuery = ""),
+                              )
+                            : null,
+                        filled: true,
+                        fillColor: _cardBg,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: _borderSoft)),
+                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: _brandGreen, width: 1.5)),
+                      ),
                     ),
                   ),
                 ),
 
-                // Responsive Cards Grid
+                // 5. RESPONSIVE GRID LIST OF PRODUCTS
                 SliverPadding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 90),
                   sliver: filteredList.isEmpty
-                      ? const SliverToBoxAdapter(child: Center(child: Text("Walang nahanap na stock.", style: TextStyle(color: _textMuted))))
+                      ? const SliverToBoxAdapter(
+                          child: Padding(
+                            padding: EdgeInsets.all(30.0),
+                            child: Center(
+                              child: Text("Walang nahanap na uri ng palay.", style: TextStyle(color: _textMuted, fontSize: 13)),
+                            ),
+                          ),
+                        )
                       : SliverGrid(
                           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: MediaQuery.of(context).size.width > 700 ? 3 : (MediaQuery.of(context).size.width > 500 ? 2 : 1),
+                            crossAxisCount: crossAxisCount,
                             mainAxisSpacing: 12,
                             crossAxisSpacing: 12,
-                            childAspectRatio: 1.6,
+                            childAspectRatio: screenWidth > 600 ? 1.6 : 1.45,
                           ),
                           delegate: SliverChildBuilderDelegate(
-                            (context, index) => _buildMinimalCard(filteredList[index]),
+                            (context, index) => _buildProductCard(filteredList[index]),
                             childCount: filteredList.length,
                           ),
                         ),
@@ -212,9 +221,9 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
-  // ================= UI HELPER WIDGETS =================
+  // ================= EASY TO UNDERSTAND CARDS =================
 
-  Widget _buildSummaryCard(String title, String val, IconData icon, Color bg, Color iconColor) {
+  Widget _buildSimpleStatCard(String label, String value, IconData icon, Color bg, Color iconColor) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.all(14),
@@ -230,13 +239,15 @@ class _InventoryPageState extends State<InventoryPage> {
               decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
               child: Icon(icon, color: iconColor, size: 20),
             ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(fontSize: 11, color: _textMuted)),
-                Text(val, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _textDark)),
-              ],
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: const TextStyle(fontSize: 11, color: _textMuted, fontWeight: FontWeight.w500)),
+                  Text(value, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: _textDark)),
+                ],
+              ),
             )
           ],
         ),
@@ -244,7 +255,7 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
-  Widget _buildMinimalCard(ProductModel product) {
+  Widget _buildProductCard(ProductModel product) {
     bool isLow = product.stock <= product.lowStockThreshold;
 
     return Container(
@@ -252,113 +263,180 @@ class _InventoryPageState extends State<InventoryPage> {
       decoration: BoxDecoration(
         color: _cardBg,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isLow ? Colors.orange.shade200 : _borderSoft, width: isLow ? 1.5 : 1),
+        border: Border.all(
+          color: isLow ? _dangerText.withOpacity(0.4) : _borderSoft,
+          width: isLow ? 1.5 : 1,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
+          // Pangalan at Status Label
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(product.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: _textDark)),
+              Expanded(
+                child: Text(
+                  product.name,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: _textDark),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: isLow ? _dangerSoft : _softGreenBg,
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  isLow ? "Low Stock" : "Sapat",
-                  style: TextStyle(color: isLow ? _dangerText : _brandGreen, fontSize: 10, fontWeight: FontWeight.bold),
+                  isLow ? "Konti nalang!" : "Sapat pa",
+                  style: TextStyle(
+                    color: isLow ? _dangerText : _brandGreen,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               )
             ],
           ),
-          Text("${product.category} • ${product.metricDetail}", style: const TextStyle(color: _textMuted, fontSize: 11)),
-          const Divider(height: 10, color: _borderSoft),
+
+          const SizedBox(height: 8),
+
+          // Presyo at Laman ng Stock
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text("Presyo/kg", style: TextStyle(fontSize: 10, color: _textMuted)),
-                  Text("₱${product.price}", style: const TextStyle(fontWeight: FontWeight.bold, color: _textDark)),
+                  const Text("Presyo bawat Kilo", style: TextStyle(fontSize: 10, color: _textMuted)),
+                  Text("₱${product.price.toStringAsFixed(2)}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: _textDark)),
                 ],
               ),
-              InkWell(
-                onTap: () => _showQuickAdjustModal(product),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: _bgCanvas,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    children: [
-                      Text("${product.stock} Sako", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: _textDark)),
-                      const SizedBox(width: 4),
-                      const Icon(Icons.edit_outlined, size: 14, color: _brandGreen),
-                    ],
-                  ),
-                ),
-              )
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  const Text("Laman sa Bodega", style: TextStyle(fontSize: 10, color: _textMuted)),
+                  Text("${product.stock} Sako", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: isLow ? _dangerText : _brandGreen)),
+                ],
+              ),
             ],
+          ),
+
+          const Divider(height: 16, color: _borderSoft),
+
+          // Pindutan para magbawas o magdagdag agad
+          SizedBox(
+            width: double.infinity,
+            height: 38,
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: _borderSoft),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                backgroundColor: _bgCanvas,
+              ),
+              onPressed: () => _showQuickAdjustModal(product),
+              icon: const Icon(Icons.edit_note_rounded, size: 18, color: _brandGreen),
+              label: const Text("I-adjust ang Sako", style: TextStyle(color: _textDark, fontWeight: FontWeight.bold, fontSize: 12)),
+            ),
           )
         ],
       ),
     );
   }
 
-  // Quick Stock Adjustment Bottom Sheet
+  // ================= SIMPLE & EASY MODALS =================
+
+  // Quick Modal para palitan ang bilang ng sako (Direct type o Buttons)
   void _showQuickAdjustModal(ProductModel p) {
-    int current = p.stock;
+    final controller = TextEditingController(text: p.stock.toString());
+
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setModalState) {
+            int currentVal = int.tryParse(controller.text) ?? 0;
+
+            void updateVal(int newVal) {
+              if (newVal >= 0) {
+                setModalState(() {
+                  controller.text = newVal.toString();
+                });
+              }
+            }
+
             return Padding(
-              padding: const EdgeInsets.all(24),
+              padding: EdgeInsets.only(
+                top: 20,
+                left: 20,
+                right: 20,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+              ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text("I-adjust ang Stock para sa ${p.name}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                  const SizedBox(height: 20),
+                  Text("I-adjust ang Sako para sa ${p.name}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: _textDark)),
+                  const SizedBox(height: 16),
+
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
+                      // Subtract Button
                       IconButton.filledTonal(
-                        onPressed: () {
-                          if (current > 0) setModalState(() => current--);
-                        },
-                        icon: const Icon(Icons.remove),
+                        style: IconButton.styleFrom(backgroundColor: _bgCanvas),
+                        onPressed: () => updateVal(currentVal - 1),
+                        icon: const Icon(Icons.remove, color: _textDark),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Text("$current Sako", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                      const SizedBox(width: 12),
+
+                      // Direct Type Keyboard Field (Numbers Only)
+                      SizedBox(
+                        width: 120,
+                        child: TextField(
+                          controller: controller,
+                          keyboardType: TextInputType.number,
+                          textAlign: TextAlign.center,
+                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                          decoration: InputDecoration(
+                            suffixText: "Sako",
+                            contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderSoft)),
+                            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _brandGreen, width: 2)),
+                          ),
+                          onChanged: (_) => setModalState(() {}),
+                        ),
                       ),
+                      const SizedBox(width: 12),
+
+                      // Add Button
                       IconButton.filledTonal(
-                        onPressed: () => setModalState(() => current++),
-                        icon: const Icon(Icons.add),
+                        style: IconButton.styleFrom(backgroundColor: _softGreenBg),
+                        onPressed: () => updateVal(currentVal + 1),
+                        icon: const Icon(Icons.add, color: _brandGreen),
                       ),
                     ],
                   ),
                   const SizedBox(height: 20),
+
                   SizedBox(
                     width: double.infinity,
                     height: 44,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(backgroundColor: _brandGreen, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                       onPressed: () async {
+                        final updatedStock = int.tryParse(controller.text) ?? p.stock;
                         if (p.id != null) {
-                          await FirebaseFirestore.instance.collection("products").doc(p.id).update({'stock': current});
+                          await FirebaseFirestore.instance.collection("products").doc(p.id).update({'stock': updatedStock});
                         }
                         if (context.mounted) Navigator.pop(context);
                       },
-                      child: const Text("I-save ang Stock", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      child: const Text("I-save ang Bagong Bilang", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                     ),
                   )
                 ],
@@ -370,73 +448,126 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
-  // Quick Add Sheet
+  // Easy Add Palay Form (Smart Duplicate Prevention)
   void _showAddPalaySheet(BuildContext context) {
-    String name = _palayNames.first;
-    String cat = "Premium";
+    String selectedName = _palayNames.first;
     final stockController = TextEditingController();
     final priceController = TextEditingController();
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
         return Padding(
-          padding: EdgeInsets.only(top: 20, left: 20, right: 20, bottom: MediaQuery.of(context).viewInsets.bottom + 20),
+          padding: EdgeInsets.only(
+            top: 20,
+            left: 20,
+            right: 20,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text("Dagdag Bagong Palay Batch", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const Text("Magdagdag ng Palay sa Bodega", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _textDark)),
+              const SizedBox(height: 4),
+              const Text("Kapag meron na sa listahan, kusa itong idadagdag sa lumang stock.", style: TextStyle(fontSize: 11, color: _textMuted)),
               const SizedBox(height: 16),
+
+              // Dropdown
               DropdownButtonFormField<String>(
-                value: name,
-                decoration: const InputDecoration(labelText: "Uri ng Palay", border: OutlineInputBorder()),
+                value: selectedName,
+                decoration: InputDecoration(
+                  labelText: "Pumili ng Uri ng Palay",
+                  filled: true,
+                  fillColor: _bgCanvas,
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderSoft)),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _brandGreen)),
+                ),
                 items: _palayNames.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                onChanged: (val) => name = val!,
+                onChanged: (val) => selectedName = val!,
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
+
               Row(
                 children: [
                   Expanded(
                     child: TextField(
                       controller: stockController,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: "Ilang Sako", border: OutlineInputBorder()),
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      decoration: InputDecoration(
+                        labelText: "Ilang Sako",
+                        filled: true,
+                        fillColor: _bgCanvas,
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderSoft)),
+                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _brandGreen)),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: TextField(
                       controller: priceController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: "Presyo/Kilo", border: OutlineInputBorder()),
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        labelText: "Presyo bawat Kilo",
+                        filled: true,
+                        fillColor: _bgCanvas,
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderSoft)),
+                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _brandGreen)),
+                      ),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 16),
+
               SizedBox(
                 width: double.infinity,
                 height: 44,
                 child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: _brandGreen),
+                  style: ElevatedButton.styleFrom(backgroundColor: _brandGreen, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                   onPressed: () async {
                     if (stockController.text.isNotEmpty && priceController.text.isNotEmpty) {
-                      final newProduct = ProductModel(
-                        name: name,
-                        category: cat,
-                        metricDetail: "Fresh Dry",
-                        price: double.parse(priceController.text),
-                        stock: int.parse(stockController.text),
-                        createdAt: DateTime.now(),
-                      );
-                      await FirebaseFirestore.instance.collection("products").add(newProduct.toFirestore());
+                      final inputStock = int.parse(stockController.text);
+                      final inputPrice = double.parse(priceController.text);
+
+                      // PREVENT DUPLICATES ON FIRESTORE
+                      final querySnapshot = await FirebaseFirestore.instance
+                          .collection("products")
+                          .where("name", isEqualTo: selectedName)
+                          .limit(1)
+                          .get();
+
+                      if (querySnapshot.docs.isNotEmpty) {
+                        // Product already exists -> Add stock quantity
+                        final existingDoc = querySnapshot.docs.first;
+                        final currentStock = existingDoc.get('stock') ?? 0;
+
+                        await FirebaseFirestore.instance.collection("products").doc(existingDoc.id).update({
+                          'stock': currentStock + inputStock,
+                          'price': inputPrice,
+                        });
+                      } else {
+                        // Product doesn't exist -> Create new record
+                        final newProduct = ProductModel(
+                          name: selectedName,
+                          category: "Regular",
+                          metricDetail: "Fresh Dry",
+                          price: inputPrice,
+                          stock: inputStock,
+                          createdAt: DateTime.now(),
+                        );
+                        await FirebaseFirestore.instance.collection("products").add(newProduct.toFirestore());
+                      }
+
                       if (context.mounted) Navigator.pop(context);
                     }
                   },
-                  child: const Text("I-Save sa Inventory", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  child: const Text("I-Save sa Bodega", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 ),
               )
             ],
