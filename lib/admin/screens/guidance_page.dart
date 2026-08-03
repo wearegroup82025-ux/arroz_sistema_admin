@@ -157,7 +157,6 @@ class _GuidancePageState extends State<GuidancePage> {
   Map<String, dynamic> _getPhilriceCapalanganSuitability(DateTime date) {
     final month = date.month;
 
-    // June - July: Wet Season Start (Ideal for Rice)
     if (month == 6 || month == 7) {
       return {
         "status": "GREEN",
@@ -165,46 +164,37 @@ class _GuidancePageState extends State<GuidancePage> {
         "label": "Napakaganda Magtanim 🌾",
         "reason": "BAKIT MAGANDA: Tamang-tama ang simula ng tag-ulan para sa Wet Season. May sapat at tuloy-tuloy na patubig mula sa ulan para sa pagpapatag at pagsusuwi ng palay.",
       };
-    }
-    // November - December: Dry Season Start (Ideal with Irrigation)
-    else if (month == 11 || month == 12) {
+    } else if (month == 11 || month == 12) {
       return {
         "status": "GREEN",
         "color": const Color(0xFF16A34A),
         "label": "Napakaganda Magtanim (Dry Crop) ☀️",
         "reason": "BAKIT MAGANDA: Mainam ang sikat ng araw sa Dry Season at mababa ang banta ng bagyo. Mas mataas ang ani basta't may maayos na patubig mula sa canal.",
       };
-    }
-    // January, May: Transitional Months
-    else if (month == 1 || month == 5) {
+    } else if (month == 1 || month == 5) {
       return {
         "status": "YELLOW",
-        "color": Colors.amber.shade800,
-        "label": "Pwede Magtanim (Mag-ingat / Katamtaman) ⚠️",
-        "reason": "BAKIT DILAW: Nasa transition period ang panahon. Pwede magtanim pero kailangan ng maingat na pamamahala sa tubig (maaaring kulangin sa patubig kapag Mayo, o malamig ang gabi na nagpapabagal sa paglaki kapag Enero).",
+        "color": const Color(0xFFD97706),
+        "label": "Pwede Magtanim (Katamtaman) ⚠️",
+        "reason": "BAKIT DILAW: Nasa transition period ang panahon. Pwede magtanim pero kailangan ng maingat na pamamahala sa tubig.",
       };
-    }
-    // August - October: Peak Typhoon Season in Luzon
-    else if (month >= 8 && month <= 10) {
+    } else if (month >= 8 && month <= 10) {
       return {
         "status": "RED",
-        "color": Colors.red.shade700,
+        "color": const Color(0xFFDC2626),
         "label": "Huwag Muna Magtanim (Mataas ang Risk) 🚨",
-        "reason": "BAKIT HINDI MAGANDA: Peak season ng mga bagyo at matinding pag-ulan. Mataas ang posibilidad na mabaha ang palayan at masira ang mga bagong sibol na tanim o malunod ang puno ng palay.",
+        "reason": "BAKIT HINDI MAGANDA: Peak season ng mga bagyo at matinding pag-ulan. Mataas ang posibilidad na mabaha ang palayan.",
       };
-    }
-    // February - April: Extreme Heat / Water Scarcity
-    else {
+    } else {
       return {
         "status": "RED",
-        "color": Colors.red.shade700,
+        "color": const Color(0xFFDC2626),
         "label": "Huwag Muna Magtanim (Tag-tuyot) ☀️",
-        "reason": "BAKIT HINDI MAGANDA: Peak ng tag-init at matinding init ng araw. Mabilis matuyo ang irrigation canals at maaring magkulang sa tubig ang palay sa kritikal na yugto ng paglilihi.",
+        "reason": "BAKIT HINDI MAGANDA: Peak ng tag-init. Mabilis matuyo ang irrigation canals at maaring magkulang sa tubig ang palay.",
       };
     }
   }
 
-  // --- LOCAL PERSISTENCE & OFFLINE CACHING ---
   Future<void> _loadSavedData() async {
     final prefs = await SharedPreferences.getInstance();
 
@@ -532,15 +522,20 @@ class _GuidancePageState extends State<GuidancePage> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Row(
-                        children: [
-                          Icon(Icons.history_rounded, color: Color(0xFF16A34A)),
-                          SizedBox(width: 8),
-                          Text(
-                            "History ng Pagtatanim",
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                          ),
-                        ],
+                      const Expanded(
+                        child: Row(
+                          children: [
+                            Icon(Icons.history_rounded, color: Color(0xFF16A34A)),
+                            SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                "History ng Pagtatanim",
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                       IconButton(
                         icon: const Icon(Icons.close_rounded, color: Colors.grey),
@@ -582,9 +577,12 @@ class _GuidancePageState extends State<GuidancePage> {
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
-                                      Text(
-                                        item.variety.name,
-                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF15803D)),
+                                      Expanded(
+                                        child: Text(
+                                          item.variety.name,
+                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF15803D)),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
                                       ),
                                       IconButton(
                                         icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
@@ -696,7 +694,7 @@ class _GuidancePageState extends State<GuidancePage> {
 
               const SizedBox(height: 14),
 
-              // SMART CROP CALENDAR MATRIX
+              // SMART CROP CALENDAR MATRIX (RESPONSIVE)
               _buildSmartPhilriceCalendarSection(),
 
               const SizedBox(height: 14),
@@ -729,7 +727,7 @@ class _GuidancePageState extends State<GuidancePage> {
     );
   }
 
-  // --- SMART PHILRICE CALENDAR SYSTEM ---
+  // --- SMART PHILRICE CALENDAR SYSTEM (RESPONSIVE DESIGN) ---
   Widget _buildSmartPhilriceCalendarSection() {
     final daysInMonth = DateUtils.getDaysInMonth(_focusedCalendarMonth.year, _focusedCalendarMonth.month);
     final firstDayOffset = DateTime(_focusedCalendarMonth.year, _focusedCalendarMonth.month, 1).weekday % 7;
@@ -748,8 +746,8 @@ class _GuidancePageState extends State<GuidancePage> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x08000000), blurRadius: 10, offset: Offset(0, 4)),
         ],
       ),
       child: Column(
@@ -758,19 +756,26 @@ class _GuidancePageState extends State<GuidancePage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Row(
-                children: [
-                  Icon(Icons.calendar_month_rounded, color: Color(0xFF16A34A), size: 22),
-                  SizedBox(width: 8),
-                  Text(
-                    "Smart Planting Calendar",
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                  ),
-                ],
+              const Expanded(
+                child: Row(
+                  children: [
+                    Icon(Icons.calendar_month_rounded, color: Color(0xFF16A34A), size: 22),
+                    SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        "Smart Planting Calendar",
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
               ),
               Row(
                 children: [
                   IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
                     icon: const Icon(Icons.chevron_left_rounded),
                     onPressed: () {
                       setState(() {
@@ -778,8 +783,12 @@ class _GuidancePageState extends State<GuidancePage> {
                       });
                     },
                   ),
+                  const SizedBox(width: 4),
                   Text(currentMonthLabel, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  const SizedBox(width: 4),
                   IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
                     icon: const Icon(Icons.chevron_right_rounded),
                     onPressed: () {
                       setState(() {
@@ -798,7 +807,7 @@ class _GuidancePageState extends State<GuidancePage> {
           ),
           const SizedBox(height: 10),
 
-          // LEGEND BAR
+          // LEGEND BAR (RESPONSIVE WRAP)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
@@ -806,12 +815,14 @@ class _GuidancePageState extends State<GuidancePage> {
               borderRadius: BorderRadius.circular(10),
               border: Border.all(color: const Color(0xFFF1F5F9)),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
+            child: Wrap(
+              alignment: WrapAlignment.spaceAround,
+              spacing: 12,
+              runSpacing: 6,
               children: [
                 _buildCalendarLegendTile(const Color(0xFF16A34A), "🟢 Maganda"),
-                _buildCalendarLegendTile(Colors.amber.shade800, "🟡 Dilaw (Katamtaman)"),
-                _buildCalendarLegendTile(Colors.red.shade700, "🔴 Huwag Muna"),
+                _buildCalendarLegendTile(const Color(0xFFD97706), "🟡 Katamtaman"),
+                _buildCalendarLegendTile(const Color(0xFFDC2626), "🔴 Huwag Muna"),
               ],
             ),
           ),
@@ -830,7 +841,7 @@ class _GuidancePageState extends State<GuidancePage> {
           ),
           const SizedBox(height: 8),
 
-          // MONTH GRID BUILDER
+          // MONTH GRID BUILDER (DYNAMIC FLEXIBLE RATIO)
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
@@ -839,6 +850,7 @@ class _GuidancePageState extends State<GuidancePage> {
               crossAxisCount: 7,
               mainAxisSpacing: 6,
               crossAxisSpacing: 6,
+              childAspectRatio: 1.15,
             ),
             itemBuilder: (context, index) {
               if (index < firstDayOffset) {
@@ -853,6 +865,8 @@ class _GuidancePageState extends State<GuidancePage> {
                   _plantingDate!.month == cellDate.month &&
                   _plantingDate!.day == cellDate.day;
 
+              final Color themeColor = suitability['color'] as Color;
+
               return InkWell(
                 onTap: () {
                   _showCalendarDateDetailsModal(cellDate, suitability);
@@ -862,12 +876,12 @@ class _GuidancePageState extends State<GuidancePage> {
                   decoration: BoxDecoration(
                     color: isSelectedDate
                         ? const Color(0xFF0F172A)
-                        : (suitability['color'] as Color).withValues(alpha: 0.12),
+                        : themeColor.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
                       color: isSelectedDate
                           ? Colors.black
-                          : (suitability['color'] as Color).withValues(alpha: 0.5),
+                          : themeColor.withOpacity(0.4),
                       width: isSelectedDate ? 2 : 1,
                     ),
                   ),
@@ -879,7 +893,7 @@ class _GuidancePageState extends State<GuidancePage> {
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
-                          color: isSelectedDate ? Colors.white : (suitability['color'] as Color),
+                          color: isSelectedDate ? Colors.white : themeColor,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -888,7 +902,7 @@ class _GuidancePageState extends State<GuidancePage> {
                         height: 5,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: isSelectedDate ? const Color(0xFFFEF08A) : (suitability['color'] as Color),
+                          color: isSelectedDate ? const Color(0xFFFEF08A) : themeColor,
                         ),
                       ),
                     ],
@@ -904,6 +918,7 @@ class _GuidancePageState extends State<GuidancePage> {
 
   Widget _buildCalendarLegendTile(Color color, String label) {
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Container(
           width: 8,
@@ -924,125 +939,140 @@ class _GuidancePageState extends State<GuidancePage> {
 
     final vegDate = targetDate.add(Duration(days: (maturityDays * 0.35).round()));
     final repDate = targetDate.add(Duration(days: (maturityDays * 0.65).round()));
+    final Color themeColor = suitability['color'] as Color;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) {
-        return Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    "${targetDate.year}-${targetDate.month.toString().padLeft(2, '0')}-${targetDate.day.toString().padLeft(2, '0')}",
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: (suitability['color'] as Color).withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      suitability['label'] as String,
-                      style: TextStyle(color: suitability['color'] as Color, fontSize: 11, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              
-              // DETAILS CONTAINER (EXPLANATION BOX)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: (suitability['color'] as Color).withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: (suitability['color'] as Color).withValues(alpha: 0.3)),
-                ),
-                child: Text(
-                  suitability['reason'] as String,
-                  style: const TextStyle(fontSize: 12, color: Color(0xFF334155), height: 1.4, fontWeight: FontWeight.w500),
-                ),
-              ),
-
-              const Divider(height: 24),
-              const Text("ESTIMATED HARVEST DURATION & CROP PHASES", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF94A3B8))),
-              const SizedBox(height: 8),
-
-              // HARVEST RANGE CARD
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF0FDF4),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFBBF7D0)),
-                ),
-                child: Row(
+        return SingleChildScrollView(
+          child: Padding(
+            padding: EdgeInsets.only(
+              top: 20,
+              left: 20,
+              right: 20,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Icon(Icons.grain_rounded, color: Color(0xFF16A34A), size: 24),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text("Tantyang Haba ng Ani (Harvest Window):", style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF166534))),
-                          Text(
-                            "${estimatedStartHarvest.month}/${estimatedStartHarvest.day}/${estimatedStartHarvest.year} — ${estimatedEndHarvest.month}/${estimatedEndHarvest.day}/${estimatedEndHarvest.year}",
-                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF15803D)),
-                          ),
-                        ],
+                    Text(
+                      "${targetDate.year}-${targetDate.month.toString().padLeft(2, '0')}-${targetDate.day.toString().padLeft(2, '0')}",
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                    ),
+                    Flexible(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: themeColor.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          suitability['label'] as String,
+                          style: TextStyle(color: themeColor, fontSize: 11, fontWeight: FontWeight.bold),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 10),
-
-              // PHASES SUMMARY
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildPhaseMiniBadge("Vegetative", "Hanggang ${vegDate.month}/${vegDate.day}"),
+                const SizedBox(height: 12),
+                
+                // DETAILS CONTAINER
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: themeColor.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: themeColor.withOpacity(0.3)),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _buildPhaseMiniBadge("Reproductive", "Hanggang ${repDate.month}/${repDate.day}"),
+                  child: Text(
+                    suitability['reason'] as String,
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF334155), height: 1.4, fontWeight: FontWeight.w500),
                   ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF16A34A),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  icon: const Icon(Icons.check_circle_rounded, size: 18),
-                  label: const Text("PILIIN ITONG PETSA NG PAGTATANIM", style: TextStyle(fontWeight: FontWeight.bold)),
-                  onPressed: () {
-                    setState(() {
-                      _plantingDate = targetDate;
-                    });
-                    _saveRecordToHistory(targetDate);
-                    _updateCropAgeAndStage();
-                    _saveData();
-                    Navigator.pop(ctx);
-                  },
                 ),
-              ),
-            ],
+
+                const Divider(height: 24),
+                const Text("ESTIMATED HARVEST DURATION & CROP PHASES", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF94A3B8))),
+                const SizedBox(height: 8),
+
+                // HARVEST RANGE CARD
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF0FDF4),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFBBF7D0)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.grain_rounded, color: Color(0xFF16A34A), size: 24),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text("Tantyang Haba ng Ani (Harvest Window):", style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF166534))),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                "${estimatedStartHarvest.month}/${estimatedStartHarvest.day}/${estimatedStartHarvest.year} — ${estimatedEndHarvest.month}/${estimatedEndHarvest.day}/${estimatedEndHarvest.year}",
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF15803D)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+
+                // PHASES SUMMARY
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildPhaseMiniBadge("Vegetative", "Hanggang ${vegDate.month}/${vegDate.day}"),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildPhaseMiniBadge("Reproductive", "Hanggang ${repDate.month}/${repDate.day}"),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF16A34A),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    icon: const Icon(Icons.check_circle_rounded, size: 18),
+                    label: const Text("PILIIN ITONG PETSA NG PAGTATANIM", style: TextStyle(fontWeight: FontWeight.bold)),
+                    onPressed: () {
+                      setState(() {
+                        _plantingDate = targetDate;
+                      });
+                      _saveRecordToHistory(targetDate);
+                      _updateCropAgeAndStage();
+                      _saveData();
+                      Navigator.pop(ctx);
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -1082,11 +1112,11 @@ class _GuidancePageState extends State<GuidancePage> {
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(
-            color: (_isFuturePlanting ? const Color(0xFF0284C7) : const Color(0xFF16A34A)).withValues(alpha: 0.25),
+            color: Color(0x2216A34A),
             blurRadius: 12,
-            offset: const Offset(0, 4),
+            offset: Offset(0, 4),
           ),
         ],
       ),
@@ -1096,15 +1126,20 @@ class _GuidancePageState extends State<GuidancePage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Icon(_isFuturePlanting ? Icons.event_available_rounded : Icons.rocket_launch_rounded, color: const Color(0xFFFEF08A), size: 22),
-                  const SizedBox(width: 8),
-                  Text(
-                    _isFuturePlanting ? "Plano sa Hinaharap" : "Kasalukuyang Pagtatanim",
-                    style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800),
-                  ),
-                ],
+              Expanded(
+                child: Row(
+                  children: [
+                    Icon(_isFuturePlanting ? Icons.event_available_rounded : Icons.rocket_launch_rounded, color: const Color(0xFFFEF08A), size: 22),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        _isFuturePlanting ? "Plano sa Hinaharap" : "Kasalukuyang Pagtatanim",
+                        style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -1114,7 +1149,7 @@ class _GuidancePageState extends State<GuidancePage> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.25),
+                color: Colors.black.withOpacity(0.25),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
@@ -1122,9 +1157,12 @@ class _GuidancePageState extends State<GuidancePage> {
                 children: [
                   const Icon(Icons.eco_outlined, color: Color(0xFFFEF08A), size: 14),
                   const SizedBox(width: 6),
-                  Text(
-                    "${maturity['varietyCategory']} • ${maturity['statusTag']}",
-                    style: const TextStyle(color: Color(0xFFFEF08A), fontSize: 10, fontWeight: FontWeight.bold),
+                  Flexible(
+                    child: Text(
+                      "${maturity['varietyCategory']} • ${maturity['statusTag']}",
+                      style: const TextStyle(color: Color(0xFFFEF08A), fontSize: 10, fontWeight: FontWeight.bold),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ],
               ),
@@ -1132,7 +1170,7 @@ class _GuidancePageState extends State<GuidancePage> {
             const SizedBox(height: 10),
           ],
 
-          Divider(color: Colors.white.withValues(alpha: 0.2), height: 1),
+          Divider(color: Colors.white.withOpacity(0.2), height: 1),
           const SizedBox(height: 12),
           if (_plantingDate == null)
             const Text(
@@ -1148,8 +1186,11 @@ class _GuidancePageState extends State<GuidancePage> {
                     children: [
                       const Text("TARGET NA PETSA", style: TextStyle(color: Colors.white70, fontSize: 9, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 2),
-                      Text("${_plantingDate!.year}-${_plantingDate!.month.toString().padLeft(2, '0')}-${_plantingDate!.day.toString().padLeft(2, '0')}",
-                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text("${_plantingDate!.year}-${_plantingDate!.month.toString().padLeft(2, '0')}-${_plantingDate!.day.toString().padLeft(2, '0')}",
+                            style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                      ),
                     ],
                   ),
                 ),
@@ -1162,8 +1203,11 @@ class _GuidancePageState extends State<GuidancePage> {
                       children: [
                         const Text("COUNTDOWN", style: TextStyle(color: Colors.white70, fontSize: 9, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 2),
-                        Text("May $_daysUntilPlanting araw pa",
-                            style: const TextStyle(color: Color(0xFFFEF08A), fontSize: 13, fontWeight: FontWeight.w900)),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text("May $_daysUntilPlanting araw pa",
+                              style: const TextStyle(color: Color(0xFFFEF08A), fontSize: 13, fontWeight: FontWeight.w900)),
+                        ),
                       ],
                     ),
                   ),
@@ -1177,8 +1221,11 @@ class _GuidancePageState extends State<GuidancePage> {
                       children: [
                         const Text("TANTYANG ANI", style: TextStyle(color: Colors.white70, fontSize: 9, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 2),
-                        Text("${harvestDate?.month}/${harvestDate?.day}/${harvestDate?.year}",
-                            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text("${harvestDate?.month}/${harvestDate?.day}/${harvestDate?.year}",
+                              style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                        ),
                       ],
                     ),
                   ),
@@ -1194,8 +1241,11 @@ class _GuidancePageState extends State<GuidancePage> {
                     children: [
                       const Text("PETSA NG PAGTATANIM", style: TextStyle(color: Colors.white70, fontSize: 9, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 2),
-                      Text("${_plantingDate!.year}-${_plantingDate!.month.toString().padLeft(2, '0')}-${_plantingDate!.day.toString().padLeft(2, '0')}",
-                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text("${_plantingDate!.year}-${_plantingDate!.month.toString().padLeft(2, '0')}-${_plantingDate!.day.toString().padLeft(2, '0')}",
+                            style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                      ),
                     ],
                   ),
                 ),
@@ -1208,8 +1258,11 @@ class _GuidancePageState extends State<GuidancePage> {
                       children: [
                         Text("EDAD ($dayLabel)", style: const TextStyle(color: Colors.white70, fontSize: 9, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 2),
-                        Text("Araw $_cropAgeDays",
-                            style: const TextStyle(color: Color(0xFFFEF08A), fontSize: 13, fontWeight: FontWeight.w900)),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text("Araw $_cropAgeDays",
+                              style: const TextStyle(color: Color(0xFFFEF08A), fontSize: 13, fontWeight: FontWeight.w900)),
+                        ),
                       ],
                     ),
                   ),
@@ -1223,8 +1276,11 @@ class _GuidancePageState extends State<GuidancePage> {
                       children: [
                         const Text("TANTYANG ANI", style: TextStyle(color: Colors.white70, fontSize: 9, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 2),
-                        Text("${harvestDate?.month}/${harvestDate?.day}/${harvestDate?.year}",
-                            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text("${harvestDate?.month}/${harvestDate?.day}/${harvestDate?.year}",
+                              style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                        ),
                       ],
                     ),
                   ),
@@ -1250,70 +1306,88 @@ class _GuidancePageState extends State<GuidancePage> {
         children: [
           const Text("⚙️ Detalye ng Pananim & Pamamaraan", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
           const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
+          LayoutBuilder(
+            builder: (context, constraints) {
+              if (constraints.maxWidth < 360) {
+                return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text("Uri ng Binhi (Rice Variety)", style: TextStyle(fontSize: 10, color: Color(0xFF64748B))),
-                    const SizedBox(height: 4),
-                    DropdownButtonFormField<RiceVariety>(
-                      value: _selectedVariety,
-                      isExpanded: true,
-                      decoration: InputDecoration(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                      style: const TextStyle(fontSize: 11, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
-                      items: kRiceVarieties.map((v) {
-                        return DropdownMenuItem(value: v, child: Text(v.name, overflow: TextOverflow.ellipsis));
-                      }).toList(),
-                      onChanged: (val) {
-                        if (val != null) {
-                          setState(() => _selectedVariety = val);
-                          _updateCropAgeAndStage();
-                          _saveData();
-                        }
-                      },
-                    ),
+                    _buildVarietyDropdown(),
+                    const SizedBox(height: 10),
+                    _buildMethodDropdown(),
                   ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text("Paraan ng Pagtatanim", style: TextStyle(fontSize: 10, color: Color(0xFF64748B))),
-                    const SizedBox(height: 4),
-                    DropdownButtonFormField<bool>(
-                      value: _isDirectSeeded,
-                      isExpanded: true,
-                      decoration: InputDecoration(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                      style: const TextStyle(fontSize: 11, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
-                      items: const [
-                        DropdownMenuItem(value: false, child: Text("Lipat-Tanim (DAT)")),
-                        DropdownMenuItem(value: true, child: Text("Sabog-Tanim (DAS)")),
-                      ],
-                      onChanged: (val) {
-                        if (val != null) {
-                          setState(() => _isDirectSeeded = val);
-                          _updateCropAgeAndStage();
-                          _saveData();
-                        }
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ],
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(child: _buildVarietyDropdown()),
+                  const SizedBox(width: 10),
+                  Expanded(child: _buildMethodDropdown()),
+                ],
+              );
+            },
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildVarietyDropdown() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text("Uri ng Binhi (Rice Variety)", style: TextStyle(fontSize: 10, color: Color(0xFF64748B))),
+        const SizedBox(height: 4),
+        DropdownButtonFormField<RiceVariety>(
+          value: _selectedVariety,
+          isExpanded: true,
+          decoration: InputDecoration(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+          style: const TextStyle(fontSize: 11, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+          items: kRiceVarieties.map((v) {
+            return DropdownMenuItem(value: v, child: Text(v.name, overflow: TextOverflow.ellipsis));
+          }).toList(),
+          onChanged: (val) {
+            if (val != null) {
+              setState(() => _selectedVariety = val);
+              _updateCropAgeAndStage();
+              _saveData();
+            }
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMethodDropdown() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text("Paraan ng Pagtatanim", style: TextStyle(fontSize: 10, color: Color(0xFF64748B))),
+        const SizedBox(height: 4),
+        DropdownButtonFormField<bool>(
+          value: _isDirectSeeded,
+          isExpanded: true,
+          decoration: InputDecoration(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+          style: const TextStyle(fontSize: 11, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+          items: const [
+            DropdownMenuItem(value: false, child: Text("Lipat-Tanim (DAT)", overflow: TextOverflow.ellipsis)),
+            DropdownMenuItem(value: true, child: Text("Sabog-Tanim (DAS)", overflow: TextOverflow.ellipsis)),
+          ],
+          onChanged: (val) {
+            if (val != null) {
+              setState(() => _isDirectSeeded = val);
+              _updateCropAgeAndStage();
+              _saveData();
+            }
+          },
+        ),
+      ],
     );
   }
 
@@ -1368,7 +1442,7 @@ class _GuidancePageState extends State<GuidancePage> {
                 color: isSelected ? const Color(0xFF16A34A) : Colors.white,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: isSelected ? const Color(0xFF16A34A) : const Color(0xFFE2E8F0)),
-                boxShadow: isSelected ? [BoxShadow(color: const Color(0xFF16A34A).withValues(alpha: 0.2), blurRadius: 8, offset: const Offset(0, 3))] : [],
+                boxShadow: isSelected ? const [BoxShadow(color: Color(0x3316A34A), blurRadius: 8, offset: Offset(0, 3))] : [],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1418,15 +1492,18 @@ class _GuidancePageState extends State<GuidancePage> {
                   ],
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(8)),
-                child: Text(_selectedStage.standardRef, style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.w600, color: Color(0xFF475569))),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(8)),
+                  child: Text(_selectedStage.standardRef, style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.w600, color: Color(0xFF475569)), overflow: TextOverflow.ellipsis),
+                ),
               ),
             ],
           ),
           const SizedBox(height: 12),
-          Divider(color: const Color(0xFFF1F5F9), height: 1),
+          const Divider(color: Color(0xFFF1F5F9), height: 1),
           const SizedBox(height: 8),
           ...tasks.map((task) {
             final isChecked = _completedTasks[task] ?? false;
@@ -1472,7 +1549,7 @@ class _GuidancePageState extends State<GuidancePage> {
       case RiceStage.planning:
         return [
           "Pantayin nang maayos ang lupa gamit ang leveling board para pantay ang lalim ng tubig.",
-          "Isagawa ang germination test sa binhi upang masigurong mataas ang sproting rate (>85%).",
+          "Isagawa ang germination test sa binhi upang masigurong mataas ang sprouting rate (>85%).",
           "Ihanda ang mga gagamiting abono at mga kagamitan sa pag-aabono.",
         ];
       case RiceStage.vegetative:
@@ -1601,8 +1678,8 @@ class _GuidancePageState extends State<GuidancePage> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 8, offset: const Offset(0, 2)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x05000000), blurRadius: 8, offset: Offset(0, 2)),
         ],
       ),
       child: Column(
@@ -1628,7 +1705,7 @@ class _GuidancePageState extends State<GuidancePage> {
             ],
           ),
           const SizedBox(height: 12),
-          Divider(color: const Color(0xFFF1F5F9), height: 1),
+          const Divider(color: Color(0xFFF1F5F9), height: 1),
           const SizedBox(height: 12),
           ...bullets.map((bullet) => Padding(
                 padding: const EdgeInsets.only(bottom: 8),

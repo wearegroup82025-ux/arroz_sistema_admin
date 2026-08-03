@@ -55,6 +55,27 @@ class _CheckoutPageState extends State<CheckoutPage> {
     }
   }
 
+  // 🟢 BAGONG FUNCTION: Bumabawas ng stock sa Inventory/Products collection sa Firestore
+  Future<void> _deductProductStock() async {
+    final batch = FirebaseFirestore.instance.batch();
+
+    for (final item in widget.orderItems) {
+      final productId = item['productId'];
+      final quantityOrdered = item['quantity'] as int? ?? 1;
+
+      if (productId != null && productId.toString().isNotEmpty) {
+        final productRef = FirebaseFirestore.instance.collection('products').doc(productId);
+        
+        // Ibabawas ang eksaktong bilang ng inorder sa stock ng produkto
+        batch.update(productRef, {
+          'stock': FieldValue.increment(-quantityOrdered)
+        });
+      }
+    }
+
+    await batch.commit();
+  }
+
   // --- ONLINE PAYMENT METHOD (PAYMONGO CHECKOUT PROCESS) ---
   Future<void> _processOnlinePayment(DocumentReference orderRef, String methodKey) async {
     final primaryColor = Theme.of(context).primaryColor;
@@ -108,7 +129,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
         );
 
         if (mounted && result == "SUCCESS") {
+          // 🟢 IDAGDAG: Bawasan ang stock kapag matagumpay ang online payment
+          await _deductProductStock();
           await _removePurchasedItemsFromCart();
+
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: const Text("Payment Successful! Your payment and order have been received."),
@@ -202,13 +226,15 @@ class _CheckoutPageState extends State<CheckoutPage> {
         "createdAt": FieldValue.serverTimestamp(),
       });
 
-      await _removePurchasedItemsFromCart();
-
       // 2. Process based on selected payment method
       if (isOnlinePayment) {
         if (mounted) setState(() => isPlacingOrder = false);
         await _processOnlinePayment(orderRef, "gcash");
       } else {
+        // 🟢 IDAGDAG: Bawasan ang stock para sa Cash on Delivery (COD) order
+        await _deductProductStock();
+        await _removePurchasedItemsFromCart();
+
         if (mounted) {
           showDialog(
             context: context,
@@ -243,7 +269,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Kukunin nito ang dynamic theme colors ng app mo:
     final primaryColor = Theme.of(context).primaryColor;
     final errorColor = Theme.of(context).colorScheme.error;
 
