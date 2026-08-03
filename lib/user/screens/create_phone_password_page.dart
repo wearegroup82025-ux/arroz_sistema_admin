@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../services/auth.service.dart';
+import '../../services/auth/auth.service.dart';
 import 'homeuser_page.dart';
 
 class CreatePhonePasswordPage extends StatefulWidget {
