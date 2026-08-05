@@ -5,6 +5,7 @@ import 'cart_page.dart';
 import 'orders_page.dart';
 import 'product_page.dart';
 import 'profile_page.dart';
+import 'messages_page.dart';
 import 'package:provider/provider.dart';
 import '../../providers/language_provider.dart';
 import '../../services/app_localizations.dart';
@@ -120,182 +121,6 @@ class _DashboardView extends StatelessWidget {
     if (hour < 12) return language == AppLanguage.english ? "Good Morning! 🌾" : "Magandang Umaga! 🌾";
     if (hour < 18) return language == AppLanguage.english ? "Good Afternoon! ☀️" : "Magandang Hapon! ☀️";
     return language == AppLanguage.english ? "Good Evening! 🌙" : "Magandang Gabi! 🌙";
-  }
-
-  void _showAdminChatPanel(BuildContext context, AppLocalizations local, String userId) {
-    final messageController = TextEditingController();
-    final theme = Theme.of(context);
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: theme.colorScheme.surface,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-          ),
-          child: Container(
-            height: MediaQuery.of(context).size.height * 0.7,
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    CircleAvatar(
-                      backgroundColor: theme.colorScheme.primaryContainer,
-                      child: Icon(Icons.support_agent_rounded, color: theme.colorScheme.onPrimaryContainer),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            local.chatTitle,
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
-                          ),
-                          Text(
-                            language == AppLanguage.english ? "Active • Support Team" : "Aktibo • Suporta sa Mamimili",
-                            style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: Icon(Icons.close, color: theme.colorScheme.onSurface),
-                      onPressed: () => Navigator.pop(context),
-                    )
-                  ],
-                ),
-                const Divider(),
-                Expanded(
-                  child: StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('chats')
-                        .doc(userId)
-                        .collection('messages')
-                        .orderBy('timestamp', descending: true)
-                        .snapshots(),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return Center(child: CircularProgressIndicator(color: theme.colorScheme.primary));
-                      }
-
-                      final docs = snapshot.data?.docs ?? [];
-                      if (docs.isEmpty) {
-                        return Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.chat_bubble_outline, size: 48, color: theme.colorScheme.outline),
-                              const SizedBox(height: 8),
-                              Text(
-                                language == AppLanguage.english
-                                    ? "No messages yet. Send a message to Admin!"
-                                    : "Wala pang mensahe. Mag-iwan ng tanong sa Admin!",
-                                style: TextStyle(color: theme.colorScheme.outline, fontSize: 13),
-                              ),
-                            ],
-                          ),
-                        );
-                      }
-
-                      return ListView.builder(
-                        reverse: true,
-                        itemCount: docs.length,
-                        itemBuilder: (context, index) {
-                          final msg = docs[index].data() as Map<String, dynamic>;
-                          final bool isMe = msg['senderId'] == userId;
-
-                          return Align(
-                            alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                            child: Container(
-                              margin: const EdgeInsets.symmetric(vertical: 4),
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                              decoration: BoxDecoration(
-                                color: isMe ? theme.colorScheme.primary : theme.colorScheme.surfaceContainerHigh,
-                                borderRadius: BorderRadius.only(
-                                  topLeft: const Radius.circular(14),
-                                  topRight: const Radius.circular(14),
-                                  bottomLeft: Radius.circular(isMe ? 14 : 0),
-                                  bottomRight: Radius.circular(isMe ? 0 : 14),
-                                ),
-                              ),
-                              child: Text(
-                                msg['text'] ?? '',
-                                style: TextStyle(
-                                  color: isMe ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface,
-                                  fontSize: 13.5,
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: messageController,
-                        style: TextStyle(color: theme.colorScheme.onSurface),
-                        decoration: InputDecoration(
-                          hintText: local.chatHint,
-                          hintStyle: TextStyle(fontSize: 13, color: theme.colorScheme.outline),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          filled: true,
-                          fillColor: theme.colorScheme.surfaceContainerHighest,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(24),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton.filled(
-                      style: IconButton.styleFrom(
-                        backgroundColor: theme.colorScheme.primary,
-                      ),
-                      icon: Icon(Icons.send_rounded, color: theme.colorScheme.onPrimary, size: 20),
-                      onPressed: () async {
-                        final text = messageController.text.trim();
-                        if (text.isEmpty) return;
-
-                        messageController.clear();
-
-                        final ref = FirebaseFirestore.instance
-                            .collection('chats')
-                            .doc(userId)
-                            .collection('messages');
-
-                        await ref.add({
-                          'senderId': userId,
-                          'text': text,
-                          'timestamp': FieldValue.serverTimestamp(),
-                        });
-
-                        await FirebaseFirestore.instance.collection('chats').doc(userId).set({
-                          'lastMessage': text,
-                          'lastUpdated': FieldValue.serverTimestamp(),
-                          'userId': userId,
-                          'unreadByAdmin': true,
-                        }, SetOptions(merge: true));
-                      },
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
   }
 
   void _showNotificationPanel(BuildContext context, AppLocalizations local, String userId) {
@@ -467,12 +292,33 @@ class _DashboardView extends StatelessWidget {
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
               ),
             ),
+
             if (currentUser != null)
-              IconButton(
-                icon: Icon(Icons.chat_outlined, color: theme.colorScheme.onPrimary),
-                tooltip: "Kausapin ang Admin",
-                onPressed: () => _showAdminChatPanel(context, local, currentUser.uid),
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection("chats")
+                    .doc(currentUser.uid)
+                    .collection("messages")
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  return IconButton(
+                    icon: Icon(
+                      Icons.mail_outline,
+                      color: theme.colorScheme.onPrimary,
+                    ),
+                    tooltip: "Messages",
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const MessagesPage(),
+                        ),
+                      );
+                    },
+                  );
+                },
               ),
+
             Padding(
               padding: const EdgeInsets.only(right: 12.0),
               child: currentUser == null

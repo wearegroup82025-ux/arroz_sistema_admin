@@ -48,7 +48,7 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
           Tab(text: local.all),
           Tab(text: local.toPay),
           Tab(text: local.toShip),
-          Tab(text: local.toReceive),
+          Tab(text: local.toDeliver),
           Tab(text: local.completed),
           Tab(text: local.cancelled),
         ],
@@ -152,10 +152,14 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
     final toReceive = orders.where((doc) {
       final data = doc.data() as Map<String, dynamic>;
       final String status = data['orderStatus'] ?? data['status'] ?? 'Pending';
-      return status == "Shipping" || status == "Delivered";
+
+      return status == "To Deliver";
     }).toList();
 
-    if (toReceive.isEmpty) return _noOrders("Walang ipinapadalang order sa ngayon.");
+    if (toReceive.isEmpty) {
+      return _noOrders("Walang ipinapadalang order sa ngayon.");
+    }
+
     return _buildListView(toReceive, local: local);
   }
 
@@ -257,20 +261,19 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
     Color badgeColor = Colors.grey;
     String text = status;
 
-    if (status == "Cancelled") {
+    // Inuuna ang mismong explicit orderStatus bago ang payment conditions
+    if (status == "Completed") {
+      badgeColor = ArrozTheme.emerald;
+      text = "Completed";
+    } else if (status == "Cancelled") {
       badgeColor = ArrozTheme.dangerRed;
       text = "Cancelled";
-    } else if ((isPaid || prepareToShip) || status == "Paid") {
-      if (status == "Shipping" || status == "Delivered") {
-        badgeColor = Colors.blue.shade700;
-        text = "To Receive";
-      } else if (status == "Completed") {
-        badgeColor = ArrozTheme.emerald;
-        text = "Completed";
-      } else {
-        badgeColor = ArrozTheme.warningOrange;
-        text = "To Ship";
-      }
+    } else if (status == "To Deliver") {
+      badgeColor = Colors.blue.shade700;
+      text = "To Deliver";
+    } else if (isPaid || prepareToShip || status == "Paid") {
+      badgeColor = ArrozTheme.warningOrange;
+      text = "To Ship";
     } else {
       badgeColor = Colors.orange;
       text = "To Pay";

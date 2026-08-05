@@ -51,8 +51,8 @@ class AppLocalizations {
   String get toShip =>
       language == AppLanguage.english ? "To Ship" : "Ipapadala";
 
-  String get toReceive =>
-      language == AppLanguage.english ? "To Receive" : "Tatanggapin";
+  String get toDeliver =>
+      language == AppLanguage.english ? "To Deliver" : "Tatanggapin";
 
   String get completed =>
       language == AppLanguage.english ? "Completed" : "Nakumpleto";

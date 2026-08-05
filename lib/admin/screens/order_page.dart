@@ -2,13 +2,19 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 // ==================== DATA STRUCTURE LAYER ====================
-enum OrderStatus { toPay, toShip, toReceive, completed, cancelled }
+enum OrderStatus {
+  toPay,
+  toShip,
+  toDeliver,
+  completed,
+  cancelled,
+}
 
 class OrderItem {
   final String productId;
   final String productName;
-  final int quantity; 
-  final double pricePerUnit; 
+  final int quantity;
+  final double pricePerUnit;
 
   OrderItem({
     required this.productId,
@@ -71,7 +77,7 @@ class OrderModel {
         orderDate: DateTime.now(),
       );
     }
-    
+
     List<OrderItem> parsedItems = [];
 
     // Flexible Parsing ng Items
@@ -80,7 +86,7 @@ class OrderModel {
       itemsMap.forEach((key, value) {
         if (value is Map<String, dynamic>) {
           parsedItems.add(OrderItem.fromMap({
-            'productId': key, 
+            'productId': key,
             ...value
           }));
         }
@@ -98,9 +104,16 @@ class OrderModel {
       parsedStatus = OrderStatus.toPay;
     } else if (rawStatus == 'toship' || rawStatus == 'to ship' || rawStatus == 'paid' || rawStatus == 'processing') {
       parsedStatus = OrderStatus.toShip;
-    } else if (rawStatus == 'toreceive' || rawStatus == 'to receive' || rawStatus == 'shipping' || rawStatus == 'shipped' || rawStatus == 'delivered') {
-      parsedStatus = OrderStatus.toReceive;
-    } else if (rawStatus == 'completed' || rawStatus == 'done') {
+    } else if (
+    rawStatus == 'todeliver' ||
+        rawStatus == 'to deliver' ||
+        rawStatus == 'shipping' ||
+        rawStatus == 'shipped') {
+      parsedStatus = OrderStatus.toDeliver;
+    } else if (
+    rawStatus == 'completed' ||
+        rawStatus == 'delivered' ||
+        rawStatus == 'done') {
       parsedStatus = OrderStatus.completed;
     } else if (rawStatus == 'cancelled' || rawStatus == 'canceled') {
       parsedStatus = OrderStatus.cancelled;
@@ -137,23 +150,33 @@ class OrdersPage extends StatefulWidget {
 }
 
 class _OrdersPageState extends State<OrdersPage> {
-  static const Color _primaryBlue = Color(0xff2563EB); 
-  static const Color _bgSurface = Color(0xffF8FAFC); 
-  static const Color _textPrimary = Color(0xff0F172A); 
-  static const Color _textSecondary = Color(0xff64748B); 
+  static const Color _primaryBlue = Color(0xff2563EB);
+  static const Color _bgSurface = Color(0xffF8FAFC);
+  static const Color _textPrimary = Color(0xff0F172A);
+  static const Color _textSecondary = Color(0xff64748B);
   static const Color _border = Color(0xffE2E8F0);
 
-  OrderStatus? _selectedStatusFilter; 
+  OrderStatus? _selectedStatusFilter;
 
   String _getStatusLabel(OrderStatus status) {
     switch (status) {
-      case OrderStatus.toPay: return "TO PAY";
-      case OrderStatus.toShip: return "TO SHIP";
-      case OrderStatus.toReceive: return "TO RECEIVE";
-      case OrderStatus.completed: return "COMPLETED";
-      case OrderStatus.cancelled: return "CANCELLED";
+      case OrderStatus.toPay:
+        return "TO PAY";
+
+      case OrderStatus.toShip:
+        return "TO SHIP";
+
+      case OrderStatus.toDeliver:
+        return "TO DELIVER";
+
+      case OrderStatus.completed:
+        return "COMPLETED";
+
+      case OrderStatus.cancelled:
+        return "CANCELLED";
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -256,11 +279,11 @@ class _OrdersPageState extends State<OrdersPage> {
   Widget _buildAdvancedOrderCard(OrderModel order) {
     Color statusColor;
     switch (order.status) {
-      case OrderStatus.toPay: statusColor = const Color(0xffF59E0B); break;      
-      case OrderStatus.toShip: statusColor = Colors.purple; break;               
-      case OrderStatus.toReceive: statusColor = const Color(0xff06B6D4); break;  
-      case OrderStatus.completed: statusColor = const Color(0xff16A34A); break;  
-      case OrderStatus.cancelled: statusColor = const Color(0xffEF4444); break;  
+      case OrderStatus.toPay: statusColor = const Color(0xffF59E0B); break;
+      case OrderStatus.toShip: statusColor = Colors.purple; break;
+      case OrderStatus.toDeliver: statusColor = const Color(0xff06B6D4); break;
+      case OrderStatus.completed: statusColor = const Color(0xff16A34A); break;
+      case OrderStatus.cancelled: statusColor = const Color(0xffEF4444); break;
     }
 
     final displayId = order.id.length >= 8 ? order.id.substring(0, 8) : order.id;
@@ -297,8 +320,8 @@ class _OrdersPageState extends State<OrdersPage> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      "${item.productName} (x${item.quantity})", 
-                      style: const TextStyle(fontSize: 14, color: _textPrimary, fontWeight: FontWeight.w500)
+                        "${item.productName} (x${item.quantity})",
+                        style: const TextStyle(fontSize: 14, color: _textPrimary, fontWeight: FontWeight.w500)
                     ),
                   ),
                   Text("₱${(item.pricePerUnit * item.quantity).toStringAsFixed(2)}", style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -339,74 +362,170 @@ class _OrdersPageState extends State<OrdersPage> {
     OrderStatus temporaryStatus = order.status;
 
     showModalBottomSheet(
+      isScrollControlled: true,
       context: parentContext,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       backgroundColor: Colors.white,
       builder: (context) {
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setModalState) {
-            return Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text("Modify Dispatch Stage", style: TextStyle(color: _textSecondary, fontSize: 12, fontWeight: FontWeight.w500)),
-                  Text("Order #${order.id.toUpperCase()}", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _textPrimary)),
-                  const Divider(height: 24),
-                  const Text("Pipeline Status", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: _textPrimary)),
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<OrderStatus>(
-                    initialValue: temporaryStatus,
-                    decoration: InputDecoration(
-                      filled: true,
-                      fillColor: _bgSurface,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: _border)),
+            return SingleChildScrollView(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text("Modify Dispatch Stage", style: TextStyle(color: _textSecondary, fontSize: 12, fontWeight: FontWeight.w500)),
+                    Text("Order #${order.id.toUpperCase()}", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _textPrimary)),
+                    const Divider(height: 24),
+                    const Text("Pipeline Status", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: _textPrimary)),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<OrderStatus>(
+                      value: temporaryStatus,
+                      decoration: InputDecoration(
+                        filled: true,
+                        fillColor: _bgSurface,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: _border)),
+                      ),
+                      items: OrderStatus.values.map((status) {
+                        return DropdownMenuItem(value: status, child: Text(_getStatusLabel(status)));
+                      }).toList(),
+                      onChanged: (val) => setModalState(() => temporaryStatus = val ?? temporaryStatus),
                     ),
-                    items: OrderStatus.values.map((status) {
-                      return DropdownMenuItem(value: status, child: Text(_getStatusLabel(status)));
-                    }).toList(),
-                    onChanged: (val) => setModalState(() => temporaryStatus = val ?? temporaryStatus),
-                  ),
-                  const SizedBox(height: 24),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(backgroundColor: _primaryBlue, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                      onPressed: () async {
-                        String statusString = "Pending";
-                        if (temporaryStatus == OrderStatus.toShip) statusString = "To Ship";
-                        if (temporaryStatus == OrderStatus.toReceive) statusString = "Shipping";
-                        if (temporaryStatus == OrderStatus.completed) statusString = "Completed";
-                        if (temporaryStatus == OrderStatus.cancelled) statusString = "Cancelled";
+                    const SizedBox(height: 24),
 
-                        await FirebaseFirestore.instance
-                            .collection("orders")
-                            .doc(order.id)
-                            .update({
-                              'status': statusString,
-                              'orderStatus': statusString,
-                              'isPaid': temporaryStatus == OrderStatus.completed,
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(backgroundColor: _primaryBlue, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                        onPressed: () async {
+                          String statusString = "Pending";
+                          switch (temporaryStatus) {
+                            case OrderStatus.toPay:
+                              statusString = "To Pay";
+                              break;
+
+                            case OrderStatus.toShip:
+                              statusString = "To Ship";
+                              break;
+
+                            case OrderStatus.toDeliver:
+                              statusString = "To Deliver";
+                              break;
+
+                            case OrderStatus.completed:
+                              statusString = "Completed";
+                              break;
+
+                            case OrderStatus.cancelled:
+                              statusString = "Cancelled";
+                              break;
+                          }
+
+                          // 1. Update Order Document
+                          await FirebaseFirestore.instance
+                              .collection("orders")
+                              .doc(order.id)
+                              .update({
+                            'status': statusString,
+                            'orderStatus': statusString,
+                            'isPaid': temporaryStatus == OrderStatus.completed,
+                          });
+
+                          String notificationMessage = "";
+
+                          switch (temporaryStatus) {
+                            case OrderStatus.toPay:
+                              notificationMessage = "📝 Ang iyong order ay naghihintay ng bayad.";
+                              break;
+
+                            case OrderStatus.toShip:
+                              notificationMessage = "📦 To ship na ang iyong order.";
+                              break;
+
+                            case OrderStatus.toDeliver:
+                              notificationMessage =
+                              "🚚 Ang iyong order ay out for delivery na.";
+                              break;
+
+                            case OrderStatus.completed:
+                              notificationMessage = "✅ Delivered na ang iyong order. Maraming salamat sa iyong pagbili!";
+                              break;
+
+                            case OrderStatus.cancelled:
+                              notificationMessage = "❌ Nakansela ang iyong order.";
+                              break;
+                          }
+
+                          // 2. Save Notification Log
+                          await FirebaseFirestore.instance
+                              .collection("users")
+                              .doc(order.userId)
+                              .collection("notifications")
+                              .add({
+                            "title": "Order Update",
+                            "body": notificationMessage,
+                            "type": "ORDER_UPDATE",
+                            "status": statusString,
+                            "orderId": order.id,
+                            "isRead": false,
+                            "createdAt": FieldValue.serverTimestamp(),
+                          });
+
+                          // 3. Save User Direct Message Log
+                          await FirebaseFirestore.instance
+                              .collection("users")
+                              .doc(order.userId)
+                              .collection("messages")
+                              .add({
+                            "title": "Order Update",
+                            "status": statusString,
+                            "message": notificationMessage,
+                            "orderId": order.id,
+                            "isRead": false,
+                            "createdAt": FieldValue.serverTimestamp(),
+                          });
+
+                          // 4. IDINAGDAG: AUTO-MESSAGE SA CHAT SYSTEM (chats -> userId -> messages)
+                          if (order.userId.isNotEmpty) {
+                            await FirebaseFirestore.instance
+                                .collection("chats")
+                                .doc(order.userId)
+                                .collection("messages")
+                                .add({
+                              "senderId": "admin",
+                              "receiverId": order.userId,
+                              "text": notificationMessage,
+                              "orderId": order.id,
+                              "status": statusString,
+                              "isAutoMessage": true,
+                              "timestamp": FieldValue.serverTimestamp(),
                             });
+                          }
 
-                        if (!context.mounted) return;
-                        Navigator.pop(context);
-                        
-                        if (!parentContext.mounted) return;
-                        ScaffoldMessenger.of(parentContext).showSnackBar(
-                          const SnackBar(
-                            content: Text("🚀 Order status updated!"), 
-                            backgroundColor: Colors.green, 
-                            behavior: SnackBarBehavior.floating
-                          ),
-                        );
-                      },
-                      child: const Text("Commit Pipeline Transition", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                    ),
-                  )
-                ],
+                          if (!context.mounted) return;
+                          Navigator.pop(context);
+
+                          if (!parentContext.mounted) return;
+                          ScaffoldMessenger.of(parentContext).showSnackBar(
+                            const SnackBar(
+                                content: Text("🚀 Order status updated & auto message sent!"),
+                                backgroundColor: Colors.green,
+                                behavior: SnackBarBehavior.floating
+                            ),
+                          );
+                        },
+                        child: const Text("Commit Pipeline Transition", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      ),
+                    )
+                  ],
+                ),
               ),
             );
           },

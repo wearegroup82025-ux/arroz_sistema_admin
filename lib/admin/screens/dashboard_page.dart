@@ -18,6 +18,7 @@ import 'guidance_page.dart';
 import 'notification_page.dart';
 import 'user_management_page.dart';
 import '../../services/notification/notification_service.dart';
+import 'admin_chat_page.dart';
 
 class DashboardPage extends StatefulWidget {
   final String userRole;
@@ -61,7 +62,7 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   void initState() {
     super.initState();
-    
+
     final apiService = WeatherApiService(http.Client());
     _weatherRepository = WeatherRepositoryImpl(apiService: apiService);
     _fetchLiveWeather();
@@ -120,7 +121,7 @@ class _DashboardPageState extends State<DashboardPage> {
           if (data != null) {
             final stockVal = int.tryParse(data['stock']?.toString() ?? '0') ?? 0;
             final lowThreshold = int.tryParse(data['lowStockThreshold']?.toString() ?? '10') ?? 10;
-            
+
             if (stockVal <= lowThreshold) {
               _sendSystemNotification(
                 title: "⚠️ Low Stock Alert",
@@ -204,6 +205,245 @@ class _DashboardPageState extends State<DashboardPage> {
     return list;
   }
 
+  void _openConversation(String userId) {
+    final controller = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _cardBg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+          ),
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height * .75,
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const CircleAvatar(
+                    child: Icon(Icons.person),
+                  ),
+                  title: Text(userId),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ),
+
+                const Divider(height: 1),
+
+                Expanded(
+                  child: StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('chats')
+                        .doc(userId)
+                        .collection('messages')
+                        .orderBy('timestamp', descending: true)
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) {
+                        return const Center(
+                          child: CircularProgressIndicator(),
+                        );
+                      }
+
+                      final docs = snapshot.data!.docs;
+
+                      return ListView.builder(
+                        reverse: true,
+                        itemCount: docs.length,
+                        itemBuilder: (context, index) {
+                          final msg =
+                          docs[index].data() as Map<String, dynamic>;
+
+                          final bool isAdmin =
+                              msg['senderId'] == 'admin';
+
+                          return Align(
+                            alignment: isAdmin
+                                ? Alignment.centerRight
+                                : Alignment.centerLeft,
+                            child: Container(
+                              margin: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 5),
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: isAdmin
+                                    ? _primary
+                                    : Colors.grey.shade300,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                msg['text'] ?? '',
+                                style: TextStyle(
+                                  color: isAdmin
+                                      ? Colors.white
+                                      : Colors.black,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.all(10),
+                        child: TextField(
+                          controller: controller,
+                          decoration: InputDecoration(
+                            hintText: "Reply...",
+                            border: OutlineInputBorder(
+                              borderRadius:
+                              BorderRadius.circular(20),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    IconButton(
+                      icon: const Icon(Icons.send),
+                      onPressed: () async {
+                        final text = controller.text.trim();
+
+                        if (text.isEmpty) return;
+
+                        controller.clear();
+
+                        final chatRef = FirebaseFirestore.instance
+                            .collection('chats')
+                            .doc(userId);
+
+                        await chatRef
+                            .collection('messages')
+                            .add({
+                          'senderId': 'admin',
+                          'text': text,
+                          'timestamp':
+                          FieldValue.serverTimestamp(),
+                        });
+
+                        await chatRef.set({
+                          'lastMessage': text,
+                          'lastUpdated':
+                          FieldValue.serverTimestamp(),
+                          'unreadByUser': true,
+                          'unreadByAdmin': false,
+                        }, SetOptions(merge: true));
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _openChatList() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _cardBg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) {
+        return SizedBox(
+          height: MediaQuery.of(context).size.height * .75,
+          child: Column(
+            children: [
+              const SizedBox(height: 15),
+              const Text(
+                "Customer Messages",
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const Divider(),
+              Expanded(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('chats')
+                      .orderBy('lastUpdated', descending: true)
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) {
+                      return const Center(
+                        child: CircularProgressIndicator(),
+                      );
+                    }
+
+                    final docs = snapshot.data!.docs;
+
+                    if (docs.isEmpty) {
+                      return const Center(
+                        child: Text("No conversations"),
+                      );
+                    }
+
+                    return ListView.builder(
+                      itemCount: docs.length,
+                      itemBuilder: (context, index) {
+                        final data =
+                        docs[index].data() as Map<String, dynamic>;
+
+                        final uid = docs[index].id;
+
+                        return ListTile(
+                          leading: const CircleAvatar(
+                            child: Icon(Icons.person),
+                          ),
+                          title: Text(
+                            data['userName'] ?? uid,
+                          ),
+                          subtitle: Text(
+                            data['lastMessage'] ?? "",
+                            maxLines: 1,
+                          ),
+                          trailing: (data['unreadByAdmin'] ?? false)
+                              ? const CircleAvatar(
+                            radius: 10,
+                            backgroundColor: Colors.red,
+                            child: Text(
+                              "!",
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12),
+                            ),
+                          )
+                              : null,
+                          onTap: () {
+                            Navigator.pop(context);
+                            _openConversation(uid);
+                          },
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   void _openChatModal() {
     showModalBottomSheet(
       context: context,
@@ -232,7 +472,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     builder: (context, snapshot) {
                       if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
                       final docs = snapshot.data!.docs;
-                      
+
                       if (docs.isEmpty) {
                         return const Center(child: Text("Walang mensahe.", style: TextStyle(color: _textSub)));
                       }
@@ -317,7 +557,7 @@ class _DashboardPageState extends State<DashboardPage> {
         builder: (context, constraints) {
           final isDesktop = constraints.maxWidth >= 900;
           final isTablet = constraints.maxWidth >= 600 && constraints.maxWidth < 900;
-          
+
           final menuList = _navigationMenu;
           final safeIndex = _currentMenuIndex < menuList.length ? _currentMenuIndex : 0;
 
@@ -377,8 +617,19 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.chat_bubble_outline_rounded, color: _textSub, size: 20),
-            onPressed: _openChatModal,
+            icon: const Icon(
+              Icons.chat_bubble_outline_rounded,
+              color: _textSub,
+              size: 20,
+            ),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const AdminChatPage(),
+                ),
+              );
+            },
           ),
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('notifications').where('isRead', isEqualTo: false).snapshots(),
@@ -430,7 +681,7 @@ class _DashboardPageState extends State<DashboardPage> {
               const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text("Admin Command Center 👋", style: TextStyle(color: _textMain, fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text("Admin Command Center", style: TextStyle(color: _textMain, fontSize: 18, fontWeight: FontWeight.bold)),
                   Text("Live metrics & operational status", style: TextStyle(color: _textSub, fontSize: 11)),
                 ],
               ),
@@ -452,7 +703,7 @@ class _DashboardPageState extends State<DashboardPage> {
             ],
           ),
           const SizedBox(height: 14),
-          
+
           _buildGoogleStyleWeatherCard(),
           const SizedBox(height: 14),
 
@@ -523,7 +774,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
           const Text("Operations & Metrics Overview", style: TextStyle(color: _textMain, fontSize: 15, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
-          
+
           // RESPONSIVE INTERACTIVE KPI GRID
           GridView(
             shrinkWrap: true,
@@ -547,7 +798,7 @@ class _DashboardPageState extends State<DashboardPage> {
                       final data = doc.data() as Map<String, dynamic>;
                       final stockVal = int.tryParse(data['stock']?.toString() ?? '0') ?? 0;
                       final lowThreshold = int.tryParse(data['lowStockThreshold']?.toString() ?? '10') ?? 10;
-                      
+
                       totalStock += stockVal;
                       if (stockVal <= lowThreshold) hasLowStock = true;
                     }
@@ -611,7 +862,7 @@ class _DashboardPageState extends State<DashboardPage> {
                   if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
                     final data = snapshot.data!.docs.first.data() as Map<String, dynamic>?;
                     final days = int.tryParse(data?['plantingDays']?.toString() ?? '0') ?? 0;
-                    
+
                     if (days > 0) {
                       if (days <= 15) {
                         cropAgeText = "Vegetative (Day $days)";
@@ -660,7 +911,7 @@ class _DashboardPageState extends State<DashboardPage> {
                       // BABASAHIN LANG ANG REVENUE KUNG NAKUMPLETO O NABAYARAN NA ANG ORDER (isPaid == true)
                       if (isPaid == true || status == 'completed' || status == 'paid' || status == 'delivered') {
                         double orderTotal = double.tryParse(data['totalAmount']?.toString() ?? data['totalPrice']?.toString() ?? '0') ?? 0.0;
-                        
+
                         // Kung walang direct total sum sa top field, kwentahin mula sa items list
                         if (orderTotal == 0.0 && data['items'] != null && data['items'] is List) {
                           final items = data['items'] as List<dynamic>;

@@ -31,7 +31,7 @@ class _NotificationPageState extends State<NotificationPage> {
             Icon(Icons.notifications_active_rounded, color: _primary, size: 22),
             SizedBox(width: 10),
             Text(
-              "Notifications Hub",
+              "Notifications",
               style: TextStyle(color: _textPrimary, fontWeight: FontWeight.w900, fontSize: 18),
             ),
           ],
