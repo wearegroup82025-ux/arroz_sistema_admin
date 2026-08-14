@@ -35,7 +35,7 @@ void main() async {
 // true  = Admin App
 // false = User App
 // ==============================
-const bool isAdminApp = false;
+const bool isAdminApp = true;
 
 class MyApp extends StatefulWidget {
   const MyApp({super.key});

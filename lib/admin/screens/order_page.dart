@@ -1,7 +1,15 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
-// ==================== DATA STRUCTURE LAYER ====================
+// ==================== CONSTANTS & THEME ====================
+class AppTheme {
+  static const Color primaryBlue = Color(0xff2563EB);
+  static const Color bgSurface = Color(0xffF8FAFC);
+  static const Color textPrimary = Color(0xff0F172A);
+  static const Color textSecondary = Color(0xff64748B);
+  static const Color border = Color(0xffE2E8F0);
+}
+
 enum OrderStatus {
   toPay,
   toShip,
@@ -10,35 +18,30 @@ enum OrderStatus {
   cancelled,
 }
 
+// ==================== DATA MODELS ====================
 class OrderItem {
   final String productId;
   final String productName;
   final int quantity;
   final double pricePerUnit;
+  final String unit;
 
-  OrderItem({
+  const OrderItem({
     required this.productId,
     required this.productName,
     required this.quantity,
     required this.pricePerUnit,
+    this.unit = 'kg',
   });
 
   factory OrderItem.fromMap(Map<String, dynamic> map) {
     return OrderItem(
       productId: map['productId'] ?? map['id'] ?? '',
-      productName: map['name'] ?? map['productName'] ?? map['title'] ?? 'Unknown Item',
+      productName: map['name'] ?? map['productName'] ?? map['title'] ?? 'Product Item',
       quantity: int.tryParse(map['quantity']?.toString() ?? '1') ?? 1,
       pricePerUnit: double.tryParse(map['price']?.toString() ?? map['pricePerUnit']?.toString() ?? '0') ?? 0.0,
+      unit: map['unit']?.toString() ?? 'kg',
     );
-  }
-
-  Map<String, dynamic> toMap() {
-    return {
-      'productId': productId,
-      'productName': productName,
-      'quantity': quantity,
-      'pricePerUnit': pricePerUnit,
-    };
   }
 }
 
@@ -47,16 +50,22 @@ class OrderModel {
   final String userId;
   final String customerName;
   final String deliveryAddress;
+  final String contactNumber;
+  final String paymentMethod;
+  final String paymentRef;
   final List<OrderItem> items;
   final OrderStatus status;
   final double totalAmount;
   final DateTime orderDate;
 
-  OrderModel({
+  const OrderModel({
     required this.id,
     required this.userId,
     required this.customerName,
     required this.deliveryAddress,
+    required this.contactNumber,
+    required this.paymentMethod,
+    required this.paymentRef,
     required this.items,
     required this.status,
     required this.totalAmount,
@@ -64,62 +73,36 @@ class OrderModel {
   });
 
   factory OrderModel.fromFirestore(DocumentSnapshot doc) {
-    Map<String, dynamic>? data = doc.data() as Map<String, dynamic>?;
-    if (data == null) {
-      return OrderModel(
-        id: doc.id,
-        userId: '',
-        customerName: 'Anonymous Buyer',
-        deliveryAddress: 'No Address Provided',
-        items: [],
-        status: OrderStatus.toPay,
-        totalAmount: 0.0,
-        orderDate: DateTime.now(),
-      );
-    }
+    final data = doc.data() as Map<String, dynamic>? ?? {};
 
     List<OrderItem> parsedItems = [];
-
-    // Flexible Parsing ng Items
     if (data['items'] is Map) {
-      Map<String, dynamic> itemsMap = data['items'] as Map<String, dynamic>;
+      final itemsMap = data['items'] as Map<String, dynamic>;
       itemsMap.forEach((key, value) {
         if (value is Map<String, dynamic>) {
-          parsedItems.add(OrderItem.fromMap({
-            'productId': key,
-            ...value
-          }));
+          parsedItems.add(OrderItem.fromMap({'productId': key, ...value}));
         }
       });
     } else if (data['items'] is List) {
-      var list = data['items'] as List;
+      final list = data['items'] as List;
       parsedItems = list.map((i) => OrderItem.fromMap(i as Map<String, dynamic>)).toList();
     }
 
-    // Advanced Status Matcher
     OrderStatus parsedStatus = OrderStatus.toPay;
-    String rawStatus = (data['orderStatus'] ?? data['status'] ?? 'Pending').toString().toLowerCase().trim();
+    final rawStatus = (data['orderStatus'] ?? data['status'] ?? 'Pending').toString().toLowerCase().trim();
 
     if (rawStatus == 'pending' || rawStatus == 'topay' || rawStatus == 'to pay' || rawStatus == 'unpaid') {
       parsedStatus = OrderStatus.toPay;
     } else if (rawStatus == 'toship' || rawStatus == 'to ship' || rawStatus == 'paid' || rawStatus == 'processing') {
       parsedStatus = OrderStatus.toShip;
-    } else if (
-    rawStatus == 'todeliver' ||
-        rawStatus == 'to deliver' ||
-        rawStatus == 'shipping' ||
-        rawStatus == 'shipped') {
+    } else if (rawStatus == 'todeliver' || rawStatus == 'to deliver' || rawStatus == 'shipping' || rawStatus == 'shipped') {
       parsedStatus = OrderStatus.toDeliver;
-    } else if (
-    rawStatus == 'completed' ||
-        rawStatus == 'delivered' ||
-        rawStatus == 'done') {
+    } else if (rawStatus == 'completed' || rawStatus == 'delivered' || rawStatus == 'done') {
       parsedStatus = OrderStatus.completed;
     } else if (rawStatus == 'cancelled' || rawStatus == 'canceled') {
       parsedStatus = OrderStatus.cancelled;
     }
 
-    // Auto Computation ng Total Amount kung 0 o null sa Firestore
     double calculatedTotal = double.tryParse(data['totalAmount']?.toString() ?? data['totalPrice']?.toString() ?? data['total']?.toString() ?? '0') ?? 0.0;
     if (calculatedTotal == 0.0 && parsedItems.isNotEmpty) {
       for (var item in parsedItems) {
@@ -127,13 +110,16 @@ class OrderModel {
       }
     }
 
-    Timestamp? rawTimestamp = data['createdAt'] ?? data['orderDate'] ?? data['date'];
+    final Timestamp? rawTimestamp = data['createdAt'] ?? data['orderDate'] ?? data['date'];
 
     return OrderModel(
       id: doc.id,
       userId: data['userId'] ?? '',
-      customerName: data['customerName'] ?? data['userName'] ?? data['name'] ?? 'Anonymous Buyer',
-      deliveryAddress: data['deliveryAddress'] ?? data['address'] ?? 'No Address Provided',
+      customerName: data['customerName'] ?? data['userName'] ?? data['name'] ?? 'Buyer',
+      deliveryAddress: data['deliveryAddress'] ?? data['address'] ?? 'No Address',
+      contactNumber: data['contactNumber'] ?? data['phone'] ?? data['mobile'] ?? 'No Contact',
+      paymentMethod: data['paymentMethod'] ?? data['paymentType'] ?? 'COD',
+      paymentRef: data['paymentRef'] ?? data['referenceNumber'] ?? 'N/A',
       items: parsedItems,
       status: parsedStatus,
       totalAmount: calculatedTotal,
@@ -142,6 +128,7 @@ class OrderModel {
   }
 }
 
+// ==================== MAIN UI ====================
 class OrdersPage extends StatefulWidget {
   const OrdersPage({super.key});
 
@@ -150,387 +137,514 @@ class OrdersPage extends StatefulWidget {
 }
 
 class _OrdersPageState extends State<OrdersPage> {
-  static const Color _primaryBlue = Color(0xff2563EB);
-  static const Color _bgSurface = Color(0xffF8FAFC);
-  static const Color _textPrimary = Color(0xff0F172A);
-  static const Color _textSecondary = Color(0xff64748B);
-  static const Color _border = Color(0xffE2E8F0);
-
   OrderStatus? _selectedStatusFilter;
+  String _searchQuery = "";
+  late final TextEditingController _searchController;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   String _getStatusLabel(OrderStatus status) {
     switch (status) {
-      case OrderStatus.toPay:
-        return "TO PAY";
-
-      case OrderStatus.toShip:
-        return "TO SHIP";
-
-      case OrderStatus.toDeliver:
-        return "TO DELIVER";
-
-      case OrderStatus.completed:
-        return "COMPLETED";
-
-      case OrderStatus.cancelled:
-        return "CANCELLED";
+      case OrderStatus.toPay: return "To Pay";
+      case OrderStatus.toShip: return "To Ship";
+      case OrderStatus.toDeliver: return "Out for Delivery";
+      case OrderStatus.completed: return "Completed";
+      case OrderStatus.cancelled: return "Cancelled";
     }
   }
-
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _bgSurface,
+      backgroundColor: AppTheme.bgSurface,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                "Order Fulfillment Center",
-                style: TextStyle(color: _textPrimary, fontSize: 26, fontWeight: FontWeight.bold, letterSpacing: -0.5),
-              ),
-              const Text(
-                "Track invoices, update delivery pipelines, and manage transaction distributions.",
-                style: TextStyle(color: _textSecondary, fontSize: 13),
-              ),
-              const SizedBox(height: 24),
+        child: StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection("orders")
+              .orderBy("createdAt", descending: true)
+              .limit(100)
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return Center(child: Text("Error: ${snapshot.error}", style: const TextStyle(color: Colors.red)));
+            }
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator(color: AppTheme.primaryBlue));
+            }
 
-              // FILTER CONTROL PIPELINE
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    _buildFilterChip("ALL LOGS", null),
-                    ...OrderStatus.values.map((status) {
-                      return _buildFilterChip(_getStatusLabel(status), status);
-                    }),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
+            final docs = snapshot.data?.docs ?? [];
+            final List<OrderModel> allOrders = docs.map((d) => OrderModel.fromFirestore(d)).toList();
 
-              // REAL-TIME ORDERS STREAM MONITOR
-              Expanded(
-                child: StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance.collection("orders").snapshots(),
-                  builder: (context, snapshot) {
-                    if (snapshot.hasError) return Center(child: Text("Error: ${snapshot.error}"));
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator(color: _primaryBlue));
-                    }
+            // METRICS COMPUTATION
+            int toPayCount = 0;
+            int toShipCount = 0;
+            int toDeliverCount = 0;
+            int completedCount = 0;
+            int cancelledCount = 0;
+            double totalRevenue = 0;
 
-                    final docs = snapshot.data?.docs ?? [];
-                    List<OrderModel> orders = docs.map((d) => OrderModel.fromFirestore(d)).toList();
+            for (var order in allOrders) {
+              switch (order.status) {
+                case OrderStatus.toPay: toPayCount++; break;
+                case OrderStatus.toShip: toShipCount++; break;
+                case OrderStatus.toDeliver: toDeliverCount++; break;
+                case OrderStatus.completed: 
+                  completedCount++; 
+                  totalRevenue += order.totalAmount;
+                  break;
+                case OrderStatus.cancelled: cancelledCount++; break;
+              }
+            }
 
-                    orders.sort((a, b) => b.orderDate.compareTo(a.orderDate));
+            // FILTERING
+            List<OrderModel> filteredOrders = allOrders;
 
-                    if (_selectedStatusFilter != null) {
-                      orders = orders.where((o) => o.status == _selectedStatusFilter).toList();
-                    }
+            if (_selectedStatusFilter != null) {
+              filteredOrders = filteredOrders.where((o) => o.status == _selectedStatusFilter).toList();
+            }
 
-                    if (orders.isEmpty) {
-                      return Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.local_shipping_outlined, size: 48, color: _textSecondary.withValues(alpha: 0.4)),
-                            const SizedBox(height: 12),
-                            const Text("No orders found under this lifecycle stage.", style: TextStyle(color: _textSecondary)),
-                          ],
-                        ),
-                      );
-                    }
+            if (_searchQuery.isNotEmpty) {
+              filteredOrders = filteredOrders.where((o) {
+                final hasMatchingItem = o.items.any((item) => item.productName.toLowerCase().contains(_searchQuery));
+                return o.id.toLowerCase().contains(_searchQuery) ||
+                    o.customerName.toLowerCase().contains(_searchQuery) ||
+                    hasMatchingItem;
+              }).toList();
+            }
 
-                    return ListView.separated(
-                      itemCount: orders.length,
-                      separatorBuilder: (context, index) => const SizedBox(height: 16),
-                      itemBuilder: (context, index) {
-                        return _buildAdvancedOrderCard(orders[index]);
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFilterChip(String label, OrderStatus? status) {
-    final isSelected = _selectedStatusFilter == status;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8.0),
-      child: ChoiceChip(
-        label: Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isSelected ? Colors.white : _textPrimary)),
-        selected: isSelected,
-        selectedColor: _primaryBlue,
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: isSelected ? Colors.transparent : _border)),
-        onSelected: (val) => setState(() => _selectedStatusFilter = status),
-      ),
-    );
-  }
-
-  Widget _buildAdvancedOrderCard(OrderModel order) {
-    Color statusColor;
-    switch (order.status) {
-      case OrderStatus.toPay: statusColor = const Color(0xffF59E0B); break;
-      case OrderStatus.toShip: statusColor = Colors.purple; break;
-      case OrderStatus.toDeliver: statusColor = const Color(0xff06B6D4); break;
-      case OrderStatus.completed: statusColor = const Color(0xff16A34A); break;
-      case OrderStatus.cancelled: statusColor = const Color(0xffEF4444); break;
-    }
-
-    final displayId = order.id.length >= 8 ? order.id.substring(0, 8) : order.id;
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: _border)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text("ID: #${displayId.toUpperCase()}", style: const TextStyle(fontWeight: FontWeight.bold, color: _textPrimary, fontFamily: 'monospace')),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
-                child: Text(_getStatusLabel(order.status), style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.bold)),
-              )
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text("Client: ${order.customerName}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: _textPrimary)),
-          Text("Route: ${order.deliveryAddress}", style: const TextStyle(fontSize: 12, color: _textSecondary)),
-          const Divider(height: 24, color: _border),
-          const Text("MANIFEST / ITEMS:", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _textSecondary, letterSpacing: 0.5)),
-          const SizedBox(height: 6),
-          ...order.items.map((item) {
             return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.fiber_manual_record, size: 8, color: _primaryBlue),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                        "${item.productName} (x${item.quantity})",
-                        style: const TextStyle(fontSize: 14, color: _textPrimary, fontWeight: FontWeight.w500)
+                  // SEARCH BAR
+                  Container(
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppTheme.border),
+                    ),
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: (val) => setState(() => _searchQuery = val.toLowerCase().trim()),
+                      decoration: InputDecoration(
+                        hintText: "Search name, order ID, or product...",
+                        hintStyle: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                        prefixIcon: const Icon(Icons.search, size: 20, color: AppTheme.textSecondary),
+                        suffixIcon: _searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear, size: 18),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() => _searchQuery = "");
+                                },
+                              )
+                            : null,
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
                     ),
                   ),
-                  Text("₱${(item.pricePerUnit * item.quantity).toStringAsFixed(2)}", style: const TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 12),
+
+                  // METRICS BAR (SMOOTH SCROLL HORIZONTAL)
+                  SizedBox(
+                    height: 58,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      children: [
+                        _MetricCard(
+                          title: "To Pay",
+                          count: toPayCount,
+                          color: const Color(0xffD97706),
+                          isSelected: _selectedStatusFilter == OrderStatus.toPay,
+                          onTap: () => setState(() => _selectedStatusFilter = _selectedStatusFilter == OrderStatus.toPay ? null : OrderStatus.toPay),
+                        ),
+                        _MetricCard(
+                          title: "To Ship",
+                          count: toShipCount,
+                          color: Colors.purple,
+                          isSelected: _selectedStatusFilter == OrderStatus.toShip,
+                          onTap: () => setState(() => _selectedStatusFilter = _selectedStatusFilter == OrderStatus.toShip ? null : OrderStatus.toShip),
+                        ),
+                        _MetricCard(
+                          title: "To Deliver",
+                          count: toDeliverCount,
+                          color: const Color(0xff0891B2),
+                          isSelected: _selectedStatusFilter == OrderStatus.toDeliver,
+                          onTap: () => setState(() => _selectedStatusFilter = _selectedStatusFilter == OrderStatus.toDeliver ? null : OrderStatus.toDeliver),
+                        ),
+                        _MetricCard(
+                          title: "Completed",
+                          count: completedCount,
+                          color: const Color(0xff16A34A),
+                          isSelected: _selectedStatusFilter == OrderStatus.completed,
+                          onTap: () => setState(() => _selectedStatusFilter = _selectedStatusFilter == OrderStatus.completed ? null : OrderStatus.completed),
+                        ),
+                        _MetricCard(
+                          title: "Cancelled",
+                          count: cancelledCount,
+                          color: const Color(0xffDC2626),
+                          isSelected: _selectedStatusFilter == OrderStatus.cancelled,
+                          onTap: () => setState(() => _selectedStatusFilter = _selectedStatusFilter == OrderStatus.cancelled ? null : OrderStatus.cancelled),
+                        ),
+                        _SalesCard(title: "Sales", revenue: totalRevenue),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // ACTIVE FILTER BADGE
+                  if (_selectedStatusFilter != null) ...[
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          "Filtered: ${_getStatusLabel(_selectedStatusFilter!)}",
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.primaryBlue),
+                        ),
+                        GestureDetector(
+                          onTap: () => setState(() => _selectedStatusFilter = null),
+                          child: const Text("Show All", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.red)),
+                        )
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+
+                  // HIGH PERFORMANCE ORDERS LIST
+                  Expanded(
+                    child: filteredOrders.isEmpty
+                        ? const Center(
+                            child: Text("No orders found.", style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+                          )
+                        : ListView.builder(
+                            physics: const BouncingScrollPhysics(),
+                            addAutomaticKeepAlives: true,
+                            addRepaintBoundaries: true,
+                            itemCount: filteredOrders.length,
+                            itemBuilder: (context, index) {
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 10),
+                                child: OrderCardItem(
+                                  order: filteredOrders[index],
+                                  statusLabel: _getStatusLabel(filteredOrders[index].status),
+                                  onUpdateTap: () => _openPipelineManager(context, filteredOrders[index]),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
                 ],
               ),
             );
-          }),
-          const Divider(height: 24, color: _border),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text("Total Payout", style: TextStyle(color: _textSecondary, fontSize: 11)),
-                  Text("₱ ${order.totalAmount.toStringAsFixed(2)}", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: _primaryBlue)),
-                ],
-              ),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _textPrimary,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  elevation: 0,
-                ),
-                onPressed: () => _openPipelineManager(context, order),
-                icon: const Icon(Icons.edit_road, size: 14, color: Colors.white),
-                label: const Text("Update Pipeline", style: TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.bold)),
-              ),
-            ],
-          )
-        ],
+          },
+        ),
       ),
     );
   }
 
   void _openPipelineManager(BuildContext parentContext, OrderModel order) {
     OrderStatus temporaryStatus = order.status;
+    bool isSubmitting = false;
 
     showModalBottomSheet(
       isScrollControlled: true,
       context: parentContext,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       backgroundColor: Colors.white,
       builder: (context) {
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setModalState) {
-            return SingleChildScrollView(
+            return Padding(
               padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom,
+                left: 20,
+                right: 20,
+                top: 20,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text("Modify Dispatch Stage", style: TextStyle(color: _textSecondary, fontSize: 12, fontWeight: FontWeight.w500)),
-                    Text("Order #${order.id.toUpperCase()}", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _textPrimary)),
-                    const Divider(height: 24),
-                    const Text("Pipeline Status", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: _textPrimary)),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<OrderStatus>(
-                      value: temporaryStatus,
-                      decoration: InputDecoration(
-                        filled: true,
-                        fillColor: _bgSurface,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: _border)),
-                      ),
-                      items: OrderStatus.values.map((status) {
-                        return DropdownMenuItem(value: status, child: Text(_getStatusLabel(status)));
-                      }).toList(),
-                      onChanged: (val) => setModalState(() => temporaryStatus = val ?? temporaryStatus),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("Update Status", style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                  Text("Order #${order.id.toUpperCase()}", style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+                  const Divider(height: 20),
+                  DropdownButtonFormField<OrderStatus>(
+                    value: temporaryStatus,
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: AppTheme.bgSurface,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: AppTheme.border)),
                     ),
-                    const SizedBox(height: 24),
-
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(backgroundColor: _primaryBlue, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                        onPressed: () async {
-                          String statusString = "Pending";
-                          switch (temporaryStatus) {
-                            case OrderStatus.toPay:
-                              statusString = "To Pay";
-                              break;
-
-                            case OrderStatus.toShip:
-                              statusString = "To Ship";
-                              break;
-
-                            case OrderStatus.toDeliver:
-                              statusString = "To Deliver";
-                              break;
-
-                            case OrderStatus.completed:
-                              statusString = "Completed";
-                              break;
-
-                            case OrderStatus.cancelled:
-                              statusString = "Cancelled";
-                              break;
-                          }
-
-                          // 1. Update Order Document
-                          await FirebaseFirestore.instance
-                              .collection("orders")
-                              .doc(order.id)
-                              .update({
-                            'status': statusString,
-                            'orderStatus': statusString,
-                            'isPaid': temporaryStatus == OrderStatus.completed,
-                          });
-
-                          String notificationMessage = "";
-
-                          switch (temporaryStatus) {
-                            case OrderStatus.toPay:
-                              notificationMessage = "📝 Ang iyong order ay naghihintay ng bayad.";
-                              break;
-
-                            case OrderStatus.toShip:
-                              notificationMessage = "📦 To ship na ang iyong order.";
-                              break;
-
-                            case OrderStatus.toDeliver:
-                              notificationMessage =
-                              "🚚 Ang iyong order ay out for delivery na.";
-                              break;
-
-                            case OrderStatus.completed:
-                              notificationMessage = "✅ Delivered na ang iyong order. Maraming salamat sa iyong pagbili!";
-                              break;
-
-                            case OrderStatus.cancelled:
-                              notificationMessage = "❌ Nakansela ang iyong order.";
-                              break;
-                          }
-
-                          // 2. Save Notification Log
-                          await FirebaseFirestore.instance
-                              .collection("users")
-                              .doc(order.userId)
-                              .collection("notifications")
-                              .add({
-                            "title": "Order Update",
-                            "body": notificationMessage,
-                            "type": "ORDER_UPDATE",
-                            "status": statusString,
-                            "orderId": order.id,
-                            "isRead": false,
-                            "createdAt": FieldValue.serverTimestamp(),
-                          });
-
-                          // 3. Save User Direct Message Log
-                          await FirebaseFirestore.instance
-                              .collection("users")
-                              .doc(order.userId)
-                              .collection("messages")
-                              .add({
-                            "title": "Order Update",
-                            "status": statusString,
-                            "message": notificationMessage,
-                            "orderId": order.id,
-                            "isRead": false,
-                            "createdAt": FieldValue.serverTimestamp(),
-                          });
-
-                          // 4. IDINAGDAG: AUTO-MESSAGE SA CHAT SYSTEM (chats -> userId -> messages)
-                          if (order.userId.isNotEmpty) {
-                            await FirebaseFirestore.instance
-                                .collection("chats")
-                                .doc(order.userId)
-                                .collection("messages")
-                                .add({
-                              "senderId": "admin",
-                              "receiverId": order.userId,
-                              "text": notificationMessage,
-                              "orderId": order.id,
-                              "status": statusString,
-                              "isAutoMessage": true,
-                              "timestamp": FieldValue.serverTimestamp(),
-                            });
-                          }
-
-                          if (!context.mounted) return;
-                          Navigator.pop(context);
-
-                          if (!parentContext.mounted) return;
-                          ScaffoldMessenger.of(parentContext).showSnackBar(
-                            const SnackBar(
-                                content: Text("🚀 Order status updated & auto message sent!"),
-                                backgroundColor: Colors.green,
-                                behavior: SnackBarBehavior.floating
-                            ),
-                          );
-                        },
-                        child: const Text("Commit Pipeline Transition", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    items: OrderStatus.values.map((status) {
+                      return DropdownMenuItem(value: status, child: Text(_getStatusLabel(status)));
+                    }).toList(),
+                    onChanged: isSubmitting ? null : (val) => setModalState(() => temporaryStatus = val ?? temporaryStatus),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 44,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primaryBlue,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       ),
-                    )
-                  ],
-                ),
+                      onPressed: isSubmitting
+                          ? null
+                          : () async {
+                              setModalState(() => isSubmitting = true);
+                              try {
+                                String statusString = "Pending";
+                                String notificationMessage = "";
+
+                                switch (temporaryStatus) {
+                                  case OrderStatus.toPay:
+                                    statusString = "To Pay";
+                                    notificationMessage = "Ang iyong order ay naghihintay ng kumpirmasyon sa bayad.";
+                                    break;
+                                  case OrderStatus.toShip:
+                                    statusString = "To Ship";
+                                    notificationMessage = "Inihahanda at pino-proseso na ang iyong order.";
+                                    break;
+                                  case OrderStatus.toDeliver:
+                                    statusString = "To Deliver";
+                                    notificationMessage = "Out for delivery na ang iyong order!";
+                                    break;
+                                  case OrderStatus.completed:
+                                    statusString = "Completed";
+                                    notificationMessage = "Na-deliver na ang iyong order! Maraming salamat!";
+                                    break;
+                                  case OrderStatus.cancelled:
+                                    statusString = "Cancelled";
+                                    notificationMessage = "Nakansela ang iyong order.";
+                                    break;
+                                }
+
+                                final batch = FirebaseFirestore.instance.batch();
+                                final orderRef = FirebaseFirestore.instance.collection("orders").doc(order.id);
+
+                                batch.update(orderRef, {
+                                  'status': statusString,
+                                  'orderStatus': statusString,
+                                  'isPaid': temporaryStatus == OrderStatus.completed,
+                                  'lastUpdated': FieldValue.serverTimestamp(),
+                                });
+
+                                if (order.userId.isNotEmpty) {
+                                  final notifRef = FirebaseFirestore.instance.collection("users").doc(order.userId).collection("notifications").doc();
+                                  batch.set(notifRef, {
+                                    "title": "Order Update",
+                                    "body": notificationMessage,
+                                    "type": "ORDER_UPDATE",
+                                    "status": statusString,
+                                    "orderId": order.id,
+                                    "isRead": false,
+                                    "createdAt": FieldValue.serverTimestamp(),
+                                  });
+                                }
+
+                                await batch.commit();
+
+                                if (!context.mounted) return;
+                                Navigator.pop(context);
+                              } catch (e) {
+                                setModalState(() => isSubmitting = false);
+                              }
+                            },
+                      child: isSubmitting
+                          ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                          : const Text("Save Status", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    ),
+                  )
+                ],
               ),
             );
           },
         );
       },
+    );
+  }
+}
+
+// ==================== OPTIMIZED SUB-WIDGETS ====================
+
+class _MetricCard extends StatelessWidget {
+  final String title;
+  final int count;
+  final Color color;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _MetricCard({
+    required this.title,
+    required this.count,
+    required this.color,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 95,
+        margin: const EdgeInsets.only(right: 8),
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? color : Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: isSelected ? color : AppTheme.border),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isSelected ? Colors.white : AppTheme.textSecondary),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              "$count",
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: isSelected ? Colors.white : color),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SalesCard extends StatelessWidget {
+  final String title;
+  final double revenue;
+
+  const _SalesCard({required this.title, required this.revenue});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 110,
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xff16A34A).withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xff16A34A).withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(title, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xff16A34A))),
+          const SizedBox(height: 2),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text("₱${revenue.toStringAsFixed(2)}", style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xff16A34A))),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class OrderCardItem extends StatelessWidget {
+  final OrderModel order;
+  final String statusLabel;
+  final VoidCallback onUpdateTap;
+
+  const OrderCardItem({
+    super.key,
+    required this.order,
+    required this.statusLabel,
+    required this.onUpdateTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    Color statusColor;
+    switch (order.status) {
+      case OrderStatus.toPay: statusColor = const Color(0xffD97706); break;
+      case OrderStatus.toShip: statusColor = Colors.purple; break;
+      case OrderStatus.toDeliver: statusColor = const Color(0xff0891B2); break;
+      case OrderStatus.completed: statusColor = const Color(0xff16A34A); break;
+      case OrderStatus.cancelled: statusColor = const Color(0xffDC2626); break;
+    }
+
+    final displayId = order.id.length >= 8 ? order.id.substring(0, 8) : order.id;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text("ORDER #${displayId.toUpperCase()}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textPrimary, fontFamily: 'monospace')),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4)),
+                child: Text(statusLabel, style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.bold)),
+              )
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text("Buyer: ${order.customerName} (${order.contactNumber})", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textPrimary)),
+          Text("Address: ${order.deliveryAddress}", style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+          const Divider(height: 16, color: AppTheme.border),
+
+          ...order.items.map((item) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                children: [
+                  const Icon(Icons.circle, size: 5, color: AppTheme.primaryBlue),
+                  const SizedBox(width: 6),
+                  Expanded(child: Text("${item.productName} (${item.quantity} ${item.unit})", style: const TextStyle(fontSize: 11, color: AppTheme.textPrimary))),
+                  Text("₱${(item.pricePerUnit * item.quantity).toStringAsFixed(2)}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
+                ],
+              ),
+            );
+          }),
+
+          const Divider(height: 16, color: AppTheme.border),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text("Total: ₱${order.totalAmount.toStringAsFixed(2)}", style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: AppTheme.primaryBlue)),
+              InkWell(
+                onTap: onUpdateTap,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(color: AppTheme.textPrimary, borderRadius: BorderRadius.circular(6)),
+                  child: const Text("Update Status", style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              )
+            ],
+          )
+        ],
+      ),
     );
   }
 }
