@@ -22,6 +22,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 // ⏰ Background Task Dispatcher para sa WorkManager (Kada 2 Oras)
 @pragma('vm:entry-point')
 void callbackDispatcher() {
+  if (kIsWeb) return; // Pigilan ang pagtakbo sa web runtime background
   Workmanager().executeTask((task, inputData) async {
     await Firebase.initializeApp();
     await NotificationService.checkAndSendPeriodicWeatherAlert();
@@ -34,8 +35,9 @@ class NotificationService {
   factory NotificationService() => _instance;
   NotificationService._internal();
 
-  final FirebaseMessaging _fcm = FirebaseMessaging.instance;
-  final FlutterLocalNotificationsPlugin _localNotifs = FlutterLocalNotificationsPlugin();
+  // Ginawang nullable ang native background instances para ligtas sa web execution
+  final FirebaseMessaging? _fcm = kIsWeb ? null : FirebaseMessaging.instance;
+  final FlutterLocalNotificationsPlugin? _localNotifs = kIsWeb ? null : FlutterLocalNotificationsPlugin();
 
   static const String channelAlerts = 'stock_alerts_channel';
   static const String channelOrders = 'orders_channel';
@@ -48,7 +50,13 @@ class NotificationService {
   }
 
   Future<void> initialize() async {
-    await _fcm.requestPermission(
+    // Laktawan ang device-specific layout hooks kung ito ay nasa web ecosystem
+    if (kIsWeb) {
+      debugPrint("Web Runtime: Nilaktawan ang native background system setup.");
+      return;
+    }
+
+    await _fcm?.requestPermission(
       alert: true,
       badge: true,
       sound: true,
@@ -68,7 +76,7 @@ class NotificationService {
       ),
     );
 
-    await _localNotifs.initialize(
+    await _localNotifs?.initialize(
       initSettings,
       onDidReceiveNotificationResponse: (details) {
         _handleNotificationClick(details.payload);
@@ -104,10 +112,14 @@ class NotificationService {
 
   /// ⏰ Setup Background Periodic Weather Checker (Magsisimula sa 5:00 PM, then every 2 Hours)
   static Future<void> setupPeriodicWeatherCheck() async {
+    if (kIsWeb) {
+      debugPrint("Web Runtime: Hindi pinagana ang background Workmanager tasks.");
+      return;
+    }
+
     await Workmanager().initialize(callbackDispatcher, isInDebugMode: false);
 
     final now = DateTime.now();
-    // Hanapin ang susunod na 2-hour interval na nakahanay sa 5:00 PM (e.g., 5:00 PM, 7:00 PM, 9:00 PM)
     DateTime target = DateTime(now.year, now.month, now.day, 17, 0, 0);
 
     while (target.isBefore(now)) {
@@ -132,7 +144,7 @@ class NotificationService {
   static Future<void> checkAndSendPeriodicWeatherAlert() async {
     try {
       final url = Uri.parse(
-        'https://api.open-meteo.com/v1/forecast?latitude=$capalanganLat&longitude=$capalanganLng&current_weather=true',
+        'https://open-meteo.com',
       );
 
       final response = await http.get(url);
@@ -200,18 +212,25 @@ class NotificationService {
     }
 
     await prefs.setInt('last_notif_$type', currentTime);
-    await showNotification(
-      title: title,
-      body: body,
-      channelId: channelId,
-      payload: payload,
-    );
+
+    // Patakbuhin lang ang physical device local popups kung hindi web environment
+    if (!kIsWeb) {
+      await showNotification(
+        title: title,
+        body: body,
+        channelId: channelId,
+        payload: payload,
+      );
+    } else {
+      debugPrint("Web Application Notification Output -> [$title]: $body");
+    }
   }
 
   Future<void> _saveFCMToken() async {
+    if (kIsWeb) return;
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      String? token = await _fcm.getToken();
+      String? token = await _fcm?.getToken();
       if (token != null) {
         await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
           'fcmToken': token,
@@ -269,7 +288,6 @@ class NotificationService {
       'isRead': false,
       'timestamp': FieldValue.serverTimestamp(),
     });
-
     await triggerThrottledNotification(
       title: title,
       body: body,
@@ -279,14 +297,13 @@ class NotificationService {
     );
   }
 
-  static Future<void> createOrderNotification({
+  static Future createOrderNotification({
     required String userId,
     required String orderId,
     required double totalAmount,
   }) async {
     final title = "New Order Received (#$orderId)";
     final body = "A new order worth ₱${totalAmount.toStringAsFixed(2)} was placed. Please process for fulfillment.";
-
     await FirebaseFirestore.instance.collection('notifications').add({
       'userId': userId,
       'title': title,
@@ -295,7 +312,6 @@ class NotificationService {
       'isRead': false,
       'timestamp': FieldValue.serverTimestamp(),
     });
-
     await triggerThrottledNotification(
       title: title,
       body: body,
@@ -304,7 +320,8 @@ class NotificationService {
     );
   }
 
-  Future<void> _createChannel(String id, String name, String desc, Importance importance) async {
+  Future _createChannel(String id, String name, String desc, Importance importance) async {
+    if (kIsWeb) return;
     final AndroidNotificationChannel channel = AndroidNotificationChannel(
       id,
       name,
@@ -313,21 +330,20 @@ class NotificationService {
       playSound: true,
       enableVibration: true,
     );
-
     await _localNotifs
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(channel);
+      ?.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+      ?.createNotificationChannel(channel);
   }
 
-  static Future<void> showNotification({
+  static Future showNotification({
     int? id,
     required String title,
     required String body,
     String? payload,
     String channelId = channelAlerts,
   }) async {
+    if (kIsWeb) return;
     final int targetId = id ?? (DateTime.now().millisecondsSinceEpoch ~/ 1000);
-
     AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
       channelId,
       'Admin System Notifications',
@@ -336,7 +352,6 @@ class NotificationService {
       icon: '@mipmap/ic_launcher',
       styleInformation: BigTextStyleInformation(body),
     );
-
     NotificationDetails platformDetails = NotificationDetails(
       android: androidDetails,
       iOS: const DarwinNotificationDetails(
@@ -345,8 +360,7 @@ class NotificationService {
         presentList: true,
       ),
     );
-
-    await NotificationService()._localNotifs.show(targetId, title, body, platformDetails, payload: payload);
+    await NotificationService()._localNotifs?.show(targetId, title, body, platformDetails, payload: payload);
   }
 
   void _handleNotificationClick(String? payload) {

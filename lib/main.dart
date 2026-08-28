@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart'; // Idinagdag para sa kIsWeb check
 import 'package:provider/provider.dart';
 import 'providers/language_provider.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -17,16 +18,21 @@ import 'admin/screens/dashboard_page.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1. Initialize Firebase
+  // 1. Initialize Firebase (Gumagana sa parehong Web at Mobile)
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // 2. Initialize Local Notifications & FCM Channels
-  await NotificationService.initNotification();
+  // Patakbuhin lamang ang mga Notification at Workmanager services kung HINDI Web
+  if (!kIsWeb) {
+    // 2. Initialize Local Notifications & FCM Channels
+    await NotificationService.initNotification();
 
-  // 3. Register Background Task para sa Weather (Starts 5:00 PM, every 2 hours)
-  await NotificationService.setupPeriodicWeatherCheck();
+    // 3. Register Background Task para sa Weather (Starts 5:00 PM, every 2 hours)
+    await NotificationService.setupPeriodicWeatherCheck();
+  } else {
+    debugPrint("Naka-Web platform: Nilpasan ang mobile notification initialization.");
+  }
 
   runApp(
     ChangeNotifierProvider(
@@ -53,7 +59,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    // Binu-build ang observer para mabantayan kapag isinarado o inalis sa recent apps
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -67,7 +72,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
 
-    // Kapag detached (lubusang inalis sa recent apps / pinatay ang app)
     if (state == AppLifecycleState.detached) {
       _logoutOnExit();
     }
