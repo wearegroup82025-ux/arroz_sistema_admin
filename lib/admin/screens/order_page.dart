@@ -11,11 +11,27 @@ class AppTheme {
 }
 
 enum OrderStatus {
-  toPay,
-  toShip,
-  toDeliver,
-  completed,
-  cancelled,
+  toPay("To Pay", Color(0xffD97706), "Ang iyong order ay naghihintay ng kumpirmasyon sa bayad."),
+  toShip("To Ship", Colors.purple, "Inihahanda at pino-proseso na ang iyong order."),
+  toDeliver("Out for Delivery", Color(0xff0891B2), "Out for delivery na ang iyong order!"),
+  completed("Completed", Color(0xff16A34A), "Na-deliver na ang iyong order! Maraming salamat!"),
+  cancelled("Cancelled", Color(0xffDC2626), "Nakansela ang iyong order.");
+
+  final String label;
+  final Color color;
+  final String notificationMessage;
+
+  const OrderStatus(this.label, this.color, this.notificationMessage);
+
+  static OrderStatus parse(String rawStatus) {
+    final status = rawStatus.toLowerCase().trim();
+    if (['pending', 'topay', 'to pay', 'unpaid'].contains(status)) return OrderStatus.toPay;
+    if (['toship', 'to ship', 'paid', 'processing'].contains(status)) return OrderStatus.toShip;
+    if (['todeliver', 'to deliver', 'shipping', 'shipped'].contains(status)) return OrderStatus.toDeliver;
+    if (['completed', 'delivered', 'done'].contains(status)) return OrderStatus.completed;
+    if (['cancelled', 'canceled'].contains(status)) return OrderStatus.cancelled;
+    return OrderStatus.toPay;
+  }
 }
 
 // ==================== DATA MODELS ====================
@@ -31,17 +47,41 @@ class OrderItem {
     required this.productName,
     required this.quantity,
     required this.pricePerUnit,
-    this.unit = 'kg',
+    required this.unit,
   });
 
   factory OrderItem.fromMap(Map<String, dynamic> map) {
+    final rawUnit = (map['unit'] ?? map['unitType'] ?? map['type'] ?? '').toString().toLowerCase().trim();
+    final String name = map['name'] ?? map['productName'] ?? map['title'] ?? 'Product Item';
+
+    // Auto-detect unit kapag walang explicit unit sa Firestore document
+    String resolvedUnit = 'kg';
+    if (rawUnit.isNotEmpty) {
+      resolvedUnit = rawUnit;
+    } else if (name.toLowerCase().contains('sako') || name.toLowerCase().contains('sack')) {
+      resolvedUnit = 'sako';
+    }
+
     return OrderItem(
       productId: map['productId'] ?? map['id'] ?? '',
-      productName: map['name'] ?? map['productName'] ?? map['title'] ?? 'Product Item',
+      productName: name,
       quantity: int.tryParse(map['quantity']?.toString() ?? '1') ?? 1,
       pricePerUnit: double.tryParse(map['price']?.toString() ?? map['pricePerUnit']?.toString() ?? '0') ?? 0.0,
-      unit: map['unit']?.toString() ?? 'kg',
+      unit: resolvedUnit,
     );
+  }
+
+  // Format display text para sa quantity (halimbawa: "3 sako" o "3 kg")
+  String get formattedQuantity {
+    final cleanUnit = unit.toLowerCase().trim();
+    if (cleanUnit == 'sako' || cleanUnit == 'sack' || cleanUnit == 'sacks') {
+      return '$quantity ${quantity > 1 ? 'sako' : 'sako'}';
+    } else if (cleanUnit == 'kg' || cleanUnit == 'kilo' || cleanUnit == 'kilos') {
+      return '$quantity kg';
+    } else if (cleanUnit.isNotEmpty) {
+      return '$quantity $cleanUnit';
+    }
+    return '$quantity';
   }
 }
 
@@ -88,20 +128,8 @@ class OrderModel {
       parsedItems = list.map((i) => OrderItem.fromMap(i as Map<String, dynamic>)).toList();
     }
 
-    OrderStatus parsedStatus = OrderStatus.toPay;
-    final rawStatus = (data['orderStatus'] ?? data['status'] ?? 'Pending').toString().toLowerCase().trim();
-
-    if (rawStatus == 'pending' || rawStatus == 'topay' || rawStatus == 'to pay' || rawStatus == 'unpaid') {
-      parsedStatus = OrderStatus.toPay;
-    } else if (rawStatus == 'toship' || rawStatus == 'to ship' || rawStatus == 'paid' || rawStatus == 'processing') {
-      parsedStatus = OrderStatus.toShip;
-    } else if (rawStatus == 'todeliver' || rawStatus == 'to deliver' || rawStatus == 'shipping' || rawStatus == 'shipped') {
-      parsedStatus = OrderStatus.toDeliver;
-    } else if (rawStatus == 'completed' || rawStatus == 'delivered' || rawStatus == 'done') {
-      parsedStatus = OrderStatus.completed;
-    } else if (rawStatus == 'cancelled' || rawStatus == 'canceled') {
-      parsedStatus = OrderStatus.cancelled;
-    }
+    final rawStatus = (data['orderStatus'] ?? data['status'] ?? '').toString();
+    final OrderStatus parsedStatus = OrderStatus.parse(rawStatus);
 
     double calculatedTotal = double.tryParse(data['totalAmount']?.toString() ?? data['totalPrice']?.toString() ?? data['total']?.toString() ?? '0') ?? 0.0;
     if (calculatedTotal == 0.0 && parsedItems.isNotEmpty) {
@@ -117,9 +145,22 @@ class OrderModel {
       userId: data['userId'] ?? '',
       customerName: data['customerName'] ?? data['userName'] ?? data['name'] ?? 'Buyer',
       deliveryAddress: data['deliveryAddress'] ?? data['address'] ?? 'No Address',
-      contactNumber: data['contactNumber'] ?? data['phone'] ?? data['mobile'] ?? 'No Contact',
+      contactNumber: data['contactNumber'] ??
+          data['phoneNumber'] ??
+          data['phone'] ??
+          data['mobile'] ??
+          data['contact'] ??
+          data['contactNo'] ??
+          'No Contact',
       paymentMethod: data['paymentMethod'] ?? data['paymentType'] ?? 'COD',
-      paymentRef: data['paymentRef'] ?? data['referenceNumber'] ?? 'N/A',
+      paymentRef: data['paymentRef'] ??
+          data['referenceNumber'] ??
+          data['refNumber'] ??
+          data['refNo'] ??
+          data['referenceNo'] ??
+          data['transactionId'] ??
+          data['paymentReference'] ??
+          '',
       items: parsedItems,
       status: parsedStatus,
       totalAmount: calculatedTotal,
@@ -153,16 +194,6 @@ class _OrdersPageState extends State<OrdersPage> {
     super.dispose();
   }
 
-  String _getStatusLabel(OrderStatus status) {
-    switch (status) {
-      case OrderStatus.toPay: return "To Pay";
-      case OrderStatus.toShip: return "To Ship";
-      case OrderStatus.toDeliver: return "Out for Delivery";
-      case OrderStatus.completed: return "Completed";
-      case OrderStatus.cancelled: return "Cancelled";
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -185,28 +216,16 @@ class _OrdersPageState extends State<OrdersPage> {
             final docs = snapshot.data?.docs ?? [];
             final List<OrderModel> allOrders = docs.map((d) => OrderModel.fromFirestore(d)).toList();
 
-            // METRICS COMPUTATION
-            int toPayCount = 0;
-            int toShipCount = 0;
-            int toDeliverCount = 0;
-            int completedCount = 0;
-            int cancelledCount = 0;
+            final Map<OrderStatus, int> statusCounts = { for (var e in OrderStatus.values) e : 0 };
             double totalRevenue = 0;
 
             for (var order in allOrders) {
-              switch (order.status) {
-                case OrderStatus.toPay: toPayCount++; break;
-                case OrderStatus.toShip: toShipCount++; break;
-                case OrderStatus.toDeliver: toDeliverCount++; break;
-                case OrderStatus.completed: 
-                  completedCount++; 
-                  totalRevenue += order.totalAmount;
-                  break;
-                case OrderStatus.cancelled: cancelledCount++; break;
+              statusCounts[order.status] = (statusCounts[order.status] ?? 0) + 1;
+              if (order.status == OrderStatus.completed) {
+                totalRevenue += order.totalAmount;
               }
             }
 
-            // FILTERING
             List<OrderModel> filteredOrders = allOrders;
 
             if (_selectedStatusFilter != null) {
@@ -218,6 +237,8 @@ class _OrdersPageState extends State<OrdersPage> {
                 final hasMatchingItem = o.items.any((item) => item.productName.toLowerCase().contains(_searchQuery));
                 return o.id.toLowerCase().contains(_searchQuery) ||
                     o.customerName.toLowerCase().contains(_searchQuery) ||
+                    o.contactNumber.toLowerCase().contains(_searchQuery) ||
+                    o.paymentRef.toLowerCase().contains(_searchQuery) ||
                     hasMatchingItem;
               }).toList();
             }
@@ -239,17 +260,17 @@ class _OrdersPageState extends State<OrdersPage> {
                       controller: _searchController,
                       onChanged: (val) => setState(() => _searchQuery = val.toLowerCase().trim()),
                       decoration: InputDecoration(
-                        hintText: "Search name, order ID, or product...",
+                        hintText: "Search name, contact, ref no, or order ID...",
                         hintStyle: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
                         prefixIcon: const Icon(Icons.search, size: 20, color: AppTheme.textSecondary),
                         suffixIcon: _searchQuery.isNotEmpty
                             ? IconButton(
-                                icon: const Icon(Icons.clear, size: 18),
-                                onPressed: () {
-                                  _searchController.clear();
-                                  setState(() => _searchQuery = "");
-                                },
-                              )
+                          icon: const Icon(Icons.clear, size: 18),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _searchQuery = "");
+                          },
+                        )
                             : null,
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(vertical: 10),
@@ -258,48 +279,20 @@ class _OrdersPageState extends State<OrdersPage> {
                   ),
                   const SizedBox(height: 12),
 
-                  // METRICS BAR (SMOOTH SCROLL HORIZONTAL)
+                  // METRICS BAR
                   SizedBox(
                     height: 58,
                     child: ListView(
                       scrollDirection: Axis.horizontal,
                       physics: const BouncingScrollPhysics(),
                       children: [
-                        _MetricCard(
-                          title: "To Pay",
-                          count: toPayCount,
-                          color: const Color(0xffD97706),
-                          isSelected: _selectedStatusFilter == OrderStatus.toPay,
-                          onTap: () => setState(() => _selectedStatusFilter = _selectedStatusFilter == OrderStatus.toPay ? null : OrderStatus.toPay),
-                        ),
-                        _MetricCard(
-                          title: "To Ship",
-                          count: toShipCount,
-                          color: Colors.purple,
-                          isSelected: _selectedStatusFilter == OrderStatus.toShip,
-                          onTap: () => setState(() => _selectedStatusFilter = _selectedStatusFilter == OrderStatus.toShip ? null : OrderStatus.toShip),
-                        ),
-                        _MetricCard(
-                          title: "To Deliver",
-                          count: toDeliverCount,
-                          color: const Color(0xff0891B2),
-                          isSelected: _selectedStatusFilter == OrderStatus.toDeliver,
-                          onTap: () => setState(() => _selectedStatusFilter = _selectedStatusFilter == OrderStatus.toDeliver ? null : OrderStatus.toDeliver),
-                        ),
-                        _MetricCard(
-                          title: "Completed",
-                          count: completedCount,
-                          color: const Color(0xff16A34A),
-                          isSelected: _selectedStatusFilter == OrderStatus.completed,
-                          onTap: () => setState(() => _selectedStatusFilter = _selectedStatusFilter == OrderStatus.completed ? null : OrderStatus.completed),
-                        ),
-                        _MetricCard(
-                          title: "Cancelled",
-                          count: cancelledCount,
-                          color: const Color(0xffDC2626),
-                          isSelected: _selectedStatusFilter == OrderStatus.cancelled,
-                          onTap: () => setState(() => _selectedStatusFilter = _selectedStatusFilter == OrderStatus.cancelled ? null : OrderStatus.cancelled),
-                        ),
+                        ...OrderStatus.values.map((status) => _MetricCard(
+                          title: status.label,
+                          count: statusCounts[status] ?? 0,
+                          color: status.color,
+                          isSelected: _selectedStatusFilter == status,
+                          onTap: () => setState(() => _selectedStatusFilter = _selectedStatusFilter == status ? null : status),
+                        )),
                         _SalesCard(title: "Sales", revenue: totalRevenue),
                       ],
                     ),
@@ -312,7 +305,7 @@ class _OrdersPageState extends State<OrdersPage> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          "Filtered: ${_getStatusLabel(_selectedStatusFilter!)}",
+                          "Filtered: ${_selectedStatusFilter!.label}",
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.primaryBlue),
                         ),
                         GestureDetector(
@@ -324,28 +317,27 @@ class _OrdersPageState extends State<OrdersPage> {
                     const SizedBox(height: 8),
                   ],
 
-                  // HIGH PERFORMANCE ORDERS LIST
+                  // ORDERS LIST
                   Expanded(
                     child: filteredOrders.isEmpty
                         ? const Center(
-                            child: Text("No orders found.", style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
-                          )
+                      child: Text("No orders found.", style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+                    )
                         : ListView.builder(
-                            physics: const BouncingScrollPhysics(),
-                            addAutomaticKeepAlives: true,
-                            addRepaintBoundaries: true,
-                            itemCount: filteredOrders.length,
-                            itemBuilder: (context, index) {
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 10),
-                                child: OrderCardItem(
-                                  order: filteredOrders[index],
-                                  statusLabel: _getStatusLabel(filteredOrders[index].status),
-                                  onUpdateTap: () => _openPipelineManager(context, filteredOrders[index]),
-                                ),
-                              );
-                            },
+                      physics: const BouncingScrollPhysics(),
+                      addAutomaticKeepAlives: true,
+                      addRepaintBoundaries: true,
+                      itemCount: filteredOrders.length,
+                      itemBuilder: (context, index) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: OrderCardItem(
+                            order: filteredOrders[index],
+                            onUpdateTap: () => _openPipelineManager(context, filteredOrders[index]),
                           ),
+                        );
+                      },
+                    ),
                   ),
                 ],
               ),
@@ -391,7 +383,7 @@ class _OrdersPageState extends State<OrdersPage> {
                       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: AppTheme.border)),
                     ),
                     items: OrderStatus.values.map((status) {
-                      return DropdownMenuItem(value: status, child: Text(_getStatusLabel(status)));
+                      return DropdownMenuItem(value: status, child: Text(status.label));
                     }).toList(),
                     onChanged: isSubmitting ? null : (val) => setModalState(() => temporaryStatus = val ?? temporaryStatus),
                   ),
@@ -407,65 +399,39 @@ class _OrdersPageState extends State<OrdersPage> {
                       onPressed: isSubmitting
                           ? null
                           : () async {
-                              setModalState(() => isSubmitting = true);
-                              try {
-                                String statusString = "Pending";
-                                String notificationMessage = "";
+                        setModalState(() => isSubmitting = true);
+                        try {
+                          final batch = FirebaseFirestore.instance.batch();
+                          final orderRef = FirebaseFirestore.instance.collection("orders").doc(order.id);
 
-                                switch (temporaryStatus) {
-                                  case OrderStatus.toPay:
-                                    statusString = "To Pay";
-                                    notificationMessage = "Ang iyong order ay naghihintay ng kumpirmasyon sa bayad.";
-                                    break;
-                                  case OrderStatus.toShip:
-                                    statusString = "To Ship";
-                                    notificationMessage = "Inihahanda at pino-proseso na ang iyong order.";
-                                    break;
-                                  case OrderStatus.toDeliver:
-                                    statusString = "To Deliver";
-                                    notificationMessage = "Out for delivery na ang iyong order!";
-                                    break;
-                                  case OrderStatus.completed:
-                                    statusString = "Completed";
-                                    notificationMessage = "Na-deliver na ang iyong order! Maraming salamat!";
-                                    break;
-                                  case OrderStatus.cancelled:
-                                    statusString = "Cancelled";
-                                    notificationMessage = "Nakansela ang iyong order.";
-                                    break;
-                                }
+                          batch.update(orderRef, {
+                            'status': temporaryStatus.label,
+                            'orderStatus': temporaryStatus.label,
+                            'isPaid': temporaryStatus == OrderStatus.completed,
+                            'lastUpdated': FieldValue.serverTimestamp(),
+                          });
 
-                                final batch = FirebaseFirestore.instance.batch();
-                                final orderRef = FirebaseFirestore.instance.collection("orders").doc(order.id);
+                          if (order.userId.isNotEmpty) {
+                            final notifRef = FirebaseFirestore.instance.collection("users").doc(order.userId).collection("notifications").doc();
+                            batch.set(notifRef, {
+                              "title": "Order Update",
+                              "body": temporaryStatus.notificationMessage,
+                              "type": "ORDER_UPDATE",
+                              "status": temporaryStatus.label,
+                              "orderId": order.id,
+                              "isRead": false,
+                              "createdAt": FieldValue.serverTimestamp(),
+                            });
+                          }
 
-                                batch.update(orderRef, {
-                                  'status': statusString,
-                                  'orderStatus': statusString,
-                                  'isPaid': temporaryStatus == OrderStatus.completed,
-                                  'lastUpdated': FieldValue.serverTimestamp(),
-                                });
+                          await batch.commit();
 
-                                if (order.userId.isNotEmpty) {
-                                  final notifRef = FirebaseFirestore.instance.collection("users").doc(order.userId).collection("notifications").doc();
-                                  batch.set(notifRef, {
-                                    "title": "Order Update",
-                                    "body": notificationMessage,
-                                    "type": "ORDER_UPDATE",
-                                    "status": statusString,
-                                    "orderId": order.id,
-                                    "isRead": false,
-                                    "createdAt": FieldValue.serverTimestamp(),
-                                  });
-                                }
-
-                                await batch.commit();
-
-                                if (!context.mounted) return;
-                                Navigator.pop(context);
-                              } catch (e) {
-                                setModalState(() => isSubmitting = false);
-                              }
-                            },
+                          if (!context.mounted) return;
+                          Navigator.pop(context);
+                        } catch (e) {
+                          setModalState(() => isSubmitting = false);
+                        }
+                      },
                       child: isSubmitting
                           ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                           : const Text("Save Status", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -481,7 +447,7 @@ class _OrdersPageState extends State<OrdersPage> {
   }
 }
 
-// ==================== OPTIMIZED SUB-WIDGETS ====================
+// ==================== SUB-WIDGETS ====================
 
 class _MetricCard extends StatelessWidget {
   final String title;
@@ -565,28 +531,26 @@ class _SalesCard extends StatelessWidget {
 
 class OrderCardItem extends StatelessWidget {
   final OrderModel order;
-  final String statusLabel;
   final VoidCallback onUpdateTap;
 
   const OrderCardItem({
     super.key,
     required this.order,
-    required this.statusLabel,
     required this.onUpdateTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    Color statusColor;
-    switch (order.status) {
-      case OrderStatus.toPay: statusColor = const Color(0xffD97706); break;
-      case OrderStatus.toShip: statusColor = Colors.purple; break;
-      case OrderStatus.toDeliver: statusColor = const Color(0xff0891B2); break;
-      case OrderStatus.completed: statusColor = const Color(0xff16A34A); break;
-      case OrderStatus.cancelled: statusColor = const Color(0xffDC2626); break;
-    }
-
     final displayId = order.id.length >= 8 ? order.id.substring(0, 8) : order.id;
+
+    final bool isCod = order.paymentMethod.toLowerCase().contains("cod") ||
+        order.paymentMethod.toLowerCase().contains("cash");
+    final bool hasValidRef = order.paymentRef.trim().isNotEmpty &&
+        order.paymentRef.trim().toUpperCase() != "N/A";
+
+    final String paymentDisplay = (!isCod && hasValidRef)
+        ? "${order.paymentMethod} (Ref: ${order.paymentRef})"
+        : order.paymentMethod;
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -598,22 +562,46 @@ class OrderCardItem extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // HEADER (ORDER ID & STATUS BADGE)
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text("ORDER #${displayId.toUpperCase()}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textPrimary, fontFamily: 'monospace')),
+              Text(
+                "ORDER #${displayId.toUpperCase()}",
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                  color: AppTheme.textPrimary,
+                  fontFamily: 'monospace',
+                ),
+              ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4)),
-                child: Text(statusLabel, style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.bold)),
+                decoration: BoxDecoration(
+                  color: order.status.color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  order.status.label,
+                  style: TextStyle(color: order.status.color, fontSize: 10, fontWeight: FontWeight.bold),
+                ),
               )
             ],
           ),
-          const SizedBox(height: 6),
-          Text("Buyer: ${order.customerName} (${order.contactNumber})", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textPrimary)),
-          Text("Address: ${order.deliveryAddress}", style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
           const Divider(height: 16, color: AppTheme.border),
 
+          // BUYER INFORMATION SECTION
+          _InfoRow(icon: Icons.person, label: "Buyer", value: order.customerName, isBold: true),
+          const SizedBox(height: 4),
+          _InfoRow(icon: Icons.phone, label: "Contact", value: order.contactNumber, valueColor: AppTheme.primaryBlue, isBold: true),
+          const SizedBox(height: 4),
+          _InfoRow(icon: Icons.location_on, label: "Address", value: order.deliveryAddress),
+          const SizedBox(height: 4),
+          _InfoRow(icon: Icons.payment, label: "Payment", value: paymentDisplay),
+
+          const Divider(height: 16, color: AppTheme.border),
+
+          // ORDERED ITEMS LIST
           ...order.items.map((item) {
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 2),
@@ -621,18 +609,31 @@ class OrderCardItem extends StatelessWidget {
                 children: [
                   const Icon(Icons.circle, size: 5, color: AppTheme.primaryBlue),
                   const SizedBox(width: 6),
-                  Expanded(child: Text("${item.productName} (${item.quantity} ${item.unit})", style: const TextStyle(fontSize: 11, color: AppTheme.textPrimary))),
-                  Text("₱${(item.pricePerUnit * item.quantity).toStringAsFixed(2)}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
+                  Expanded(
+                    child: Text(
+                      "${item.productName} (${item.formattedQuantity})",
+                      style: const TextStyle(fontSize: 11, color: AppTheme.textPrimary),
+                    ),
+                  ),
+                  Text(
+                    "₱${(item.pricePerUnit * item.quantity).toStringAsFixed(2)}",
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
+                  ),
                 ],
               ),
             );
           }),
 
           const Divider(height: 16, color: AppTheme.border),
+
+          // FOOTER (TOTAL & ACTION)
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text("Total: ₱${order.totalAmount.toStringAsFixed(2)}", style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: AppTheme.primaryBlue)),
+              Text(
+                "Total: ₱${order.totalAmount.toStringAsFixed(2)}",
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: AppTheme.primaryBlue),
+              ),
               InkWell(
                 onTap: onUpdateTap,
                 child: Container(
@@ -645,6 +646,44 @@ class OrderCardItem extends StatelessWidget {
           )
         ],
       ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color? valueColor;
+  final bool isBold;
+
+  const _InfoRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.valueColor,
+    this.isBold = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 14, color: AppTheme.textSecondary),
+        const SizedBox(width: 6),
+        Text("$label: ", style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+              color: valueColor ?? AppTheme.textPrimary,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

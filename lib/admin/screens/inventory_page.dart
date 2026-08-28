@@ -11,45 +11,51 @@ class InventoryPage extends StatefulWidget {
 }
 
 class _InventoryPageState extends State<InventoryPage> {
-  // Ultra-Clean Modern Responsive Palette
-  static const Color _bgCanvas = Color(0xffF8FAFC);      // Off-White Background
-  static const Color _cardBg = Color(0xffFFFFFF);        // White Card
-  static const Color _brandGreen = Color(0xff16A34A);    // Primary Emerald Green
-  static const Color _softGreenBg = Color(0xffDCFCE7);   // Soft Green Tint
-  static const Color _textDark = Color(0xff0F172A);      // Dark Text
-  static const Color _textMuted = Color(0xff64748B);     // Soft Gray Text
-  static const Color _dangerSoft = Color(0xffFEE2E2);    // Red Tint for Warnings
-  static const Color _dangerText = Color(0xffDC2626);    // Bright Warning Red
-  static const Color _borderSoft = Color(0xffE2E8F0);    // Light Border
+  static const Color _surfaceBg = Color(0xFFF8FAFC);
+  static const Color _cardBg = Color(0xFFFFFFFF);
+  static const Color _primaryGreen = Color(0xFF16A34A);
+  static const Color _primaryGreenSoft = Color(0xFFDCFCE7);
+  static const Color _textPrimary = Color(0xFF0F172A);
+  static const Color _textSecondary = Color(0xFF64748B);
+  static const Color _borderLine = Color(0xFFE2E8F0);
+  
+  static const Color _warningOrange = Color(0xFFD97706);
+  static const Color _warningOrangeBg = Color(0xFFFEF3C7);
+  static const Color _dangerRed = Color(0xFFDC2626);
+  static const Color _dangerRedBg = Color(0xFFFEE2E2);
+  static const Color _infoBlue = Color(0xFF2563EB);
 
   String _searchQuery = "";
+  bool _isPerKiloView = false;
 
-  final List<String> _palayNames = [
-    "C4 Palay", "C18 Palay", "Jasmine Palay", "R10 Palay", "R42 Palay", "216 Palay"
+  final List<String> _palayTypes = [
+    "C4 Palay",
+    "C18 Palay",
+    "Jasmine Palay",
+    "R10 Palay",
+    "R42 Palay",
+    "216 Palay"
   ];
+
+  String _formatCurrency(double amount) {
+    return "₱${amount.toStringAsFixed(2).replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (Match m) => "${m[1]},",
+    )}";
+  }
 
   @override
   Widget build(BuildContext context) {
-    // Responsive Screen Width Check
-    final double screenWidth = MediaQuery.of(context).size.width;
-    int crossAxisCount = 1; // Default sa CP
-    if (screenWidth > 1024) {
-      crossAxisCount = 3; // Laptop / Large Screen
-    } else if (screenWidth > 600) {
-      crossAxisCount = 2; // Tablet / iPad Screen
-    }
-
     return Scaffold(
-      backgroundColor: _bgCanvas,
-      // Floating Action Button (Malaki at madaling pindutin sa CP)
+      backgroundColor: _surfaceBg,
       floatingActionButton: FloatingActionButton.extended(
-        elevation: 3,
-        backgroundColor: _brandGreen,
-        onPressed: () => _showAddPalaySheet(context),
-        icon: const Icon(Icons.add_rounded, color: Colors.white, size: 26),
+        elevation: 2,
+        backgroundColor: _primaryGreen,
+        onPressed: () => _showAddProductModal(context),
+        icon: const Icon(Icons.add_box_rounded, color: Colors.white, size: 20),
         label: const Text(
-          "Magdagdag ng Palay",
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+          "Magdagdag ng Stocks",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
         ),
       ),
       body: SafeArea(
@@ -58,161 +64,130 @@ class _InventoryPageState extends State<InventoryPage> {
           builder: (context, snapshot) {
             if (snapshot.hasError) {
               return const Center(
-                child: Text("May problema sa koneksyon.", style: TextStyle(color: _dangerText, fontWeight: FontWeight.bold)),
+                child: Text("May error sa database.", style: TextStyle(color: _dangerRed, fontWeight: FontWeight.bold)),
               );
             }
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator(color: _brandGreen));
+              return const Center(child: CircularProgressIndicator(color: _primaryGreen));
             }
 
             final docs = snapshot.data?.docs ?? [];
-            final products = docs.map((doc) => ProductModel.fromFirestore(doc)).toList();
+            final products = docs
+                .map((doc) => ProductModel.fromFirestore(doc))
+                .where((p) {
+                  final rawData = docs.firstWhere((d) => d.id == p.id).data() as Map<String, dynamic>?;
+                  return rawData?['isDeleted'] != true;
+                })
+                .toList();
 
-            // Total Computations
-            int totalStockCount = 0;
-            int lowStockItems = 0;
-            double totalInventoryValue = 0;
+            double totalInventoryValue = 0.0;
+            int totalStockUnits = 0;
+            int criticalStockCount = 0;
 
             for (var p in products) {
-              totalStockCount += p.stock;
-              totalInventoryValue += (p.stock * p.price);
-              if (p.stock <= p.lowStockThreshold) lowStockItems++;
+              final double unitKg = p.unitKg > 0 ? p.unitKg : 50.0;
+              final double sakoSellingPrice = p.sellingPrice * unitKg;
+              totalInventoryValue += (p.stock * sakoSellingPrice);
+              totalStockUnits += p.stock;
+              if (p.stock <= p.lowStockThreshold) {
+                criticalStockCount++;
+              }
             }
 
-            // Direct Search Filtering (No Categories)
-            final filteredList = products.where((p) {
+            final filteredProducts = products.where((p) {
               return p.name.toLowerCase().contains(_searchQuery.toLowerCase());
             }).toList();
 
-            return CustomScrollView(
-              physics: const BouncingScrollPhysics(),
-              slivers: [
-                // 1. HEADER TITLE
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              "Inbentaryo ng Palay",
-                              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: _textDark),
-                            ),
-                            SizedBox(height: 2),
-                            Text(
-                              "Madaling pagsubaybay sa bodega",
-                              style: TextStyle(fontSize: 12, color: _textMuted),
-                            ),
-                          ],
-                        ),
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: _borderSoft),
-                          ),
-                          child: const Icon(Icons.warehouse_rounded, color: _brandGreen, size: 22),
-                        )
-                      ],
-                    ),
-                  ),
+            return Column(
+              children: [
+                _buildHeaderAndAnalytics(
+                  totalValue: totalInventoryValue,
+                  totalStock: totalStockUnits,
+                  criticalCount: criticalStockCount,
                 ),
 
-                // 2. WARNING BANNER (KAPAG KONTI NALANG ANG STOCK)
-                if (lowStockItems > 0)
-                  SliverToBoxAdapter(
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: _dangerSoft,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: _dangerText.withOpacity(0.3)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.warning_amber_rounded, color: _dangerText, size: 22),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              "Pansin: May $lowStockItems uri ng palay na kakaunti nalang ang sako!",
-                              style: const TextStyle(color: _dangerText, fontSize: 12, fontWeight: FontWeight.bold),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          onChanged: (val) => setState(() => _searchQuery = val),
+                          decoration: InputDecoration(
+                            hintText: "Maghanap ng uri ng palay...",
+                            hintStyle: const TextStyle(fontSize: 13, color: _textSecondary),
+                            prefixIcon: const Icon(Icons.search_rounded, color: _textSecondary, size: 20),
+                            suffixIcon: _searchQuery.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear, size: 18, color: _textSecondary),
+                                    onPressed: () => setState(() => _searchQuery = ""),
+                                  )
+                                : null,
+                            filled: true,
+                            fillColor: _cardBg,
+                            contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: _borderLine),
                             ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                // 3. DASHBOARD SUMMARY CARDS (RESPONSIVE)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                    child: Row(
-                      children: [
-                        _buildSimpleStatCard("Kabuuang Sako", "$totalStockCount Sako", Icons.inventory_2_outlined, _softGreenBg, _brandGreen),
-                        const SizedBox(width: 10),
-                        _buildSimpleStatCard("Halaga sa Bodega", "₱${(totalInventoryValue / 1000).toStringAsFixed(1)}k", Icons.payments_outlined, Colors.blue.shade50, Colors.blue.shade700),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // 4. CLEAN SEARCH BAR (WALANG MAGULONG CATEGORY BUTTONS)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
-                    child: TextField(
-                      onChanged: (val) => setState(() => _searchQuery = val),
-                      decoration: InputDecoration(
-                        hintText: "Maghanap ng pangalan ng palay...",
-                        hintStyle: const TextStyle(fontSize: 13, color: _textMuted),
-                        prefixIcon: const Icon(Icons.search_rounded, color: _textMuted, size: 20),
-                        suffixIcon: _searchQuery.isNotEmpty
-                            ? IconButton(
-                                icon: const Icon(Icons.clear, size: 18, color: _textMuted),
-                                onPressed: () => setState(() => _searchQuery = ""),
-                              )
-                            : null,
-                        filled: true,
-                        fillColor: _cardBg,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: _borderSoft)),
-                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: _brandGreen, width: 1.5)),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // 5. RESPONSIVE GRID LIST OF PRODUCTS
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 90),
-                  sliver: filteredList.isEmpty
-                      ? const SliverToBoxAdapter(
-                          child: Padding(
-                            padding: EdgeInsets.all(30.0),
-                            child: Center(
-                              child: Text("Walang nahanap na uri ng palay.", style: TextStyle(color: _textMuted, fontSize: 13)),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: _primaryGreen, width: 1.5),
                             ),
-                          ),
-                        )
-                      : SliverGrid(
-                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: crossAxisCount,
-                            mainAxisSpacing: 12,
-                            crossAxisSpacing: 12,
-                            childAspectRatio: screenWidth > 600 ? 1.6 : 1.45,
-                          ),
-                          delegate: SliverChildBuilderDelegate(
-                            (context, index) => _buildProductCard(filteredList[index]),
-                            childCount: filteredList.length,
                           ),
                         ),
-                )
+                      ),
+                      const SizedBox(width: 8),
+                      
+                      Material(
+                        color: _isPerKiloView ? _infoBlue : _primaryGreen,
+                        borderRadius: BorderRadius.circular(12),
+                        child: InkWell(
+                          onTap: () {
+                            setState(() {
+                              _isPerKiloView = !_isPerKiloView;
+                            });
+                          },
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.swap_horiz_rounded, color: Colors.white, size: 18),
+                                const SizedBox(width: 4),
+                                Text(
+                                  _isPerKiloView ? "PER KILO" : "PER SAKO",
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                Expanded(
+                  child: filteredProducts.isEmpty
+                      ? const Center(
+                          child: Text("Walang nahanap na item sa inbentaryo.",
+                              style: TextStyle(color: _textSecondary, fontSize: 13)),
+                        )
+                      : ListView.separated(
+                          physics: const BouncingScrollPhysics(),
+                          padding: const EdgeInsets.fromLTRB(20, 4, 20, 80),
+                          itemCount: filteredProducts.length,
+                          separatorBuilder: (context, index) => const SizedBox(height: 12),
+                          itemBuilder: (context, index) {
+                            return _buildSmartInventoryCard(filteredProducts[index]);
+                          },
+                        ),
+                ),
               ],
             );
           },
@@ -221,32 +196,257 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
-  // ================= EASY TO UNDERSTAND CARDS =================
+  // ================= UI COMPONENTS =================
 
-  Widget _buildSimpleStatCard(String label, String value, IconData icon, Color bg, Color iconColor) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: _cardBg,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: _borderSoft),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
-              child: Icon(icon, color: iconColor, size: 20),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
+  Widget _buildHeaderAndAnalytics({
+    required double totalValue,
+    required int totalStock,
+    required int criticalCount,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: const BoxDecoration(
+        color: _cardBg,
+        border: Border(bottom: BorderSide(color: _borderLine)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(label, style: const TextStyle(fontSize: 11, color: _textMuted, fontWeight: FontWeight.w500)),
-                  Text(value, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: _textDark)),
+                  Text("Smart Inventory System",
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: _textPrimary)),
+                  SizedBox(height: 2),
+                  Text("Real-time valuation & stock tracking",
+                      style: TextStyle(fontSize: 12, color: _textSecondary)),
                 ],
+              ),
+              Icon(Icons.inventory_rounded, color: _primaryGreen, size: 28),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              _buildMetricCard("Kabuuan Halaga", _formatCurrency(totalValue), Icons.account_balance_wallet_outlined, _infoBlue),
+              const SizedBox(width: 8),
+              _buildMetricCard("Kabuuang Stock", "$totalStock Sako", Icons.inventory_2_outlined, _primaryGreen),
+              const SizedBox(width: 8),
+              _buildMetricCard("Kulang sa Stock", "$criticalCount Uri", Icons.error_outline_rounded, criticalCount > 0 ? _dangerRed : _textSecondary),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetricCard(String label, String value, IconData icon, Color accentColor) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: _surfaceBg,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: _borderLine),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 14, color: accentColor),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: const TextStyle(fontSize: 10, color: _textSecondary, fontWeight: FontWeight.w600),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                value,
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: accentColor),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSmartInventoryCard(ProductModel product) {
+    Color statusBg;
+    Color statusText;
+    String statusLabel;
+
+    if (product.stock == 0) {
+      statusBg = _dangerRedBg;
+      statusText = _dangerRed;
+      statusLabel = "Ubôs na";
+    } else if (product.stock <= product.lowStockThreshold) {
+      statusBg = _warningOrangeBg;
+      statusText = _warningOrange;
+      statusLabel = "Kulang na";
+    } else {
+      statusBg = _primaryGreenSoft;
+      statusText = _primaryGreen;
+      statusLabel = "Sapat pa";
+    }
+
+    final double unitKg = product.unitKg > 0 ? product.unitKg : 50.0;
+    
+    final double sakoPrice = product.price;
+    final double sakoSellingPrice = product.sellingPrice * unitKg;
+    final double sakoProfit = sakoSellingPrice - sakoPrice;
+
+    final double kiloPrice = sakoPrice / unitKg;
+    final double kiloSellingPrice = product.sellingPrice;
+    final double kiloProfit = kiloSellingPrice - kiloPrice;
+
+    final double displayCost = _isPerKiloView ? kiloPrice : sakoPrice;
+    final double displaySelling = _isPerKiloView ? kiloSellingPrice : sakoSellingPrice;
+    final double displayProfit = _isPerKiloView ? kiloProfit : sakoProfit;
+    final String unitLabel = _isPerKiloView ? "/kg" : "/sako (${unitKg.toStringAsFixed(0)}kg)";
+
+    final double totalItemValuation = product.stock * sakoSellingPrice;
+    final double totalKilosInStock = product.stock * unitKg;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: _cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _borderLine),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        product.name,
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _textPrimary),
+                      ),
+                      Text(
+                        "1 Sako = ${unitKg.toStringAsFixed(0)} kg",
+                        style: const TextStyle(fontSize: 10, color: _textSecondary, fontWeight: FontWeight.w500),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: statusBg,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    statusLabel,
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: statusText),
+                  ),
+                ),
+                IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  icon: const Icon(Icons.delete_outline_rounded, size: 18, color: _textSecondary),
+                  onPressed: () => _confirmDeleteProduct(context, product),
+                )
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: _surfaceBg,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _borderLine.withOpacity(0.5)),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        _isPerKiloView ? "PRESYO PER KILO" : "PRESYO PER SAKO",
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: _isPerKiloView ? _infoBlue : _primaryGreen,
+                        ),
+                      ),
+                      Icon(Icons.swap_horizontal_circle_outlined, 
+                           size: 16, 
+                           color: _isPerKiloView ? _infoBlue : _primaryGreen),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildPriceColumn("Puhunan $unitLabel", "₱${displayCost.toStringAsFixed(2)}", _textPrimary),
+                      Container(height: 20, width: 1, color: _borderLine),
+                      _buildPriceColumn("Benta $unitLabel", "₱${displaySelling.toStringAsFixed(2)}", _primaryGreen),
+                      Container(height: 20, width: 1, color: _borderLine),
+                      _buildPriceColumn("Tubó $unitLabel", "${displayProfit >= 0 ? '+' : ''}₱${displayProfit.toStringAsFixed(2)}", displayProfit >= 0 ? _primaryGreen : _dangerRed),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text("Laman sa Bodega", style: TextStyle(fontSize: 11, color: _textSecondary)),
+                    Text("${product.stock} Sako",
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: _textPrimary)),
+                    Text("(${totalKilosInStock.toStringAsFixed(0)} Total Kg)",
+                        style: const TextStyle(fontSize: 10, color: _textSecondary, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    const Text("Kabuuang Halaga ng Stock", style: TextStyle(fontSize: 11, color: _textSecondary)),
+                    Text(_formatCurrency(totalItemValuation),
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: _infoBlue)),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            SizedBox(
+              width: double.infinity,
+              height: 36,
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: _borderLine),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  backgroundColor: _cardBg,
+                ),
+                onPressed: () => _showStockAdjustModal(product),
+                icon: const Icon(Icons.edit_note_rounded, size: 16, color: _primaryGreen),
+                label: const Text("I-adjust ang Bilang ng Sako",
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _textPrimary)),
               ),
             )
           ],
@@ -255,101 +455,50 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
-  Widget _buildProductCard(ProductModel product) {
-    bool isLow = product.stock <= product.lowStockThreshold;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _cardBg,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isLow ? _dangerText.withOpacity(0.4) : _borderSoft,
-          width: isLow ? 1.5 : 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          // Pangalan at Status Label
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  product.name,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: _textDark),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: isLow ? _dangerSoft : _softGreenBg,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  isLow ? "Konti nalang!" : "Sapat pa",
-                  style: TextStyle(
-                    color: isLow ? _dangerText : _brandGreen,
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              )
-            ],
-          ),
-
-          const SizedBox(height: 8),
-
-          // Presyo at Laman ng Stock
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text("Presyo bawat Kilo", style: TextStyle(fontSize: 10, color: _textMuted)),
-                  Text("₱${product.price.toStringAsFixed(2)}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: _textDark)),
-                ],
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const Text("Laman sa Bodega", style: TextStyle(fontSize: 10, color: _textMuted)),
-                  Text("${product.stock} Sako", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: isLow ? _dangerText : _brandGreen)),
-                ],
-              ),
-            ],
-          ),
-
-          const Divider(height: 16, color: _borderSoft),
-
-          // Pindutan para magbawas o magdagdag agad
-          SizedBox(
-            width: double.infinity,
-            height: 38,
-            child: OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: _borderSoft),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                backgroundColor: _bgCanvas,
-              ),
-              onPressed: () => _showQuickAdjustModal(product),
-              icon: const Icon(Icons.edit_note_rounded, size: 18, color: _brandGreen),
-              label: const Text("I-adjust ang Sako", style: TextStyle(color: _textDark, fontWeight: FontWeight.bold, fontSize: 12)),
-            ),
-          )
-        ],
-      ),
+  Widget _buildPriceColumn(String label, String price, Color priceColor) {
+    return Column(
+      children: [
+        Text(label, style: const TextStyle(fontSize: 9, color: _textSecondary)),
+        const SizedBox(height: 2),
+        Text(price, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: priceColor)),
+      ],
     );
   }
 
-  // ================= SIMPLE & EASY MODALS =================
+  void _confirmDeleteProduct(BuildContext context, ProductModel product) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text("I-delete ang Item?", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          content: Text("Sigurado ka bang gusto mong alisin ang ${product.name} sa inbentaryo?",
+              style: const TextStyle(fontSize: 12, color: _textSecondary)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("I-cancel", style: TextStyle(color: _textSecondary)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _dangerRed,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              onPressed: () async {
+                if (product.id != null) {
+                  await FirebaseFirestore.instance.collection("products").doc(product.id).update({'isDeleted': true});
+                }
+                if (context.mounted) Navigator.pop(context);
+              },
+              child: const Text("I-delete", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
-  // Quick Modal para palitan ang bilang ng sako (Direct type o Buttons)
-  void _showQuickAdjustModal(ProductModel p) {
+  void _showStockAdjustModal(ProductModel p) {
     final controller = TextEditingController(text: p.stock.toString());
 
     showModalBottomSheet(
@@ -362,7 +511,7 @@ class _InventoryPageState extends State<InventoryPage> {
           builder: (context, setModalState) {
             int currentVal = int.tryParse(controller.text) ?? 0;
 
-            void updateVal(int newVal) {
+            void updateValue(int newVal) {
               if (newVal >= 0) {
                 setModalState(() {
                   controller.text = newVal.toString();
@@ -380,21 +529,18 @@ class _InventoryPageState extends State<InventoryPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text("I-adjust ang Sako para sa ${p.name}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: _textDark)),
+                  Text("I-adjust ang Stock (Sako) - ${p.name}",
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: _textPrimary)),
                   const SizedBox(height: 16),
-
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // Subtract Button
                       IconButton.filledTonal(
-                        style: IconButton.styleFrom(backgroundColor: _bgCanvas),
-                        onPressed: () => updateVal(currentVal - 1),
-                        icon: const Icon(Icons.remove, color: _textDark),
+                        style: IconButton.styleFrom(backgroundColor: _surfaceBg),
+                        onPressed: () => updateValue(currentVal - 1),
+                        icon: const Icon(Icons.remove, color: _textPrimary),
                       ),
                       const SizedBox(width: 12),
-
-                      // Direct Type Keyboard Field (Numbers Only)
                       SizedBox(
                         width: 120,
                         child: TextField(
@@ -402,33 +548,37 @@ class _InventoryPageState extends State<InventoryPage> {
                           keyboardType: TextInputType.number,
                           textAlign: TextAlign.center,
                           inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                           decoration: InputDecoration(
                             suffixText: "Sako",
                             contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderSoft)),
-                            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _brandGreen, width: 2)),
+                            enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: const BorderSide(color: _borderLine)),
+                            focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: const BorderSide(color: _primaryGreen, width: 2)),
                           ),
                           onChanged: (_) => setModalState(() {}),
                         ),
                       ),
                       const SizedBox(width: 12),
-
-                      // Add Button
                       IconButton.filledTonal(
-                        style: IconButton.styleFrom(backgroundColor: _softGreenBg),
-                        onPressed: () => updateVal(currentVal + 1),
-                        icon: const Icon(Icons.add, color: _brandGreen),
+                        style: IconButton.styleFrom(backgroundColor: _primaryGreenSoft),
+                        onPressed: () => updateValue(currentVal + 1),
+                        icon: const Icon(Icons.add, color: _primaryGreen),
                       ),
                     ],
                   ),
                   const SizedBox(height: 20),
-
                   SizedBox(
                     width: double.infinity,
                     height: 44,
                     child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(backgroundColor: _brandGreen, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _primaryGreen,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
                       onPressed: () async {
                         final updatedStock = int.tryParse(controller.text) ?? p.stock;
                         if (p.id != null) {
@@ -436,7 +586,7 @@ class _InventoryPageState extends State<InventoryPage> {
                         }
                         if (context.mounted) Navigator.pop(context);
                       },
-                      child: const Text("I-save ang Bagong Bilang", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      child: const Text("I-save ang Bagong Stock", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                     ),
                   )
                 ],
@@ -448,11 +598,18 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
-  // Easy Add Palay Form (Smart Duplicate Prevention)
-  void _showAddPalaySheet(BuildContext context) {
-    String selectedName = _palayNames.first;
+  // ================= DYNAMIC AUTOMATIC CONVERSION MODAL =================
+
+  void _showAddProductModal(BuildContext context) {
+    final formKey = GlobalKey<FormState>();
+    String selectedName = _palayTypes.first;
+    
+    bool isInputPerKilo = false; // false = Sako, true = Kilo
+
     final stockController = TextEditingController();
-    final priceController = TextEditingController();
+    final costController = TextEditingController();
+    final sellingController = TextEditingController();
+    final unitKgController = TextEditingController(text: "50");
 
     showModalBottomSheet(
       context: context,
@@ -460,120 +617,311 @@ class _InventoryPageState extends State<InventoryPage> {
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            top: 20,
-            left: 20,
-            right: 20,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text("Magdagdag ng Palay sa Bodega", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _textDark)),
-              const SizedBox(height: 4),
-              const Text("Kapag meron na sa listahan, kusa itong idadagdag sa lumang stock.", style: TextStyle(fontSize: 11, color: _textMuted)),
-              const SizedBox(height: 16),
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final double unitKg = double.tryParse(unitKgController.text) ?? 50.0;
+            final double rawCost = double.tryParse(costController.text) ?? 0.0;
+            final double rawSelling = double.tryParse(sellingController.text) ?? 0.0;
 
-              // Dropdown
-              DropdownButtonFormField<String>(
-                value: selectedName,
-                decoration: InputDecoration(
-                  labelText: "Pumili ng Uri ng Palay",
-                  filled: true,
-                  fillColor: _bgCanvas,
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderSoft)),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _brandGreen)),
-                ),
-                items: _palayNames.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                onChanged: (val) => selectedName = val!,
+            // REAL-TIME AUTOMATIC CONVERSION CALCULATIONS
+            double calculatedCostSako = 0.0;
+            double calculatedCostKilo = 0.0;
+            double calculatedSellingSako = 0.0;
+            double calculatedSellingKilo = 0.0;
+
+            if (isInputPerKilo) {
+              calculatedCostKilo = rawCost;
+              calculatedCostSako = rawCost * unitKg;
+
+              calculatedSellingKilo = rawSelling;
+              calculatedSellingSako = rawSelling * unitKg;
+            } else {
+              calculatedCostSako = rawCost;
+              calculatedCostKilo = unitKg > 0 ? rawCost / unitKg : 0.0;
+
+              calculatedSellingSako = rawSelling;
+              calculatedSellingKilo = unitKg > 0 ? rawSelling / unitKg : 0.0;
+            }
+
+            final double calculatedProfitSako = calculatedSellingSako - calculatedCostSako;
+            final double calculatedProfitKilo = calculatedSellingKilo - calculatedCostKilo;
+
+            return Padding(
+              padding: EdgeInsets.only(
+                top: 20,
+                left: 20,
+                right: 20,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
               ),
-              const SizedBox(height: 12),
-
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: stockController,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      decoration: InputDecoration(
-                        labelText: "Ilang Sako",
-                        filled: true,
-                        fillColor: _bgCanvas,
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderSoft)),
-                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _brandGreen)),
+              child: Form(
+                key: formKey,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text("Magdagdag ng Stocks",
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _textPrimary)),
+                          
+                          // DYNAMIC UNIT INPUT SELECTOR
+                          Container(
+                            padding: const EdgeInsets.all(3),
+                            decoration: BoxDecoration(
+                              color: _surfaceBg,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: _borderLine),
+                            ),
+                            child: Row(
+                              children: [
+                                _buildModeChip("PER SAKO", !isInputPerKilo, () {
+                                  setModalState(() => isInputPerKilo = false);
+                                }),
+                                _buildModeChip("PER KILO", isInputPerKilo, () {
+                                  setModalState(() => isInputPerKilo = true);
+                                }),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TextField(
-                      controller: priceController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: InputDecoration(
-                        labelText: "Presyo bawat Kilo",
-                        filled: true,
-                        fillColor: _bgCanvas,
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderSoft)),
-                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _brandGreen)),
+                      const SizedBox(height: 16),
+
+                      DropdownButtonFormField<String>(
+                        value: selectedName,
+                        decoration: InputDecoration(
+                          labelText: "Uri ng Palay",
+                          filled: true,
+                          fillColor: _surfaceBg,
+                          enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderLine)),
+                          focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _primaryGreen)),
+                        ),
+                        items: _palayTypes.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                        onChanged: (val) => selectedName = val!,
                       ),
-                    ),
+                      const SizedBox(height: 12),
+
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: stockController,
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                              validator: (v) => (v == null || v.isEmpty) ? "Kailangan" : null,
+                              decoration: InputDecoration(
+                                labelText: "Dami ng Sako",
+                                filled: true,
+                                fillColor: _surfaceBg,
+                                enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderLine)),
+                                focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _primaryGreen)),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: TextFormField(
+                              controller: unitKgController,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              validator: (v) => (v == null || v.isEmpty) ? "Kailangan" : null,
+                              onChanged: (_) => setModalState(() {}),
+                              decoration: InputDecoration(
+                                labelText: "Kg / Sako (e.g. 50)",
+                                filled: true,
+                                fillColor: _surfaceBg,
+                                enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderLine)),
+                                focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _primaryGreen)),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      // INPUT COST & SELLING FIELDS
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: costController,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              validator: (v) => (v == null || v.isEmpty) ? "Kailangan" : null,
+                              onChanged: (_) => setModalState(() {}),
+                              decoration: InputDecoration(
+                                labelText: isInputPerKilo ? "Puhunan / Kilo (₱)" : "Puhunan / Sako (₱)",
+                                filled: true,
+                                fillColor: _surfaceBg,
+                                enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderLine)),
+                                focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _primaryGreen)),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: TextFormField(
+                              controller: sellingController,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              validator: (v) => (v == null || v.isEmpty) ? "Kailangan" : null,
+                              onChanged: (_) => setModalState(() {}),
+                              decoration: InputDecoration(
+                                labelText: isInputPerKilo ? "Benta / Kilo (₱)" : "Benta / Sako (₱)",
+                                filled: true,
+                                fillColor: _surfaceBg,
+                                enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderLine)),
+                                focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _primaryGreen)),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      // AUTOMATIC PREVIEW CONVERSION CARD
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: _surfaceBg,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: _borderLine),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              "Awtomatikong Kwenta (${isInputPerKilo ? 'Converted to Sako' : 'Converted to Kilo'}):",
+                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _textSecondary),
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  "Puhunan: ₱${calculatedCostSako.toStringAsFixed(2)} /sako  (₱${calculatedCostKilo.toStringAsFixed(2)}/kg)",
+                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _textPrimary),
+                                ),
+                              ],
+                            ),
+                            Text(
+                              "Benta: ₱${calculatedSellingSako.toStringAsFixed(2)} /sako  (₱${calculatedSellingKilo.toStringAsFixed(2)}/kg)",
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _primaryGreen),
+                            ),
+                            const Divider(height: 12),
+                            Text(
+                              "Kikitain (Tubó): +₱${calculatedProfitSako.toStringAsFixed(2)} /sako  (+₱${calculatedProfitKilo.toStringAsFixed(2)}/kg)",
+                              style: TextStyle(
+                                fontSize: 11, 
+                                fontWeight: FontWeight.bold, 
+                                color: calculatedProfitSako >= 0 ? _primaryGreen : _dangerRed
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+
+                      // SAVE BUTTON
+                      SizedBox(
+                        width: double.infinity,
+                        height: 44,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _primaryGreen,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          onPressed: () async {
+                            if (formKey.currentState!.validate()) {
+                              final inputStock = int.parse(stockController.text);
+
+                              // Save standardized format to DB
+                              final finalSakoPrice = calculatedCostSako;
+                              final finalKiloSellingPrice = calculatedSellingKilo;
+
+                              final querySnapshot = await FirebaseFirestore.instance
+                                  .collection("products")
+                                  .where("name", isEqualTo: selectedName)
+                                  .get();
+
+                              DocumentSnapshot? activeDoc;
+                              for (var doc in querySnapshot.docs) {
+                                final data = doc.data() as Map<String, dynamic>?;
+                                if (data?['isDeleted'] != true) {
+                                  activeDoc = doc;
+                                  break;
+                                }
+                              }
+
+                              if (activeDoc != null) {
+                                final currentStock = activeDoc.get('stock') ?? 0;
+                                await FirebaseFirestore.instance.collection("products").doc(activeDoc.id).update({
+                                  'stock': currentStock + inputStock,
+                                  'price': finalSakoPrice,
+                                  'sellingPrice': finalKiloSellingPrice,
+                                  'unit': "Sako",
+                                  'unitKg': unitKg,
+                                  'isDeleted': false,
+                                });
+                              } else {
+                                final newProduct = ProductModel(
+                                  name: selectedName,
+                                  category: "Regular",
+                                  unit: "Sako",
+                                  unitKg: unitKg,
+                                  price: finalSakoPrice,
+                                  sellingPrice: finalKiloSellingPrice,
+                                  stock: inputStock,
+                                  lowStockThreshold: 10,
+                                  createdAt: DateTime.now(),
+                                );
+                                await FirebaseFirestore.instance.collection("products").add(newProduct.toFirestore());
+                              }
+
+                              if (context.mounted) Navigator.pop(context);
+                            }
+                          },
+                          child: const Text("I-save sa Bodega", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        ),
+                      )
+                    ],
                   ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              SizedBox(
-                width: double.infinity,
-                height: 44,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: _brandGreen, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                  onPressed: () async {
-                    if (stockController.text.isNotEmpty && priceController.text.isNotEmpty) {
-                      final inputStock = int.parse(stockController.text);
-                      final inputPrice = double.parse(priceController.text);
-
-                      // PREVENT DUPLICATES ON FIRESTORE
-                      final querySnapshot = await FirebaseFirestore.instance
-                          .collection("products")
-                          .where("name", isEqualTo: selectedName)
-                          .limit(1)
-                          .get();
-
-                      if (querySnapshot.docs.isNotEmpty) {
-                        // Product already exists -> Add stock quantity
-                        final existingDoc = querySnapshot.docs.first;
-                        final currentStock = existingDoc.get('stock') ?? 0;
-
-                        await FirebaseFirestore.instance.collection("products").doc(existingDoc.id).update({
-                          'stock': currentStock + inputStock,
-                          'price': inputPrice,
-                        });
-                      } else {
-                        // Product doesn't exist -> Create new record
-                        final newProduct = ProductModel(
-                          name: selectedName,
-                          category: "Regular",
-                          metricDetail: "Fresh Dry",
-                          price: inputPrice,
-                          stock: inputStock,
-                          createdAt: DateTime.now(),
-                        );
-                        await FirebaseFirestore.instance.collection("products").add(newProduct.toFirestore());
-                      }
-
-                      if (context.mounted) Navigator.pop(context);
-                    }
-                  },
-                  child: const Text("I-Save sa Bodega", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 ),
-              )
-            ],
-          ),
+              ),
+            );
+          },
         );
       },
+    );
+  }
+
+  Widget _buildModeChip(String label, bool isSelected, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: isSelected ? _primaryGreen : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+            color: isSelected ? Colors.white : _textSecondary,
+          ),
+        ),
+      ),
     );
   }
 }

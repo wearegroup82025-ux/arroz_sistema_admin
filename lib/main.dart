@@ -17,11 +17,16 @@ import 'admin/screens/dashboard_page.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 1. Initialize Firebase
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  await NotificationService().initialize();
+  // 2. Initialize Local Notifications & FCM Channels
+  await NotificationService.initNotification();
+
+  // 3. Register Background Task para sa Weather (Starts 5:00 PM, every 2 hours)
+  await NotificationService.setupPeriodicWeatherCheck();
 
   runApp(
     ChangeNotifierProvider(
@@ -31,7 +36,7 @@ void main() async {
   );
 }
 
-// ==============================`
+// ==============================
 // true  = Admin App
 // false = User App
 // ==============================
@@ -62,8 +67,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
 
-    // Kapag detatached (lubusang inalis sa recent apps / pinatay ang app)
-    // O kapag hidden/paused (depende kung gusto mong mag-logout din pag-minimize)
+    // Kapag detached (lubusang inalis sa recent apps / pinatay ang app)
     if (state == AppLifecycleState.detached) {
       _logoutOnExit();
     }

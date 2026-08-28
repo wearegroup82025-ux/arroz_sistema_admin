@@ -1,14 +1,32 @@
+import 'dart:convert';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
+import 'package:workmanager/workmanager.dart';
+
+// 🌐 Coordinates para sa Capalangan, Apalit, Pampanga
+const double capalanganLat = 14.9540;
+const double capalanganLng = 120.7594;
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
-  debugPrint("Background Notification: ${message.messageId}");
+  debugPrint("Background Notification ID: ${message.messageId}");
+}
+
+// ⏰ Background Task Dispatcher para sa WorkManager (Kada 2 Oras)
+@pragma('vm:entry-point')
+void callbackDispatcher() {
+  Workmanager().executeTask((task, inputData) async {
+    await Firebase.initializeApp();
+    await NotificationService.checkAndSendPeriodicWeatherAlert();
+    return Future.value(true);
+  });
 }
 
 class NotificationService {
@@ -40,7 +58,7 @@ class NotificationService {
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
     const AndroidInitializationSettings androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+    AndroidInitializationSettings('@mipmap/ic_launcher');
 
     const InitializationSettings initSettings = InitializationSettings(
       android: androidSettings,
@@ -57,25 +75,233 @@ class NotificationService {
       },
     );
 
-    await _createChannel(channelAlerts, 'Inventory Alerts', 'Stock warnings', Importance.high);
-    await _createChannel(channelOrders, 'Orders & Cancellations', 'Realtime client orders', Importance.high);
-    await _createChannel(channelUsers, 'New User Registrations', 'New user accounts created', Importance.defaultImportance);
-    await _createChannel(channelWeather, 'Weather Updates', 'Daily forecast alerts', Importance.defaultImportance);
+    await _createChannel(channelOrders, 'Admin Order Alerts', 'Notifications for incoming orders', Importance.high);
+    await _createChannel(channelAlerts, 'Inventory & Stock Alerts', 'Low stock & critical warnings', Importance.high);
+    await _createChannel(channelUsers, 'User Account Activity', 'New user registrations', Importance.defaultImportance);
+    await _createChannel(channelWeather, 'Weather Forecasts & Disasters', 'Weather, typhoon, flood & dam alerts', Importance.high);
 
-    // 🚨 Emergency Siren Channel
-    const AndroidNotificationChannel sosChannel = AndroidNotificationChannel(
-      channelTyphoonSOS,
-      '🚨 EMERGENCY TYPHOON ALERTS',
-      description: 'Critical disaster warnings with continuous siren sound',
-      importance: Importance.max,
-      playSound: true,
-      enableVibration: true,
-      sound: RawResourceAndroidNotificationSound('typhoon_siren'),
+    await _saveFCMToken();
+
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      final notification = message.notification;
+      final data = message.data;
+
+      String title = notification?.title ?? data['title'] ?? 'System Notification';
+      String body = notification?.body ?? data['body'] ?? '';
+      String type = data['type'] ?? 'general';
+
+      String channelId = _getChannelIdByType(type);
+
+      triggerThrottledNotification(
+        title: title,
+        body: body,
+        channelId: channelId,
+        type: type,
+        payload: 'weather_page',
+      );
+    });
+  }
+
+  /// ⏰ Setup Background Periodic Weather Checker (Magsisimula sa 5:00 PM, then every 2 Hours)
+  static Future<void> setupPeriodicWeatherCheck() async {
+    await Workmanager().initialize(callbackDispatcher, isInDebugMode: false);
+
+    final now = DateTime.now();
+    // Hanapin ang susunod na 2-hour interval na nakahanay sa 5:00 PM (e.g., 5:00 PM, 7:00 PM, 9:00 PM)
+    DateTime target = DateTime(now.year, now.month, now.day, 17, 0, 0);
+
+    while (target.isBefore(now)) {
+      target = target.add(const Duration(hours: 2));
+    }
+
+    final initialDelay = target.difference(now);
+
+    await Workmanager().registerPeriodicTask(
+      "capalangan_weather_check",
+      "fetchWeatherPeriodic",
+      frequency: const Duration(hours: 2),
+      initialDelay: initialDelay,
+      existingWorkPolicy: ExistingWorkPolicy.replace,
+      constraints: Constraints(
+        networkType: NetworkType.connected,
+      ),
     );
+  }
 
-    await _localNotifs
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(sosChannel);
+  /// 🌧️ Real Live Weather Fetcher para sa Capalangan
+  static Future<void> checkAndSendPeriodicWeatherAlert() async {
+    try {
+      final url = Uri.parse(
+        'https://api.open-meteo.com/v1/forecast?latitude=$capalanganLat&longitude=$capalanganLng&current_weather=true',
+      );
+
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final currentWeather = data['current_weather'];
+
+        final double temp = (currentWeather['temperature'] as num).toDouble();
+        final double windSpeed = (currentWeather['windspeed'] as num).toDouble();
+        final int weatherCode = currentWeather['weathercode'];
+
+        String title = "🌤️ Capalangan Weather Update";
+        String body = "Ulat Panahon (Capalangan): $temp°C ang temperatura. Normal ang kalagayan sa bukid.";
+        String subCategory = "general";
+        String severity = "info";
+
+        if (weatherCode >= 51 && weatherCode <= 99) {
+          title = "🌧️ Babala: May Ulan sa Capalangan";
+          body = "Nagtala ng ulan ($temp°C). Agad na takpan ang mga nakabilad na palay at ihanda ang drainage sa bukid.";
+          subCategory = "rain";
+          severity = "warning";
+        } else if (temp >= 35) {
+          title = "☀️ Warning: Mataas na Heat Index ($temp°C)";
+          body = "Mainit ang panahon sa Capalangan. Siguraduhing sapat ang patubig sa mga pilapil para hindi matuyo ang tanim.";
+          subCategory = "heatindex";
+          severity = "warning";
+        } else if (windSpeed > 30) {
+          title = "💨 Weather Alert: Malakas na Hangin";
+          body = "Nagtala ng $windSpeed km/h na hangin sa Capalangan. Iligtas ang mga kagamitan at imbakan ng ani.";
+          subCategory = "storm";
+          severity = "warning";
+        }
+
+        final user = FirebaseAuth.instance.currentUser;
+        final userId = user?.uid ?? 'system_broadcast';
+
+        await createWeatherNotification(
+          userId: userId,
+          title: title,
+          body: body,
+          subCategory: subCategory,
+          severity: severity,
+        );
+      }
+    } catch (e) {
+      debugPrint("Error fetching live weather: $e");
+    }
+  }
+
+  static Future<void> triggerThrottledNotification({
+    required String title,
+    required String body,
+    required String channelId,
+    required String type,
+    String? payload,
+    int cooldownSeconds = 5,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final lastSentTime = prefs.getInt('last_notif_$type') ?? 0;
+    final currentTime = DateTime.now().millisecondsSinceEpoch;
+
+    if (currentTime - lastSentTime < (cooldownSeconds * 1000)) {
+      debugPrint("Notification suppressed for channel $type to prevent fatigue.");
+      return;
+    }
+
+    await prefs.setInt('last_notif_$type', currentTime);
+    await showNotification(
+      title: title,
+      body: body,
+      channelId: channelId,
+      payload: payload,
+    );
+  }
+
+  Future<void> _saveFCMToken() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      String? token = await _fcm.getToken();
+      if (token != null) {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'fcmToken': token,
+          'lastTokenUpdate': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }
+    }
+  }
+
+  static String _getChannelIdByType(String type) {
+    final cleanType = type.toLowerCase().trim();
+
+    final weatherKeywords = [
+      'weather', 'rain', 'typhoon', 'bagyo', 'habagat', 'amihan', 'monsoon',
+      'hightide', 'lowtide', 'tide', 'flood', 'baha', 'dam', 'spillway',
+      'landslide', 'storm', 'thunderstorm', 'lightning', 'cyclone', 'tsunami',
+      'stormsurge', 'heatindex', 'heatwave', 'drought', 'elprino', 'lanina',
+      'wind', 'gale', 'volcano', 'ashfall', 'earthquake', 'fog', 'cloud',
+      'humidity', 'uv', 'airquality'
+    ];
+
+    if (weatherKeywords.contains(cleanType)) {
+      return channelWeather;
+    }
+
+    switch (cleanType) {
+      case 'order':
+      case 'orders':
+        return channelOrders;
+      case 'user':
+      case 'users':
+        return channelUsers;
+      case 'stock':
+      case 'stocks':
+        return channelAlerts;
+      default:
+        return channelAlerts;
+    }
+  }
+
+  static Future<void> createWeatherNotification({
+    required String userId,
+    required String title,
+    required String body,
+    String subCategory = 'general',
+    String severity = 'info',
+  }) async {
+    await FirebaseFirestore.instance.collection('notifications').add({
+      'userId': userId,
+      'title': title,
+      'body': body,
+      'type': 'weather',
+      'subCategory': subCategory.toLowerCase().trim(),
+      'severity': severity.toLowerCase().trim(),
+      'isRead': false,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+
+    await triggerThrottledNotification(
+      title: title,
+      body: body,
+      channelId: channelWeather,
+      type: 'weather',
+      payload: 'weather_page',
+    );
+  }
+
+  static Future<void> createOrderNotification({
+    required String userId,
+    required String orderId,
+    required double totalAmount,
+  }) async {
+    final title = "New Order Received (#$orderId)";
+    final body = "A new order worth ₱${totalAmount.toStringAsFixed(2)} was placed. Please process for fulfillment.";
+
+    await FirebaseFirestore.instance.collection('notifications').add({
+      'userId': userId,
+      'title': title,
+      'body': body,
+      'type': 'order',
+      'isRead': false,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+
+    await triggerThrottledNotification(
+      title: title,
+      body: body,
+      channelId: channelOrders,
+      type: 'order',
+    );
   }
 
   Future<void> _createChannel(String id, String name, String desc, Importance importance) async {
@@ -99,43 +325,33 @@ class NotificationService {
     required String body,
     String? payload,
     String channelId = channelAlerts,
-    bool isOngoing = false,
   }) async {
     final int targetId = id ?? (DateTime.now().millisecondsSinceEpoch ~/ 1000);
-    final bool isSOS = channelId == channelTyphoonSOS;
 
     AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
       channelId,
-      isSOS ? '🚨 EMERGENCY ALERTS' : 'ArrozSistema System',
-      importance: isSOS ? Importance.max : Importance.high,
-      priority: isSOS ? Priority.max : Priority.high,
+      'Admin System Notifications',
+      importance: Importance.high,
+      priority: Priority.high,
       icon: '@mipmap/ic_launcher',
       styleInformation: BigTextStyleInformation(body),
-      ongoing: isOngoing || isSOS,
-      autoCancel: !isSOS,
-      fullScreenIntent: isSOS,
-      sound: isSOS ? const RawResourceAndroidNotificationSound('typhoon_siren') : null,
     );
 
     NotificationDetails platformDetails = NotificationDetails(
       android: androidDetails,
-      iOS: DarwinNotificationDetails(
+      iOS: const DarwinNotificationDetails(
         presentSound: true,
         presentBanner: true,
         presentList: true,
-        interruptionLevel: isSOS ? InterruptionLevel.critical : InterruptionLevel.active,
       ),
     );
 
     await NotificationService()._localNotifs.show(targetId, title, body, platformDetails, payload: payload);
   }
 
-  static Future<void> dismissNotification(int id) async {
-    await NotificationService()._localNotifs.cancel(id);
-  }
-
   void _handleNotificationClick(String? payload) {
-    if (payload == null) return;
-    debugPrint("Clicked notification payload: $payload");
+    if (payload == 'weather_page') {
+      debugPrint("Directing user to Weather Page");
+    }
   }
 }

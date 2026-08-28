@@ -11,38 +11,39 @@ class NotificationPage extends StatefulWidget {
 class _NotificationPageState extends State<NotificationPage> {
   String _activeTab = 'All';
 
-  static const Color _background = Color(0xffF8FAFC);
-  static const Color _surface = Color(0xffFFFFFF);
-  static const Color _primary = Color(0xff16A34A);
-  static const Color _textPrimary = Color(0xff0F172A);
-  static const Color _textSecondary = Color(0xff475569);
-  static const Color _border = Color(0xffE2E8F0);
+  static const Color _bgSlate = Color(0xffF8FAFC);
+  static const Color _cardWhite = Color(0xffFFFFFF);
+  static const Color _brandPrimary = Color(0xff059669);
+  static const Color _textDark = Color(0xff0F172A);
+  static const Color _textMuted = Color(0xff64748B);
+  static const Color _borderSubtle = Color(0xffE2E8F0);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _background,
+      backgroundColor: _bgSlate,
       appBar: AppBar(
         elevation: 0,
-        backgroundColor: _surface,
-        iconTheme: const IconThemeData(color: _textPrimary),
-        title: const Row(
-          children: [
-            Icon(Icons.notifications_active_rounded, color: _primary, size: 22),
-            SizedBox(width: 10),
-            Text(
-              "Notifications",
-              style: TextStyle(color: _textPrimary, fontWeight: FontWeight.w900, fontSize: 18),
-            ),
-          ],
+        scrolledUnderElevation: 0.5,
+        backgroundColor: _cardWhite,
+        iconTheme: const IconThemeData(color: _textDark),
+        centerTitle: false,
+        title: const Text(
+          "Notifications Hub",
+          style: TextStyle(
+            color: _textDark,
+            fontWeight: FontWeight.w800,
+            fontSize: 20,
+            letterSpacing: -0.5,
+          ),
         ),
         actions: [
           TextButton.icon(
             onPressed: _markAllAsRead,
-            icon: const Icon(Icons.done_all_rounded, size: 16, color: _primary),
+            icon: const Icon(Icons.done_all_rounded, size: 18, color: _brandPrimary),
             label: const Text(
-              "Read All",
-              style: TextStyle(color: _primary, fontWeight: FontWeight.bold, fontSize: 12),
+              "Mark all read",
+              style: TextStyle(color: _brandPrimary, fontWeight: FontWeight.w700, fontSize: 13),
             ),
           ),
           const SizedBox(width: 8),
@@ -52,7 +53,7 @@ class _NotificationPageState extends State<NotificationPage> {
         child: Column(
           children: [
             _buildCustomFilterBar(),
-            const Divider(height: 1, color: _border),
+            const Divider(height: 1, color: _borderSubtle),
             Expanded(child: _buildNotificationsStream()),
           ],
         ),
@@ -61,12 +62,12 @@ class _NotificationPageState extends State<NotificationPage> {
   }
 
   Widget _buildCustomFilterBar() {
-    final filters = ['All', 'Orders', 'Users', 'Stock', 'Weather'];
+    final filters = ['All', 'Weather', 'Orders', 'Users', 'Stock'];
 
     return Container(
-      color: _surface,
-      height: 54,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: _cardWhite,
+      height: 56,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: filters.length,
@@ -75,26 +76,29 @@ class _NotificationPageState extends State<NotificationPage> {
           final filter = filters[index];
           final isSelected = _activeTab == filter;
 
-          return InkWell(
-            onTap: () => setState(() => _activeTab = filter),
-            borderRadius: BorderRadius.circular(10),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-              decoration: BoxDecoration(
-                color: isSelected ? _primary : _background,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: isSelected ? _primary : _border,
-                  width: 1.2,
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            child: InkWell(
+              onTap: () => setState(() => _activeTab = filter),
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                decoration: BoxDecoration(
+                  color: isSelected ? _brandPrimary : Colors.transparent,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: isSelected ? _brandPrimary : _borderSubtle,
+                    width: 1,
+                  ),
                 ),
-              ),
-              child: Center(
-                child: Text(
-                  filter,
-                  style: TextStyle(
-                    color: isSelected ? Colors.white : _textSecondary,
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                    fontSize: 12,
+                child: Center(
+                  child: Text(
+                    filter,
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : _textMuted,
+                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                      fontSize: 13,
+                    ),
                   ),
                 ),
               ),
@@ -107,28 +111,73 @@ class _NotificationPageState extends State<NotificationPage> {
 
   Widget _buildNotificationsStream() {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('notifications')
-          .orderBy('timestamp', descending: true)
-          .snapshots(),
+      stream: FirebaseFirestore.instance.collection('notifications').snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator(color: _primary));
+          return const Center(
+            child: CircularProgressIndicator(color: _brandPrimary, strokeWidth: 2.5),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Text(
+                "Error loading notifications: ${snapshot.error}",
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.red.shade400, fontWeight: FontWeight.w500),
+              ),
+            ),
+          );
         }
 
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return _buildEmptyState();
         }
 
-        final filteredDocs = snapshot.data!.docs.where((doc) {
+        final allDocs = snapshot.data!.docs.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
-          final type = data['type'] ?? '';
+          final recipient = data['recipientType'] ?? '';
+          return recipient != 'customer';
+        }).toList();
 
-          if (_activeTab == 'Orders') return type == 'order';
-          if (_activeTab == 'Users') return type == 'user';
-          if (_activeTab == 'Stock') return type == 'stock';
-          if (_activeTab == 'Weather') return type == 'weather';
-          return true;
+        allDocs.sort((a, b) {
+          final aData = a.data() as Map<String, dynamic>;
+          final bData = b.data() as Map<String, dynamic>;
+          final Timestamp? aTime = aData['timestamp'];
+          final Timestamp? bTime = bData['timestamp'];
+          if (aTime == null || bTime == null) return 0;
+          return bTime.compareTo(aTime);
+        });
+
+        final weatherKeywords = [
+          'weather', 'rain', 'typhoon', 'bagyo', 'habagat', 'amihan', 'monsoon',
+          'hightide', 'lowtide', 'tide', 'flood', 'baha', 'dam', 'spillway',
+          'landslide', 'storm', 'thunderstorm', 'lightning', 'cyclone', 'tsunami',
+          'stormsurge', 'heatindex', 'heatwave', 'drought', 'elprino', 'lanina',
+          'wind', 'gale', 'volcano', 'ashfall', 'earthquake', 'fog', 'cloud',
+          'humidity', 'uv', 'airquality'
+        ];
+
+        final filteredDocs = allDocs.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          final type = (data['type'] ?? '').toString().toLowerCase().trim();
+          final subCategory = (data['subCategory'] ?? '').toString().toLowerCase().trim();
+
+          final isWeatherType = weatherKeywords.contains(type) || weatherKeywords.contains(subCategory);
+
+          if (_activeTab == 'All') {
+            final validTypes = ['order', 'orders', 'user', 'users', 'stock', 'stocks'];
+            return validTypes.contains(type) || isWeatherType;
+          }
+
+          if (_activeTab == 'Weather') return isWeatherType;
+          if (_activeTab == 'Orders') return type == 'order' || type == 'orders';
+          if (_activeTab == 'Users') return type == 'user' || type == 'users';
+          if (_activeTab == 'Stock') return type == 'stock' || type == 'stocks';
+
+          return false;
         }).toList();
 
         if (filteredDocs.isEmpty) {
@@ -138,7 +187,7 @@ class _NotificationPageState extends State<NotificationPage> {
         return ListView.separated(
           padding: const EdgeInsets.all(16),
           itemCount: filteredDocs.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 12),
+          separatorBuilder: (_, __) => const SizedBox(height: 10),
           itemBuilder: (context, index) {
             final doc = filteredDocs[index];
             final data = doc.data() as Map<String, dynamic>;
@@ -150,9 +199,11 @@ class _NotificationPageState extends State<NotificationPage> {
   }
 
   Widget _buildNotificationCard(String docId, Map<String, dynamic> data) {
-    final title = data['title'] ?? 'Notification';
+    final title = data['title'] ?? 'System Notification';
     final body = data['body'] ?? '';
-    final type = data['type'] ?? 'general';
+    final type = (data['type'] ?? 'general').toString().toLowerCase().trim();
+    final subCategory = (data['subCategory'] ?? '').toString().toLowerCase().trim();
+    final severity = (data['severity'] ?? 'info').toString().toLowerCase().trim();
     final isRead = data['isRead'] ?? false;
     final Timestamp? timestamp = data['timestamp'];
 
@@ -160,87 +211,153 @@ class _NotificationPageState extends State<NotificationPage> {
     Color iconColor;
     Color iconBg;
 
-    switch (type) {
-      case 'order':
-        icon = Icons.shopping_bag_rounded;
-        iconColor = Colors.indigo;
-        iconBg = const Color(0xffEEF2FF);
-        break;
-      case 'user':
-        icon = Icons.person_add_alt_1_rounded;
-        iconColor = Colors.teal;
-        iconBg = const Color(0xffF0FDFA);
-        break;
-      case 'weather':
-        icon = Icons.cloud_queue_rounded;
-        iconColor = Colors.amber.shade800;
-        iconBg = const Color(0xffFEF3C7);
-        break;
-      case 'stock':
-        icon = Icons.warning_amber_rounded;
-        iconColor = Colors.orange.shade800;
+    final weatherKeywords = [
+      'weather', 'rain', 'typhoon', 'bagyo', 'habagat', 'amihan', 'monsoon',
+      'hightide', 'lowtide', 'tide', 'flood', 'baha', 'dam', 'spillway',
+      'landslide', 'storm', 'thunderstorm', 'lightning', 'cyclone', 'tsunami',
+      'stormsurge', 'heatindex', 'heatwave', 'drought', 'elprino', 'lanina',
+      'wind', 'gale', 'volcano', 'ashfall', 'earthquake', 'fog', 'cloud',
+      'humidity', 'uv', 'airquality'
+    ];
+
+    if (weatherKeywords.contains(type) || weatherKeywords.contains(subCategory)) {
+      if (subCategory == 'rain' || subCategory == 'flood' || subCategory == 'storm') {
+        icon = Icons.grain_rounded;
+        iconColor = const Color(0xff0284C7);
+        iconBg = const Color(0xffE0F2FE);
+      } else if (subCategory == 'heatindex' || subCategory == 'heatwave') {
+        icon = Icons.wb_sunny_rounded;
+        iconColor = const Color(0xffEA580C);
         iconBg = const Color(0xffFFF7ED);
-        break;
-      default:
-        icon = Icons.notifications_none_rounded;
-        iconColor = Colors.blue;
-        iconBg = const Color(0xffEFF6FF);
+      } else {
+        icon = Icons.cloud_outlined;
+        iconColor = severity == 'warning' || severity == 'critical'
+            ? const Color(0xffD97706)
+            : const Color(0xff059669);
+        iconBg = severity == 'warning' || severity == 'critical'
+            ? const Color(0xffFFFBEB)
+            : const Color(0xffECFDF5);
+      }
+    } else {
+      switch (type) {
+        case 'order':
+        case 'orders':
+          icon = Icons.shopping_cart_rounded;
+          iconColor = const Color(0xff2563EB);
+          iconBg = const Color(0xffEFF6FF);
+          break;
+        case 'user':
+        case 'users':
+          icon = Icons.person_add_rounded;
+          iconColor = const Color(0xff0D9488);
+          iconBg = const Color(0xffF0FDFA);
+          break;
+        case 'stock':
+        case 'stocks':
+          icon = Icons.inventory_2_rounded;
+          iconColor = const Color(0xffEA580C);
+          iconBg = const Color(0xffFFF7ED);
+          break;
+        default:
+          icon = Icons.notifications_rounded;
+          iconColor = const Color(0xff4F46E5);
+          iconBg = const Color(0xffEEF2FF);
+      }
     }
 
-    return Container(
-      decoration: BoxDecoration(
-        color: _surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: isRead ? _border : _primary.withOpacity(0.5),
-          width: isRead ? 1.2 : 1.8,
-        ),
-      ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
         onTap: () {
-          FirebaseFirestore.instance.collection('notifications').doc(docId).update({'isRead': true});
+          if (!isRead) {
+            FirebaseFirestore.instance.collection('notifications').doc(docId).update({'isRead': true});
+          }
+          if (weatherKeywords.contains(type) || weatherKeywords.contains(subCategory)) {
+            Navigator.pushNamed(context, '/weather');
+          }
         },
-        leading: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(color: iconBg, borderRadius: BorderRadius.circular(12)),
-          child: Icon(icon, color: iconColor, size: 22),
-        ),
-        title: Row(
-          children: [
-            Expanded(
-              child: Text(
-                title,
-                style: TextStyle(
-                  color: _textPrimary,
-                  fontWeight: isRead ? FontWeight.w600 : FontWeight.w900,
-                  fontSize: 14,
-                ),
-              ),
+        borderRadius: BorderRadius.circular(12),
+        child: Ink(
+          decoration: BoxDecoration(
+            color: _cardWhite,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isRead ? _borderSubtle : _brandPrimary.withOpacity(0.4),
+              width: isRead ? 1 : 1.5,
             ),
-            if (!isRead)
-              Container(
-                width: 8,
-                height: 8,
-                decoration: const BoxDecoration(color: _primary, shape: BoxShape.circle),
-              ),
-          ],
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 4.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                body,
-                style: const TextStyle(color: _textSecondary, fontSize: 12, height: 1.3),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                timestamp != null ? _formatDate(timestamp) : 'Just now',
-                style: TextStyle(color: _textSecondary.withOpacity(0.7), fontSize: 10, fontWeight: FontWeight.bold),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.02),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
               ),
             ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: iconBg,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(icon, color: iconColor, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              title,
+                              style: TextStyle(
+                                color: _textDark,
+                                fontWeight: isRead ? FontWeight.w600 : FontWeight.w800,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                          if (!isRead)
+                            Container(
+                              width: 7,
+                              height: 7,
+                              decoration: const BoxDecoration(
+                                color: _brandPrimary,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        body,
+                        style: const TextStyle(
+                          color: _textMuted,
+                          fontSize: 13,
+                          height: 1.35,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        timestamp != null ? _formatExactTime(timestamp) : 'Just now',
+                        style: TextStyle(
+                          color: _textMuted.withOpacity(0.8),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -252,9 +369,24 @@ class _NotificationPageState extends State<NotificationPage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.notifications_off_outlined, size: 40, color: _textSecondary.withOpacity(0.4)),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: const BoxDecoration(
+              color: Color(0xffF1F5F9),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.notifications_off_outlined, size: 32, color: _textMuted),
+          ),
           const SizedBox(height: 12),
-          const Text("Walang Notifications", style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold, fontSize: 15)),
+          const Text(
+            "No notifications found",
+            style: TextStyle(color: _textDark, fontWeight: FontWeight.w700, fontSize: 15),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            "New activity and weather alerts will appear here.",
+            style: TextStyle(color: _textMuted, fontSize: 12),
+          ),
         ],
       ),
     );
@@ -274,10 +406,23 @@ class _NotificationPageState extends State<NotificationPage> {
     await batch.commit();
   }
 
-  String _formatDate(Timestamp timestamp) {
+  String _formatExactTime(Timestamp timestamp) {
     final date = timestamp.toDate();
+    final now = DateTime.now();
+    final difference = now.difference(date);
+
+    if (difference.inSeconds < 60) {
+      return 'Just now';
+    } else if (difference.inMinutes < 60) {
+      return '${difference.inMinutes}m ago';
+    } else if (difference.inHours < 24) {
+      return '${difference.inHours}h ago';
+    }
+
     final hour = date.hour > 12 ? date.hour - 12 : (date.hour == 0 ? 12 : date.hour);
     final period = date.hour >= 12 ? 'PM' : 'AM';
-    return "$hour:${date.minute.toString().padLeft(2, '0')} $period • ${date.day}/${date.month}/${date.year}";
+    final minute = date.minute.toString().padLeft(2, '0');
+
+    return "$hour:$minute $period • ${date.day}/${date.month}/${date.year}";
   }
 }
