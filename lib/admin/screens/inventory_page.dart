@@ -25,7 +25,11 @@ class _InventoryPageState extends State<InventoryPage> {
   static const Color _dangerRedBg = Color(0xFFFEE2E2);
   static const Color _infoBlue = Color(0xFF2563EB);
 
-  String _searchQuery = "";
+  // Persistent Controller para tuloy-tuloy ang pag-type
+  late final TextEditingController _searchController;
+  // ValueNotifier para hindi mag-rebuild ang buong page kapag nagse-search
+  final ValueNotifier<String> _searchQueryNotifier = ValueNotifier<String>("");
+
   bool _isPerKiloView = false;
 
   final List<String> _palayTypes = [
@@ -36,6 +40,19 @@ class _InventoryPageState extends State<InventoryPage> {
     "R42 Palay",
     "216 Palay"
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _searchQueryNotifier.dispose();
+    super.dispose();
+  }
 
   String _formatCurrency(double amount) {
     return "₱${amount.toStringAsFixed(2).replaceAllMapped(
@@ -94,10 +111,6 @@ class _InventoryPageState extends State<InventoryPage> {
               }
             }
 
-            final filteredProducts = products.where((p) {
-              return p.name.toLowerCase().contains(_searchQuery.toLowerCase());
-            }).toList();
-
             return Column(
               children: [
                 _buildHeaderAndAnalytics(
@@ -111,30 +124,42 @@ class _InventoryPageState extends State<InventoryPage> {
                   child: Row(
                     children: [
                       Expanded(
-                        child: TextField(
-                          onChanged: (val) => setState(() => _searchQuery = val),
-                          decoration: InputDecoration(
-                            hintText: "Maghanap ng uri ng palay...",
-                            hintStyle: const TextStyle(fontSize: 13, color: _textSecondary),
-                            prefixIcon: const Icon(Icons.search_rounded, color: _textSecondary, size: 20),
-                            suffixIcon: _searchQuery.isNotEmpty
-                                ? IconButton(
-                                    icon: const Icon(Icons.clear, size: 18, color: _textSecondary),
-                                    onPressed: () => setState(() => _searchQuery = ""),
-                                  )
-                                : null,
-                            filled: true,
-                            fillColor: _cardBg,
-                            contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(color: _borderLine),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(color: _primaryGreen, width: 1.5),
-                            ),
-                          ),
+                        child: ValueListenableBuilder<String>(
+                          valueListenable: _searchQueryNotifier,
+                          builder: (context, queryValue, child) {
+                            return TextField(
+                              controller: _searchController,
+                              onChanged: (val) {
+                                // Ino-update lang ang Notifier nang hindi mina-marcos ang buong State
+                                _searchQueryNotifier.value = val;
+                              },
+                              decoration: InputDecoration(
+                                hintText: "Maghanap ng uri ng palay...",
+                                hintStyle: const TextStyle(fontSize: 13, color: _textSecondary),
+                                prefixIcon: const Icon(Icons.search_rounded, color: _textSecondary, size: 20),
+                                suffixIcon: queryValue.isNotEmpty
+                                    ? IconButton(
+                                        icon: const Icon(Icons.clear, size: 18, color: _textSecondary),
+                                        onPressed: () {
+                                          _searchController.clear();
+                                          _searchQueryNotifier.value = "";
+                                        },
+                                      )
+                                    : null,
+                                filled: true,
+                                fillColor: _cardBg,
+                                contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: const BorderSide(color: _borderLine),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: const BorderSide(color: _primaryGreen, width: 1.5),
+                                ),
+                              ),
+                            );
+                          },
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -173,20 +198,31 @@ class _InventoryPageState extends State<InventoryPage> {
                 ),
 
                 Expanded(
-                  child: filteredProducts.isEmpty
-                      ? const Center(
+                  child: ValueListenableBuilder<String>(
+                    valueListenable: _searchQueryNotifier,
+                    builder: (context, query, child) {
+                      final filteredProducts = products.where((p) {
+                        return p.name.toLowerCase().contains(query.toLowerCase());
+                      }).toList();
+
+                      if (filteredProducts.isEmpty) {
+                        return const Center(
                           child: Text("Walang nahanap na item sa inbentaryo.",
                               style: TextStyle(color: _textSecondary, fontSize: 13)),
-                        )
-                      : ListView.separated(
-                          physics: const BouncingScrollPhysics(),
-                          padding: const EdgeInsets.fromLTRB(20, 4, 20, 80),
-                          itemCount: filteredProducts.length,
-                          separatorBuilder: (context, index) => const SizedBox(height: 12),
-                          itemBuilder: (context, index) {
-                            return _buildSmartInventoryCard(filteredProducts[index]);
-                          },
-                        ),
+                        );
+                      }
+
+                      return ListView.separated(
+                        physics: const BouncingScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(20, 4, 20, 80),
+                        itemCount: filteredProducts.length,
+                        separatorBuilder: (context, index) => const SizedBox(height: 12),
+                        itemBuilder: (context, index) {
+                          return _buildSmartInventoryCard(filteredProducts[index]);
+                        },
+                      );
+                    },
+                  ),
                 ),
               ],
             );
@@ -604,7 +640,7 @@ class _InventoryPageState extends State<InventoryPage> {
     final formKey = GlobalKey<FormState>();
     String selectedName = _palayTypes.first;
     
-    bool isInputPerKilo = false; // false = Sako, true = Kilo
+    bool isInputPerKilo = false;
 
     final stockController = TextEditingController();
     final costController = TextEditingController();
@@ -623,7 +659,6 @@ class _InventoryPageState extends State<InventoryPage> {
             final double rawCost = double.tryParse(costController.text) ?? 0.0;
             final double rawSelling = double.tryParse(sellingController.text) ?? 0.0;
 
-            // REAL-TIME AUTOMATIC CONVERSION CALCULATIONS
             double calculatedCostSako = 0.0;
             double calculatedCostKilo = 0.0;
             double calculatedSellingSako = 0.0;
@@ -666,7 +701,6 @@ class _InventoryPageState extends State<InventoryPage> {
                           const Text("Magdagdag ng Stocks",
                               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _textPrimary)),
                           
-                          // DYNAMIC UNIT INPUT SELECTOR
                           Container(
                             padding: const EdgeInsets.all(3),
                             decoration: BoxDecoration(
@@ -746,7 +780,6 @@ class _InventoryPageState extends State<InventoryPage> {
                       ),
                       const SizedBox(height: 12),
 
-                      // INPUT COST & SELLING FIELDS
                       Row(
                         children: [
                           Expanded(
@@ -788,7 +821,6 @@ class _InventoryPageState extends State<InventoryPage> {
                       ),
                       const SizedBox(height: 12),
 
-                      // AUTOMATIC PREVIEW CONVERSION CARD
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
@@ -831,7 +863,6 @@ class _InventoryPageState extends State<InventoryPage> {
                       ),
                       const SizedBox(height: 20),
 
-                      // SAVE BUTTON
                       SizedBox(
                         width: double.infinity,
                         height: 44,
@@ -844,7 +875,6 @@ class _InventoryPageState extends State<InventoryPage> {
                             if (formKey.currentState!.validate()) {
                               final inputStock = int.parse(stockController.text);
 
-                              // Save standardized format to DB
                               final finalSakoPrice = calculatedCostSako;
                               final finalKiloSellingPrice = calculatedSellingKilo;
 

@@ -1,7 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
+
+// Auth Page (Palitan ang path ayon sa tunay na kinaroroonan ng iyong LoginPage)
+import 'login_page.dart'; 
 
 // Domain & Services
 import '../../domain/weather_entity.dart';
@@ -106,10 +110,33 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  void _performLogout() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Naka-logout na ang session.")),
-    );
+  // INAYOS NA LOGOUT FUNCTION WITH FIREBASE SIGN-OUT & REDIRECTION
+  void _performLogout() async {
+    try {
+      // 1. I-sign out sa Firebase Auth
+      await FirebaseAuth.instance.signOut();
+
+      if (!mounted) return;
+
+      // 2. Magpakita ng feedback message
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Naka-logout na ang session."),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+
+      // 3. I-redirect sa LoginPage at alisin ang buong navigation stack
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const LoginPage()), 
+        (route) => false,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Nagka-error sa pag-logout: $e")),
+      );
+    }
   }
 
   void _initRealtimeListeners() {
