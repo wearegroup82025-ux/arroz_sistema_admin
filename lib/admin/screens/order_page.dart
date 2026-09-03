@@ -54,7 +54,6 @@ class OrderItem {
     final rawUnit = (map['unit'] ?? map['unitType'] ?? map['type'] ?? '').toString().toLowerCase().trim();
     final String name = map['name'] ?? map['productName'] ?? map['title'] ?? 'Product Item';
 
-    // Auto-detect unit kapag walang explicit unit sa Firestore document
     String resolvedUnit = 'kg';
     if (rawUnit.isNotEmpty) {
       resolvedUnit = rawUnit;
@@ -71,7 +70,6 @@ class OrderItem {
     );
   }
 
-  // Format display text para sa quantity (halimbawa: "3 sako" o "3 kg")
   String get formattedQuantity {
     final cleanUnit = unit.toLowerCase().trim();
     if (cleanUnit == 'sako' || cleanUnit == 'sack' || cleanUnit == 'sacks') {
@@ -181,11 +179,17 @@ class _OrdersPageState extends State<OrdersPage> {
   OrderStatus? _selectedStatusFilter;
   String _searchQuery = "";
   late final TextEditingController _searchController;
+  late final Stream<QuerySnapshot> _ordersStream;
 
   @override
   void initState() {
     super.initState();
     _searchController = TextEditingController();
+    _ordersStream = FirebaseFirestore.instance
+        .collection("orders")
+        .orderBy("createdAt", descending: true)
+        .limit(100)
+        .snapshots();
   }
 
   @override
@@ -199,150 +203,170 @@ class _OrdersPageState extends State<OrdersPage> {
     return Scaffold(
       backgroundColor: AppTheme.bgSurface,
       body: SafeArea(
-        child: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection("orders")
-              .orderBy("createdAt", descending: true)
-              .limit(100)
-              .snapshots(),
-          builder: (context, snapshot) {
-            if (snapshot.hasError) {
-              return Center(child: Text("Error: ${snapshot.error}", style: const TextStyle(color: Colors.red)));
-            }
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator(color: AppTheme.primaryBlue));
-            }
-
-            final docs = snapshot.data?.docs ?? [];
-            final List<OrderModel> allOrders = docs.map((d) => OrderModel.fromFirestore(d)).toList();
-
-            final Map<OrderStatus, int> statusCounts = { for (var e in OrderStatus.values) e : 0 };
-            double totalRevenue = 0;
-
-            for (var order in allOrders) {
-              statusCounts[order.status] = (statusCounts[order.status] ?? 0) + 1;
-              if (order.status == OrderStatus.completed) {
-                totalRevenue += order.totalAmount;
-              }
-            }
-
-            List<OrderModel> filteredOrders = allOrders;
-
-            if (_selectedStatusFilter != null) {
-              filteredOrders = filteredOrders.where((o) => o.status == _selectedStatusFilter).toList();
-            }
-
-            if (_searchQuery.isNotEmpty) {
-              filteredOrders = filteredOrders.where((o) {
-                final hasMatchingItem = o.items.any((item) => item.productName.toLowerCase().contains(_searchQuery));
-                return o.id.toLowerCase().contains(_searchQuery) ||
-                    o.customerName.toLowerCase().contains(_searchQuery) ||
-                    o.contactNumber.toLowerCase().contains(_searchQuery) ||
-                    o.paymentRef.toLowerCase().contains(_searchQuery) ||
-                    hasMatchingItem;
-              }).toList();
-            }
-
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // SEARCH BAR
-                  Container(
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppTheme.border),
-                    ),
-                    child: TextField(
-                      controller: _searchController,
-                      onChanged: (val) => setState(() => _searchQuery = val.toLowerCase().trim()),
-                      decoration: InputDecoration(
-                        hintText: "Search name, contact, ref no, or order ID...",
-                        hintStyle: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
-                        prefixIcon: const Icon(Icons.search, size: 20, color: AppTheme.textSecondary),
-                        suffixIcon: _searchQuery.isNotEmpty
-                            ? IconButton(
-                          icon: const Icon(Icons.clear, size: 18),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() => _searchQuery = "");
-                          },
-                        )
-                            : null,
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                      ),
-                    ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // SEARCH BAR (In-update ang hintText para mas malinaw sa user)
+              Container(
+                height: 44,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppTheme.border),
+                ),
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: (val) {
+                    setState(() {
+                      _searchQuery = val.toLowerCase().trim();
+                    });
+                  },
+                  decoration: InputDecoration(
+                    hintText: "Search ID, phone, address, payment, name...",
+                    hintStyle: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                    prefixIcon: const Icon(Icons.search, size: 20, color: AppTheme.textSecondary),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, size: 18),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => _searchQuery = "");
+                            },
+                          )
+                        : null,
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 10),
                   ),
-                  const SizedBox(height: 12),
-
-                  // METRICS BAR
-                  SizedBox(
-                    height: 58,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      physics: const BouncingScrollPhysics(),
-                      children: [
-                        ...OrderStatus.values.map((status) => _MetricCard(
-                          title: status.label,
-                          count: statusCounts[status] ?? 0,
-                          color: status.color,
-                          isSelected: _selectedStatusFilter == status,
-                          onTap: () => setState(() => _selectedStatusFilter = _selectedStatusFilter == status ? null : status),
-                        )),
-                        _SalesCard(title: "Sales", revenue: totalRevenue),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // ACTIVE FILTER BADGE
-                  if (_selectedStatusFilter != null) ...[
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          "Filtered: ${_selectedStatusFilter!.label}",
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.primaryBlue),
-                        ),
-                        GestureDetector(
-                          onTap: () => setState(() => _selectedStatusFilter = null),
-                          child: const Text("Show All", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.red)),
-                        )
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                  ],
-
-                  // ORDERS LIST
-                  Expanded(
-                    child: filteredOrders.isEmpty
-                        ? const Center(
-                      child: Text("No orders found.", style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
-                    )
-                        : ListView.builder(
-                      physics: const BouncingScrollPhysics(),
-                      addAutomaticKeepAlives: true,
-                      addRepaintBoundaries: true,
-                      itemCount: filteredOrders.length,
-                      itemBuilder: (context, index) {
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: OrderCardItem(
-                            order: filteredOrders[index],
-                            onUpdateTap: () => _openPipelineManager(context, filteredOrders[index]),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
+                ),
               ),
-            );
-          },
+              const SizedBox(height: 12),
+
+              // STREAM BUILDER
+              Expanded(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: _ordersStream,
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) {
+                      return Center(child: Text("Error: ${snapshot.error}", style: const TextStyle(color: Colors.red)));
+                    }
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator(color: AppTheme.primaryBlue));
+                    }
+
+                    final docs = snapshot.data?.docs ?? [];
+                    final List<OrderModel> allOrders = docs.map((d) => OrderModel.fromFirestore(d)).toList();
+
+                    final Map<OrderStatus, int> statusCounts = { for (var e in OrderStatus.values) e : 0 };
+                    double totalRevenue = 0;
+
+                    for (var order in allOrders) {
+                      statusCounts[order.status] = (statusCounts[order.status] ?? 0) + 1;
+                      if (order.status == OrderStatus.completed) {
+                        totalRevenue += order.totalAmount;
+                      }
+                    }
+
+                    List<OrderModel> filteredOrders = allOrders;
+
+                    if (_selectedStatusFilter != null) {
+                      filteredOrders = filteredOrders.where((o) => o.status == _selectedStatusFilter).toList();
+                    }
+
+                    // PINALAWAK NA SEARCH LOGIC (ID, Contact, Address, Payment, Name, Product Items)
+                    if (_searchQuery.isNotEmpty) {
+                      filteredOrders = filteredOrders.where((o) {
+                        final query = _searchQuery;
+
+                        final matchesId = o.id.toLowerCase().contains(query);
+                        final matchesCustomer = o.customerName.toLowerCase().contains(query);
+                        final matchesContact = o.contactNumber.toLowerCase().contains(query);
+                        final matchesAddress = o.deliveryAddress.toLowerCase().contains(query);
+                        final matchesPaymentMethod = o.paymentMethod.toLowerCase().contains(query);
+                        final matchesPaymentRef = o.paymentRef.toLowerCase().contains(query);
+
+                        final matchesItemName = o.items.any((item) => item.productName.toLowerCase().contains(query));
+
+                        return matchesId ||
+                            matchesCustomer ||
+                            matchesContact ||
+                            matchesAddress ||
+                            matchesPaymentMethod ||
+                            matchesPaymentRef ||
+                            matchesItemName;
+                      }).toList();
+                    }
+
+                    return Column(
+                      children: [
+                        // METRICS BAR
+                        SizedBox(
+                          height: 58,
+                          child: ListView(
+                            scrollDirection: Axis.horizontal,
+                            physics: const BouncingScrollPhysics(),
+                            children: [
+                              ...OrderStatus.values.map((status) => _MetricCard(
+                                title: status.label,
+                                count: statusCounts[status] ?? 0,
+                                color: status.color,
+                                isSelected: _selectedStatusFilter == status,
+                                onTap: () => setState(() => _selectedStatusFilter = _selectedStatusFilter == status ? null : status),
+                              )),
+                              _SalesCard(title: "Sales", revenue: totalRevenue),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // ACTIVE FILTER BADGE
+                        if (_selectedStatusFilter != null) ...[
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                "Filtered: ${_selectedStatusFilter!.label}",
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.primaryBlue),
+                              ),
+                              GestureDetector(
+                                onTap: () => setState(() => _selectedStatusFilter = null),
+                                child: const Text("Show All", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.red)),
+                              )
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+
+                        // ORDERS LIST
+                        Expanded(
+                          child: filteredOrders.isEmpty
+                              ? const Center(
+                                  child: Text("No orders found.", style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+                                )
+                              : ListView.builder(
+                                  physics: const BouncingScrollPhysics(),
+                                  addAutomaticKeepAlives: true,
+                                  addRepaintBoundaries: true,
+                                  itemCount: filteredOrders.length,
+                                  itemBuilder: (context, index) {
+                                    return Padding(
+                                      padding: const EdgeInsets.only(bottom: 10),
+                                      child: OrderCardItem(
+                                        order: filteredOrders[index],
+                                        onUpdateTap: () => _openPipelineManager(context, filteredOrders[index]),
+                                      ),
+                                    );
+                                  },
+                                ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -399,39 +423,39 @@ class _OrdersPageState extends State<OrdersPage> {
                       onPressed: isSubmitting
                           ? null
                           : () async {
-                        setModalState(() => isSubmitting = true);
-                        try {
-                          final batch = FirebaseFirestore.instance.batch();
-                          final orderRef = FirebaseFirestore.instance.collection("orders").doc(order.id);
+                              setModalState(() => isSubmitting = true);
+                              try {
+                                final batch = FirebaseFirestore.instance.batch();
+                                final orderRef = FirebaseFirestore.instance.collection("orders").doc(order.id);
 
-                          batch.update(orderRef, {
-                            'status': temporaryStatus.label,
-                            'orderStatus': temporaryStatus.label,
-                            'isPaid': temporaryStatus == OrderStatus.completed,
-                            'lastUpdated': FieldValue.serverTimestamp(),
-                          });
+                                batch.update(orderRef, {
+                                  'status': temporaryStatus.label,
+                                  'orderStatus': temporaryStatus.label,
+                                  'isPaid': temporaryStatus == OrderStatus.completed,
+                                  'lastUpdated': FieldValue.serverTimestamp(),
+                                });
 
-                          if (order.userId.isNotEmpty) {
-                            final notifRef = FirebaseFirestore.instance.collection("users").doc(order.userId).collection("notifications").doc();
-                            batch.set(notifRef, {
-                              "title": "Order Update",
-                              "body": temporaryStatus.notificationMessage,
-                              "type": "ORDER_UPDATE",
-                              "status": temporaryStatus.label,
-                              "orderId": order.id,
-                              "isRead": false,
-                              "createdAt": FieldValue.serverTimestamp(),
-                            });
-                          }
+                                if (order.userId.isNotEmpty) {
+                                  final notifRef = FirebaseFirestore.instance.collection("users").doc(order.userId).collection("notifications").doc();
+                                  batch.set(notifRef, {
+                                    "title": "Order Update",
+                                    "body": temporaryStatus.notificationMessage,
+                                    "type": "ORDER_UPDATE",
+                                    "status": temporaryStatus.label,
+                                    "orderId": order.id,
+                                    "isRead": false,
+                                    "createdAt": FieldValue.serverTimestamp(),
+                                  });
+                                }
 
-                          await batch.commit();
+                                await batch.commit();
 
-                          if (!context.mounted) return;
-                          Navigator.pop(context);
-                        } catch (e) {
-                          setModalState(() => isSubmitting = false);
-                        }
-                      },
+                                if (!context.mounted) return;
+                                Navigator.pop(context);
+                              } catch (e) {
+                                setModalState(() => isSubmitting = false);
+                              }
+                            },
                       child: isSubmitting
                           ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                           : const Text("Save Status", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -562,7 +586,6 @@ class OrderCardItem extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // HEADER (ORDER ID & STATUS BADGE)
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -589,8 +612,6 @@ class OrderCardItem extends StatelessWidget {
             ],
           ),
           const Divider(height: 16, color: AppTheme.border),
-
-          // BUYER INFORMATION SECTION
           _InfoRow(icon: Icons.person, label: "Buyer", value: order.customerName, isBold: true),
           const SizedBox(height: 4),
           _InfoRow(icon: Icons.phone, label: "Contact", value: order.contactNumber, valueColor: AppTheme.primaryBlue, isBold: true),
@@ -601,7 +622,6 @@ class OrderCardItem extends StatelessWidget {
 
           const Divider(height: 16, color: AppTheme.border),
 
-          // ORDERED ITEMS LIST
           ...order.items.map((item) {
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 2),
@@ -626,7 +646,6 @@ class OrderCardItem extends StatelessWidget {
 
           const Divider(height: 16, color: AppTheme.border),
 
-          // FOOTER (TOTAL & ACTION)
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
