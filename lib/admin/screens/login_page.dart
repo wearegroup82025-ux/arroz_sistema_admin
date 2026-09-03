@@ -14,11 +14,13 @@ class _LoginPageState extends State<LoginPage> {
   final passwordController = TextEditingController();
 
   bool _isLoading = false;
+  bool _obscurePassword = true;
 
   // Global Design Identity
   static const Color _background = Color(0xffF8FAFC);
   static const Color _surface = Color(0xffFFFFFF);
-  static const Color _primary = Color(0xff16A34A); // Vibrant Emerald Green
+  static const Color _appIconBg = Color(0xff0F5132); // Deep Emerald from pubspec launcher config
+  static const Color _primary = Color(0xff16A34A);
   static const Color _textPrimary = Color(0xff0F172A);
   static const Color _textSecondary = Color(0xff475569);
   static const Color _border = Color(0xffE2E8F0);
@@ -71,7 +73,10 @@ class _LoginPageState extends State<LoginPage> {
   void _showSnackbar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message, style: const TextStyle(fontWeight: FontWeight.w500)),
+        content: Text(
+          message,
+          style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+        ),
         backgroundColor: _textPrimary,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -94,15 +99,15 @@ class _LoginPageState extends State<LoginPage> {
         child: LayoutBuilder(
           builder: (context, constraints) {
             return SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
               child: ConstrainedBox(
                 constraints: BoxConstraints(
-                  minHeight: constraints.maxHeight - 32,
+                  minHeight: constraints.maxHeight - 48,
                 ),
                 child: IntrinsicHeight(
                   child: Center(
                     child: Container(
-                      constraints: const BoxConstraints(maxWidth: 420),
+                      constraints: const BoxConstraints(maxWidth: 400),
                       child: _buildLoginScreen(),
                     ),
                   ),
@@ -120,24 +125,66 @@ class _LoginPageState extends State<LoginPage> {
     return Column(
       key: const ValueKey('admin_login'),
       mainAxisAlignment: MainAxisAlignment.center,
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
+        // App Icon Container
+        Container(
+          width: 96,
+          height: 96,
+          decoration: BoxDecoration(
+            color: _appIconBg,
+            borderRadius: BorderRadius.circular(22),
+            boxShadow: [
+              BoxShadow(
+                color: _appIconBg.withOpacity(0.35),
+                blurRadius: 18,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(22),
+            child: Image.asset(
+              'assets/images/app_icon.png',
+              width: 96,
+              height: 96,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return const Icon(
+                  Icons.eco_rounded,
+                  size: 48,
+                  color: Colors.white,
+                );
+              },
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        // Header Section
         const Text(
           "Admin Portal",
+          textAlign: TextAlign.center,
           style: TextStyle(
             color: _textPrimary,
-            fontSize: 28,
+            fontSize: 26,
             fontWeight: FontWeight.w900,
             letterSpacing: -0.5,
           ),
         ),
         const SizedBox(height: 8),
         const Text(
-          "Log in to manage your agronomic dashboard data.",
-          style: TextStyle(color: _textSecondary, fontSize: 14),
+          "Log in to access and manage your agronomic system and dashboard data.",
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: _textSecondary,
+            fontSize: 14,
+            height: 1.4,
+          ),
         ),
-        const SizedBox(height: 32),
-        
+        const SizedBox(height: 36),
+
+        // Text Fields
         _buildTextField(
           controller: emailController,
           label: "Admin Email",
@@ -148,22 +195,61 @@ class _LoginPageState extends State<LoginPage> {
           controller: passwordController,
           label: "Password",
           icon: Icons.lock_outline_rounded,
-          obscureText: true,
+          obscureText: _obscurePassword,
+          suffixIcon: IconButton(
+            icon: Icon(
+              _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+              color: _textSecondary.withOpacity(0.7),
+              size: 20,
+            ),
+            onPressed: () {
+              setState(() => _obscurePassword = !_obscurePassword);
+            },
+          ),
         ),
-        
+
+        // Forgot Password
         Align(
           alignment: Alignment.centerRight,
           child: TextButton(
             onPressed: _resetPassword,
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+            ),
             child: const Text(
               "Forgot Password?",
-              style: TextStyle(color: _primary, fontWeight: FontWeight.w700, fontSize: 13),
+              style: TextStyle(
+                color: _primary,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
             ),
           ),
         ),
-        const SizedBox(height: 16),
-        
+        const SizedBox(height: 20),
+
+        // Primary Action Button
         _buildPrimaryButton(label: "Log In as Admin", onPressed: submit),
+
+        const SizedBox(height: 36),
+
+        // Security Tagline
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: const [
+            Icon(Icons.verified_user_outlined, size: 15, color: _textSecondary),
+            SizedBox(width: 6),
+            Text(
+              "ARROZ System Secured Portal",
+              style: TextStyle(
+                color: _textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.2,
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }
@@ -175,35 +261,52 @@ class _LoginPageState extends State<LoginPage> {
     required String label,
     required IconData icon,
     bool obscureText = false,
+    Widget? suffixIcon,
   }) {
     return Container(
       decoration: BoxDecoration(
         color: _surface,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xff0F172A).withValues(alpha: 0.015),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: const Color(0xff0F172A).withOpacity(0.025),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
       child: TextField(
         controller: controller,
         obscureText: obscureText,
-        style: const TextStyle(color: _textPrimary, fontSize: 15, fontWeight: FontWeight.w600),
+        style: const TextStyle(
+          color: _textPrimary,
+          fontSize: 15,
+          fontWeight: FontWeight.w600,
+        ),
         decoration: InputDecoration(
           labelText: label,
-          labelStyle: const TextStyle(color: _textSecondary, fontSize: 14, fontWeight: FontWeight.w500),
-          prefixIcon: Icon(icon, color: _textSecondary.withValues(alpha: 0.7), size: 22),
-          floatingLabelStyle: const TextStyle(color: _primary, fontWeight: FontWeight.w700),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          labelStyle: const TextStyle(
+            color: _textSecondary,
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
+          prefixIcon: Icon(
+            icon,
+            color: _textSecondary.withOpacity(0.7),
+            size: 22,
+          ),
+          suffixIcon: suffixIcon,
+          floatingLabelStyle: const TextStyle(
+            color: _primary,
+            fontWeight: FontWeight.w700,
+          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(14),
             borderSide: const BorderSide(color: _border, width: 1.2),
           ),
           focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(14),
             borderSide: const BorderSide(color: _primary, width: 1.8),
           ),
         ),
@@ -211,7 +314,10 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  Widget _buildPrimaryButton({required String label, required VoidCallback onPressed}) {
+  Widget _buildPrimaryButton({
+    required String label,
+    required VoidCallback onPressed,
+  }) {
     return SizedBox(
       width: double.infinity,
       height: 52,
@@ -219,15 +325,17 @@ class _LoginPageState extends State<LoginPage> {
         style: ElevatedButton.styleFrom(
           backgroundColor: _primary,
           elevation: 0,
-          shadowColor: Colors.transparent,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         ),
         onPressed: _isLoading ? null : onPressed,
         child: _isLoading
             ? const SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2.5,
+                ),
               )
             : Text(
                 label,
