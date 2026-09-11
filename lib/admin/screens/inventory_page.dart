@@ -1,7 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import '../../models/product_model.dart';
 
 class InventoryPage extends StatefulWidget {
   const InventoryPage({super.key});
@@ -20,26 +18,16 @@ class _InventoryPageState extends State<InventoryPage> {
   static const Color _borderLine = Color(0xFFE2E8F0);
   
   static const Color _warningOrange = Color(0xFFD97706);
-  static const Color _warningOrangeBg = Color(0xFFFEF3C7);
   static const Color _dangerRed = Color(0xFFDC2626);
   static const Color _dangerRedBg = Color(0xFFFEE2E2);
   static const Color _infoBlue = Color(0xFF2563EB);
+  static const Color _infoBlueBg = Color(0xFFEFF6FF);
 
-  // Persistent Controller para tuloy-tuloy ang pag-type
   late final TextEditingController _searchController;
-  // ValueNotifier para hindi mag-rebuild ang buong page kapag nagse-search
   final ValueNotifier<String> _searchQueryNotifier = ValueNotifier<String>("");
 
-  bool _isPerKiloView = false;
-
-  final List<String> _palayTypes = [
-    "C4 Palay",
-    "C18 Palay",
-    "Jasmine Palay",
-    "R10 Palay",
-    "R42 Palay",
-    "216 Palay"
-  ];
+  final List<String> _riceTypes = ["Hybrid", "Inbred"];
+  final List<String> _riceConditions = ["Basa", "Tuyo", "Sariwa"];
 
   @override
   void initState() {
@@ -66,12 +54,12 @@ class _InventoryPageState extends State<InventoryPage> {
     return Scaffold(
       backgroundColor: _surfaceBg,
       floatingActionButton: FloatingActionButton.extended(
-        elevation: 2,
+        elevation: 3,
         backgroundColor: _primaryGreen,
-        onPressed: () => _showAddProductModal(context),
+        onPressed: () => _showAddHarvestModal(context),
         icon: const Icon(Icons.add_box_rounded, color: Colors.white, size: 20),
         label: const Text(
-          "Magdagdag ng Stocks",
+          "Mag-input ng Ani & Puhunan",
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
         ),
       ),
@@ -89,111 +77,70 @@ class _InventoryPageState extends State<InventoryPage> {
             }
 
             final docs = snapshot.data?.docs ?? [];
-            final products = docs
-                .map((doc) => ProductModel.fromFirestore(doc))
-                .where((p) {
-                  final rawData = docs.firstWhere((d) => d.id == p.id).data() as Map<String, dynamic>?;
-                  return rawData?['isDeleted'] != true;
-                })
-                .toList();
 
-            double totalInventoryValue = 0.0;
-            int totalStockUnits = 0;
-            int criticalStockCount = 0;
+            double totalValuation = 0.0;
+            double totalOverallProfit = 0.0;
+            int totalStockKg = 0;
 
-            for (var p in products) {
-              final double unitKg = p.unitKg > 0 ? p.unitKg : 50.0;
-              final double sakoSellingPrice = p.sellingPrice * unitKg;
-              totalInventoryValue += (p.stock * sakoSellingPrice);
-              totalStockUnits += p.stock;
-              if (p.stock <= p.lowStockThreshold) {
-                criticalStockCount++;
-              }
+            for (var doc in docs) {
+              final data = doc.data() as Map<String, dynamic>? ?? {};
+              if (data['isDeleted'] == true) continue;
+
+              final double currentTotalKg = ((data['totalKg'] ?? 0.0) as num).toDouble();
+              final srp = (data['srpPerKg'] ?? 0.0).toDouble();
+              final totalCost = (data['totalCost'] ?? 0.0).toDouble();
+
+              final totalRevenue = currentTotalKg * srp;
+              final totalProfit = totalRevenue - totalCost;
+
+              totalValuation += totalRevenue;
+              totalOverallProfit += totalProfit;
+              totalStockKg += currentTotalKg.toInt();
             }
 
             return Column(
               children: [
                 _buildHeaderAndAnalytics(
-                  totalValue: totalInventoryValue,
-                  totalStock: totalStockUnits,
-                  criticalCount: criticalStockCount,
+                  totalValue: totalValuation,
+                  totalProfit: totalOverallProfit,
+                  totalStockKg: totalStockKg,
                 ),
 
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: ValueListenableBuilder<String>(
-                          valueListenable: _searchQueryNotifier,
-                          builder: (context, queryValue, child) {
-                            return TextField(
-                              controller: _searchController,
-                              onChanged: (val) {
-                                // Ino-update lang ang Notifier nang hindi mina-marcos ang buong State
-                                _searchQueryNotifier.value = val;
-                              },
-                              decoration: InputDecoration(
-                                hintText: "Maghanap ng uri ng palay...",
-                                hintStyle: const TextStyle(fontSize: 13, color: _textSecondary),
-                                prefixIcon: const Icon(Icons.search_rounded, color: _textSecondary, size: 20),
-                                suffixIcon: queryValue.isNotEmpty
-                                    ? IconButton(
-                                        icon: const Icon(Icons.clear, size: 18, color: _textSecondary),
-                                        onPressed: () {
-                                          _searchController.clear();
-                                          _searchQueryNotifier.value = "";
-                                        },
-                                      )
-                                    : null,
-                                filled: true,
-                                fillColor: _cardBg,
-                                contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(color: _borderLine),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(color: _primaryGreen, width: 1.5),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      
-                      Material(
-                        color: _isPerKiloView ? _infoBlue : _primaryGreen,
-                        borderRadius: BorderRadius.circular(12),
-                        child: InkWell(
-                          onTap: () {
-                            setState(() {
-                              _isPerKiloView = !_isPerKiloView;
-                            });
-                          },
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.swap_horiz_rounded, color: Colors.white, size: 18),
-                                const SizedBox(width: 4),
-                                Text(
-                                  _isPerKiloView ? "PER KILO" : "PER SAKO",
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 11,
-                                  ),
-                                ),
-                              ],
-                            ),
+                  child: ValueListenableBuilder<String>(
+                    valueListenable: _searchQueryNotifier,
+                    builder: (context, queryValue, child) {
+                      return TextField(
+                        controller: _searchController,
+                        onChanged: (val) => _searchQueryNotifier.value = val,
+                        decoration: InputDecoration(
+                          hintText: "Maghanap ng uri (e.g. Hybrid, Tuyo)...",
+                          hintStyle: const TextStyle(fontSize: 13, color: _textSecondary),
+                          prefixIcon: const Icon(Icons.search_rounded, color: _textSecondary, size: 20),
+                          suffixIcon: queryValue.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear, size: 18, color: _textSecondary),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    _searchQueryNotifier.value = "";
+                                  },
+                                )
+                              : null,
+                          filled: true,
+                          fillColor: _cardBg,
+                          contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: _borderLine),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: _primaryGreen, width: 1.5),
                           ),
                         ),
-                      ),
-                    ],
+                      );
+                    },
                   ),
                 ),
 
@@ -201,13 +148,16 @@ class _InventoryPageState extends State<InventoryPage> {
                   child: ValueListenableBuilder<String>(
                     valueListenable: _searchQueryNotifier,
                     builder: (context, query, child) {
-                      final filteredProducts = products.where((p) {
-                        return p.name.toLowerCase().contains(query.toLowerCase());
+                      final filteredDocs = docs.where((doc) {
+                        final data = doc.data() as Map<String, dynamic>? ?? {};
+                        if (data['isDeleted'] == true) return false;
+                        final name = (data['name'] ?? '').toString().toLowerCase();
+                        return name.contains(query.toLowerCase());
                       }).toList();
 
-                      if (filteredProducts.isEmpty) {
+                      if (filteredDocs.isEmpty) {
                         return const Center(
-                          child: Text("Walang nahanap na item sa inbentaryo.",
+                          child: Text("Walang nahanap na record sa inbentaryo.",
                               style: TextStyle(color: _textSecondary, fontSize: 13)),
                         );
                       }
@@ -215,10 +165,10 @@ class _InventoryPageState extends State<InventoryPage> {
                       return ListView.separated(
                         physics: const BouncingScrollPhysics(),
                         padding: const EdgeInsets.fromLTRB(20, 4, 20, 80),
-                        itemCount: filteredProducts.length,
+                        itemCount: filteredDocs.length,
                         separatorBuilder: (context, index) => const SizedBox(height: 12),
                         itemBuilder: (context, index) {
-                          return _buildSmartInventoryCard(filteredProducts[index]);
+                          return _buildFarmerInventoryCard(filteredDocs[index]);
                         },
                       );
                     },
@@ -232,12 +182,10 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
-  // ================= UI COMPONENTS =================
-
   Widget _buildHeaderAndAnalytics({
     required double totalValue,
-    required int totalStock,
-    required int criticalCount,
+    required double totalProfit,
+    required int totalStockKg,
   }) {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -254,24 +202,24 @@ class _InventoryPageState extends State<InventoryPage> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text("Smart Inventory System",
+                  Text("Smart Farm Inventory",
                       style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: _textPrimary)),
                   SizedBox(height: 2),
-                  Text("Real-time valuation & stock tracking",
+                  Text("Kuwenta ng Puhunan, Tubó at Benta sa Hectare 1 & 2",
                       style: TextStyle(fontSize: 12, color: _textSecondary)),
                 ],
               ),
-              Icon(Icons.inventory_rounded, color: _primaryGreen, size: 28),
+              Icon(Icons.agriculture_rounded, color: _primaryGreen, size: 28),
             ],
           ),
           const SizedBox(height: 16),
           Row(
             children: [
-              _buildMetricCard("Kabuuan Halaga", _formatCurrency(totalValue), Icons.account_balance_wallet_outlined, _infoBlue),
+              _buildMetricCard("Kabuuang Kita", _formatCurrency(totalValue), Icons.account_balance_wallet_outlined, _infoBlue),
               const SizedBox(width: 8),
-              _buildMetricCard("Kabuuang Stock", "$totalStock Sako", Icons.inventory_2_outlined, _primaryGreen),
+              _buildMetricCard("Kabuuang Ani", "$totalStockKg kg", Icons.scale_outlined, _primaryGreen),
               const SizedBox(width: 8),
-              _buildMetricCard("Kulang sa Stock", "$criticalCount Uri", Icons.error_outline_rounded, criticalCount > 0 ? _dangerRed : _textSecondary),
+              _buildMetricCard("Kabuuang Tubó", _formatCurrency(totalProfit), Icons.trending_up_rounded, totalProfit >= 0 ? _primaryGreen : _dangerRed),
             ],
           ),
         ],
@@ -309,7 +257,7 @@ class _InventoryPageState extends State<InventoryPage> {
               fit: BoxFit.scaleDown,
               child: Text(
                 value,
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: accentColor),
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: accentColor),
               ),
             ),
           ],
@@ -318,42 +266,32 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
-  Widget _buildSmartInventoryCard(ProductModel product) {
-    Color statusBg;
-    Color statusText;
-    String statusLabel;
+  Widget _buildFarmerInventoryCard(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>? ?? {};
 
-    if (product.stock == 0) {
-      statusBg = _dangerRedBg;
-      statusText = _dangerRed;
-      statusLabel = "Ubôs na";
-    } else if (product.stock <= product.lowStockThreshold) {
-      statusBg = _warningOrangeBg;
-      statusText = _warningOrange;
-      statusLabel = "Kulang na";
-    } else {
-      statusBg = _primaryGreenSoft;
-      statusText = _primaryGreen;
-      statusLabel = "Sapat pa";
-    }
+    final String name = data['name'] ?? "Palay Item";
+    final double srp = (data['srpPerKg'] ?? 0.0).toDouble();
 
-    final double unitKg = product.unitKg > 0 ? product.unitKg : 50.0;
-    
-    final double sakoPrice = product.price;
-    final double sakoSellingPrice = product.sellingPrice * unitKg;
-    final double sakoProfit = sakoSellingPrice - sakoPrice;
+    final double h1Cost = (data['h1Cost'] ?? 0.0).toDouble();
+    final double h1Kg = (data['h1Kg'] ?? 0.0).toDouble();
+    final double h2Cost = (data['h2Cost'] ?? 0.0).toDouble();
+    final double h2Kg = (data['h2Kg'] ?? 0.0).toDouble();
 
-    final double kiloPrice = sakoPrice / unitKg;
-    final double kiloSellingPrice = product.sellingPrice;
-    final double kiloProfit = kiloSellingPrice - kiloPrice;
+    final double h1CostPerKg = h1Kg > 0 ? h1Cost / h1Kg : 0.0;
+    final double h1ProfitPerKg = srp - h1CostPerKg;
+    final double h1NetProfit = (h1Kg * srp) - h1Cost;
 
-    final double displayCost = _isPerKiloView ? kiloPrice : sakoPrice;
-    final double displaySelling = _isPerKiloView ? kiloSellingPrice : sakoSellingPrice;
-    final double displayProfit = _isPerKiloView ? kiloProfit : sakoProfit;
-    final String unitLabel = _isPerKiloView ? "/kg" : "/sako (${unitKg.toStringAsFixed(0)}kg)";
+    final double h2CostPerKg = h2Kg > 0 ? h2Cost / h2Kg : 0.0;
+    final double h2ProfitPerKg = srp - h2CostPerKg;
+    final double h2NetProfit = (h2Kg * srp) - h2Cost;
 
-    final double totalItemValuation = product.stock * sakoSellingPrice;
-    final double totalKilosInStock = product.stock * unitKg;
+    // GUMAMIT NG REALTIME totalKg MULA SA FIRESTORE
+    final double totalKg = ((data['totalKg'] ?? (h1Kg + h2Kg)) as num).toDouble();
+    final double totalCost = h1Cost + h2Cost;
+    final double overallCostPerKg = (h1Kg + h2Kg) > 0 ? totalCost / (h1Kg + h2Kg) : 0.0;
+    final double overallProfitPerKg = srp - overallCostPerKg;
+    final double totalRevenue = totalKg * srp;
+    final double totalProfit = totalRevenue - totalCost;
 
     return Container(
       decoration: BoxDecoration(
@@ -367,152 +305,205 @@ class _InventoryPageState extends State<InventoryPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        product.name,
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _textPrimary),
-                      ),
-                      Text(
-                        "1 Sako = ${unitKg.toStringAsFixed(0)} kg",
-                        style: const TextStyle(fontSize: 10, color: _textSecondary, fontWeight: FontWeight.w500),
-                      ),
-                    ],
+                  child: Text(
+                    name,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _textPrimary),
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: statusBg,
+                    color: _primaryGreenSoft,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    statusLabel,
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: statusText),
+                    "SRP: ₱${srp.toStringAsFixed(2)}/kg",
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _primaryGreen),
                   ),
                 ),
                 IconButton(
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
                   icon: const Icon(Icons.delete_outline_rounded, size: 18, color: _textSecondary),
-                  onPressed: () => _confirmDeleteProduct(context, product),
+                  onPressed: () => _confirmDeleteProduct(context, doc.id, name),
                 )
               ],
             ),
             const SizedBox(height: 12),
 
             Container(
-              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: _surfaceBg,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: _borderLine.withOpacity(0.5)),
+                border: Border.all(color: _borderLine),
               ),
               child: Column(
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        _isPerKiloView ? "PRESYO PER KILO" : "PRESYO PER SAKO",
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: _isPerKiloView ? _infoBlue : _primaryGreen,
-                        ),
-                      ),
-                      Icon(Icons.swap_horizontal_circle_outlined, 
-                           size: 16, 
-                           color: _isPerKiloView ? _infoBlue : _primaryGreen),
-                    ],
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+                    ),
+                    child: const Row(
+                      children: [
+                        Expanded(flex: 2, child: Text("DETAILS", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _textSecondary))),
+                        Expanded(flex: 2, child: Text("HECTARE 1", textAlign: TextAlign.center, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _textSecondary))),
+                        Expanded(flex: 2, child: Text("HECTARE 2", textAlign: TextAlign.center, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _textSecondary))),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _buildPriceColumn("Puhunan $unitLabel", "₱${displayCost.toStringAsFixed(2)}", _textPrimary),
-                      Container(height: 20, width: 1, color: _borderLine),
-                      _buildPriceColumn("Benta $unitLabel", "₱${displaySelling.toStringAsFixed(2)}", _primaryGreen),
-                      Container(height: 20, width: 1, color: _borderLine),
-                      _buildPriceColumn("Tubó $unitLabel", "${displayProfit >= 0 ? '+' : ''}₱${displayProfit.toStringAsFixed(2)}", displayProfit >= 0 ? _primaryGreen : _dangerRed),
-                    ],
+                  _buildTableRow("Ani (Nakuha)", "${h1Kg.toStringAsFixed(0)} kg", "${h2Kg.toStringAsFixed(0)} kg"),
+                  const Divider(height: 1, color: _borderLine),
+                  _buildTableRow("Puhunan (Kabuuang)", "₱${h1Cost.toStringAsFixed(0)}", "₱${h2Cost.toStringAsFixed(0)}"),
+                  const Divider(height: 1, color: _borderLine),
+                  _buildTableRow("Puhunan per Kg", "₱${h1CostPerKg.toStringAsFixed(2)}", "₱${h2CostPerKg.toStringAsFixed(2)}"),
+                  const Divider(height: 1, color: _borderLine),
+                  _buildTableRow(
+                    "Tubó per Kg", 
+                    "₱${h1ProfitPerKg.toStringAsFixed(2)}", 
+                    "₱${h2ProfitPerKg.toStringAsFixed(2)}",
+                    isHighlight: true,
+                    val1Color: h1ProfitPerKg >= 0 ? _primaryGreen : _dangerRed,
+                    val2Color: h2ProfitPerKg >= 0 ? _primaryGreen : _dangerRed,
+                  ),
+                  const Divider(height: 1, color: _borderLine),
+                  _buildTableRow(
+                    "Kabuuang Tubó", 
+                    "₱${h1NetProfit.toStringAsFixed(2)}", 
+                    "₱${h2NetProfit.toStringAsFixed(2)}",
+                    isHighlight: true,
+                    val1Color: h1NetProfit >= 0 ? _primaryGreen : _dangerRed,
+                    val2Color: h2NetProfit >= 0 ? _primaryGreen : _dangerRed,
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 12),
 
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text("Laman sa Bodega", style: TextStyle(fontSize: 11, color: _textSecondary)),
-                    Text("${product.stock} Sako",
-                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: _textPrimary)),
-                    Text("(${totalKilosInStock.toStringAsFixed(0)} Total Kg)",
-                        style: const TextStyle(fontSize: 10, color: _textSecondary, fontWeight: FontWeight.bold)),
-                  ],
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    const Text("Kabuuang Halaga ng Stock", style: TextStyle(fontSize: 11, color: _textSecondary)),
-                    Text(_formatCurrency(totalItemValuation),
-                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: _infoBlue)),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            SizedBox(
-              width: double.infinity,
-              height: 36,
-              child: OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: _borderLine),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  backgroundColor: _cardBg,
-                ),
-                onPressed: () => _showStockAdjustModal(product),
-                icon: const Icon(Icons.edit_note_rounded, size: 16, color: _primaryGreen),
-                label: const Text("I-adjust ang Bilang ng Sako",
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _textPrimary)),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: _infoBlueBg,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _infoBlue.withOpacity(0.3)),
               ),
-            )
+              child: Column(
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.analytics_rounded, size: 14, color: _infoBlue),
+                      SizedBox(width: 6),
+                      Text("KABUUANG KWENTA (Kasalukuyang Stock)",
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _infoBlue)),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _buildSummaryColumn("Nalalabing Stock", "${totalKg.toStringAsFixed(0)} kg", _textPrimary),
+                      _buildSummaryColumn("Puhunan / kg", "₱${overallCostPerKg.toStringAsFixed(2)}", _warningOrange),
+                      _buildSummaryColumn("Tubó / kg", "₱${overallProfitPerKg.toStringAsFixed(2)}", overallProfitPerKg >= 0 ? _primaryGreen : _dangerRed),
+                    ],
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8.0),
+                    child: Divider(height: 1, color: Color(0xFFCBD5E1)),
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text("Kabuuang Benta (Gross)", style: TextStyle(fontSize: 10, color: _textSecondary)),
+                          Text(_formatCurrency(totalRevenue),
+                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: _textPrimary)),
+                        ],
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          const Text("MALINIS NA TUBÓ (Net)", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _primaryGreen)),
+                          Text(
+                            _formatCurrency(totalProfit),
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                              color: totalProfit >= 0 ? _primaryGreen : _dangerRed,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildPriceColumn(String label, String price, Color priceColor) {
+  Widget _buildTableRow(String label, String val1, String val2, {bool isHighlight = false, Color val1Color = _textPrimary, Color val2Color = _textPrimary}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 2, 
+            child: Text(
+              label, 
+              style: TextStyle(fontSize: 11, fontWeight: isHighlight ? FontWeight.bold : FontWeight.w500, color: _textPrimary)
+            )
+          ),
+          Expanded(
+            flex: 2, 
+            child: Text(
+              val1, 
+              textAlign: TextAlign.center, 
+              style: TextStyle(fontSize: 11, fontWeight: isHighlight ? FontWeight.bold : FontWeight.w600, color: val1Color)
+            )
+          ),
+          Expanded(
+            flex: 2, 
+            child: Text(
+              val2, 
+              textAlign: TextAlign.center, 
+              style: TextStyle(fontSize: 11, fontWeight: isHighlight ? FontWeight.bold : FontWeight.w600, color: val2Color)
+            )
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummaryColumn(String label, String value, Color color) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontSize: 9, color: _textSecondary)),
+        Text(label, style: const TextStyle(fontSize: 10, color: _textSecondary)),
         const SizedBox(height: 2),
-        Text(price, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: priceColor)),
+        Text(value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color)),
       ],
     );
   }
 
-  void _confirmDeleteProduct(BuildContext context, ProductModel product) {
+  void _confirmDeleteProduct(BuildContext context, String docId, String name) {
     showDialog(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text("I-delete ang Item?", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          content: Text("Sigurado ka bang gusto mong alisin ang ${product.name} sa inbentaryo?",
+          title: const Text("I-delete ang Record?", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          content: Text("Sigurado ka bang gusto mong alisin ang $name?",
               style: const TextStyle(fontSize: 12, color: _textSecondary)),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(dialogContext),
               child: const Text("I-cancel", style: TextStyle(color: _textSecondary)),
             ),
             ElevatedButton(
@@ -521,10 +512,9 @@ class _InventoryPageState extends State<InventoryPage> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
               onPressed: () async {
-                if (product.id != null) {
-                  await FirebaseFirestore.instance.collection("products").doc(product.id).update({'isDeleted': true});
-                }
-                if (context.mounted) Navigator.pop(context);
+                final nav = Navigator.of(dialogContext);
+                await FirebaseFirestore.instance.collection("products").doc(docId).update({'isDeleted': true});
+                nav.pop();
               },
               child: const Text("I-delete", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             ),
@@ -534,159 +524,50 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
-  void _showStockAdjustModal(ProductModel p) {
-    final controller = TextEditingController(text: p.stock.toString());
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            int currentVal = int.tryParse(controller.text) ?? 0;
-
-            void updateValue(int newVal) {
-              if (newVal >= 0) {
-                setModalState(() {
-                  controller.text = newVal.toString();
-                });
-              }
-            }
-
-            return Padding(
-              padding: EdgeInsets.only(
-                top: 20,
-                left: 20,
-                right: 20,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text("I-adjust ang Stock (Sako) - ${p.name}",
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: _textPrimary)),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      IconButton.filledTonal(
-                        style: IconButton.styleFrom(backgroundColor: _surfaceBg),
-                        onPressed: () => updateValue(currentVal - 1),
-                        icon: const Icon(Icons.remove, color: _textPrimary),
-                      ),
-                      const SizedBox(width: 12),
-                      SizedBox(
-                        width: 120,
-                        child: TextField(
-                          controller: controller,
-                          keyboardType: TextInputType.number,
-                          textAlign: TextAlign.center,
-                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                          decoration: InputDecoration(
-                            suffixText: "Sako",
-                            contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-                            enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: const BorderSide(color: _borderLine)),
-                            focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: const BorderSide(color: _primaryGreen, width: 2)),
-                          ),
-                          onChanged: (_) => setModalState(() {}),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      IconButton.filledTonal(
-                        style: IconButton.styleFrom(backgroundColor: _primaryGreenSoft),
-                        onPressed: () => updateValue(currentVal + 1),
-                        icon: const Icon(Icons.add, color: _primaryGreen),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 44,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _primaryGreen,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                      onPressed: () async {
-                        final updatedStock = int.tryParse(controller.text) ?? p.stock;
-                        if (p.id != null) {
-                          await FirebaseFirestore.instance.collection("products").doc(p.id).update({'stock': updatedStock});
-                        }
-                        if (context.mounted) Navigator.pop(context);
-                      },
-                      child: const Text("I-save ang Bagong Stock", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                    ),
-                  )
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  // ================= DYNAMIC AUTOMATIC CONVERSION MODAL =================
-
-  void _showAddProductModal(BuildContext context) {
+  void _showAddHarvestModal(BuildContext context) {
     final formKey = GlobalKey<FormState>();
-    String selectedName = _palayTypes.first;
-    
-    bool isInputPerKilo = false;
 
-    final stockController = TextEditingController();
-    final costController = TextEditingController();
-    final sellingController = TextEditingController();
-    final unitKgController = TextEditingController(text: "50");
+    String selectedType = _riceTypes.first;
+    String selectedCondition = _riceConditions.first;
+
+    final srpController = TextEditingController();
+    final h1CostController = TextEditingController();
+    final h1KgController = TextEditingController();
+    final h2CostController = TextEditingController();
+    final h2KgController = TextEditingController();
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (modalContext) {
         return StatefulBuilder(
           builder: (context, setModalState) {
-            final double unitKg = double.tryParse(unitKgController.text) ?? 50.0;
-            final double rawCost = double.tryParse(costController.text) ?? 0.0;
-            final double rawSelling = double.tryParse(sellingController.text) ?? 0.0;
+            final double srp = double.tryParse(srpController.text) ?? 0.0;
+            final double h1Cost = double.tryParse(h1CostController.text) ?? 0.0;
+            final double h1Kg = double.tryParse(h1KgController.text) ?? 0.0;
+            final double h2Cost = double.tryParse(h2CostController.text) ?? 0.0;
+            final double h2Kg = double.tryParse(h2KgController.text) ?? 0.0;
 
-            double calculatedCostSako = 0.0;
-            double calculatedCostKilo = 0.0;
-            double calculatedSellingSako = 0.0;
-            double calculatedSellingKilo = 0.0;
+            final double h1CostPerKg = h1Kg > 0 ? h1Cost / h1Kg : 0.0;
+            final double h1ProfitPerKg = srp - h1CostPerKg;
 
-            if (isInputPerKilo) {
-              calculatedCostKilo = rawCost;
-              calculatedCostSako = rawCost * unitKg;
+            final double h2CostPerKg = h2Kg > 0 ? h2Cost / h2Kg : 0.0;
+            final double h2ProfitPerKg = srp - h2CostPerKg;
 
-              calculatedSellingKilo = rawSelling;
-              calculatedSellingSako = rawSelling * unitKg;
-            } else {
-              calculatedCostSako = rawCost;
-              calculatedCostKilo = unitKg > 0 ? rawCost / unitKg : 0.0;
-
-              calculatedSellingSako = rawSelling;
-              calculatedSellingKilo = unitKg > 0 ? rawSelling / unitKg : 0.0;
-            }
-
-            final double calculatedProfitSako = calculatedSellingSako - calculatedCostSako;
-            final double calculatedProfitKilo = calculatedSellingKilo - calculatedCostKilo;
+            final double totalKg = h1Kg + h2Kg;
+            final double totalCost = h1Cost + h2Cost;
+            final double overallCostPerKg = totalKg > 0 ? totalCost / totalKg : 0.0;
+            final double totalRevenue = totalKg * srp;
+            final double totalProfit = totalRevenue - totalCost;
 
             return Padding(
               padding: EdgeInsets.only(
                 top: 20,
                 left: 20,
                 right: 20,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+                bottom: MediaQuery.of(modalContext).viewInsets.bottom + 20,
               ),
               child: Form(
                 key: formKey,
@@ -698,164 +579,206 @@ class _InventoryPageState extends State<InventoryPage> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text("Magdagdag ng Stocks",
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _textPrimary)),
-                          
-                          Container(
-                            padding: const EdgeInsets.all(3),
-                            decoration: BoxDecoration(
-                              color: _surfaceBg,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: _borderLine),
+                          const Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text("Mag-input ng Ani & Puhunan",
+                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _textPrimary)),
+                              Text("Ilagay ang detalye ng Hectare 1 & 2",
+                                  style: TextStyle(fontSize: 11, color: _textSecondary)),
+                            ],
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.pop(modalContext),
+                            icon: const Icon(Icons.close_rounded, color: _textSecondary),
+                          )
+                        ],
+                      ),
+                      const Divider(height: 20),
+
+                      Row(
+                        children: [
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              value: selectedType,
+                              decoration: InputDecoration(
+                                labelText: "Uri ng Binhi",
+                                filled: true,
+                                fillColor: _surfaceBg,
+                                enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderLine)),
+                                focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _primaryGreen)),
+                              ),
+                              items: _riceTypes.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                              onChanged: (val) => setModalState(() => selectedType = val!),
                             ),
-                            child: Row(
-                              children: [
-                                _buildModeChip("PER SAKO", !isInputPerKilo, () {
-                                  setModalState(() => isInputPerKilo = false);
-                                }),
-                                _buildModeChip("PER KILO", isInputPerKilo, () {
-                                  setModalState(() => isInputPerKilo = true);
-                                }),
-                              ],
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              value: selectedCondition,
+                              decoration: InputDecoration(
+                                labelText: "Klase/Kondisyon",
+                                filled: true,
+                                fillColor: _surfaceBg,
+                                enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderLine)),
+                                focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _primaryGreen)),
+                              ),
+                              items: _riceConditions.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                              onChanged: (val) => setModalState(() => selectedCondition = val!),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      TextFormField(
+                        controller: srpController,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        validator: (v) => (v == null || v.isEmpty) ? "Kailangan ang SRP" : null,
+                        onChanged: (_) => setModalState(() {}),
+                        style: const TextStyle(fontWeight: FontWeight.bold, color: _primaryGreen),
+                        decoration: InputDecoration(
+                          labelText: "SRP / Benta kada Kilo (₱)",
+                          hintText: "Hal. 25.00",
+                          filled: true,
+                          fillColor: _primaryGreenSoft.withOpacity(0.3),
+                          prefixIcon: const Icon(Icons.sell_outlined, color: _primaryGreen, size: 20),
+                          enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _primaryGreen)),
+                          focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _primaryGreen, width: 2)),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      _buildSectionHeader("HECTARE 1"),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildInputField(
+                              controller: h1CostController,
+                              label: "Puhunan (₱)",
+                              icon: Icons.payments_outlined,
+                              onChanged: (_) => setModalState(() {}),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _buildInputField(
+                              controller: h1KgController,
+                              label: "Nakuha (kg)",
+                              icon: Icons.scale_outlined,
+                              onChanged: (_) => setModalState(() {}),
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 16),
 
-                      DropdownButtonFormField<String>(
-                        value: selectedName,
-                        decoration: InputDecoration(
-                          labelText: "Uri ng Palay",
-                          filled: true,
-                          fillColor: _surfaceBg,
-                          enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderLine)),
-                          focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _primaryGreen)),
-                        ),
-                        items: _palayTypes.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                        onChanged: (val) => selectedName = val!,
-                      ),
-                      const SizedBox(height: 12),
-
+                      _buildSectionHeader("HECTARE 2"),
+                      const SizedBox(height: 8),
                       Row(
                         children: [
                           Expanded(
-                            child: TextFormField(
-                              controller: stockController,
-                              keyboardType: TextInputType.number,
-                              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                              validator: (v) => (v == null || v.isEmpty) ? "Kailangan" : null,
-                              decoration: InputDecoration(
-                                labelText: "Dami ng Sako",
-                                filled: true,
-                                fillColor: _surfaceBg,
-                                enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderLine)),
-                                focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _primaryGreen)),
-                              ),
+                            child: _buildInputField(
+                              controller: h2CostController,
+                              label: "Puhunan (₱)",
+                              icon: Icons.payments_outlined,
+                              onChanged: (_) => setModalState(() {}),
                             ),
                           ),
                           const SizedBox(width: 10),
                           Expanded(
-                            child: TextFormField(
-                              controller: unitKgController,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              validator: (v) => (v == null || v.isEmpty) ? "Kailangan" : null,
+                            child: _buildInputField(
+                              controller: h2KgController,
+                              label: "Nakuha (kg)",
+                              icon: Icons.scale_outlined,
                               onChanged: (_) => setModalState(() {}),
-                              decoration: InputDecoration(
-                                labelText: "Kg / Sako (e.g. 50)",
-                                filled: true,
-                                fillColor: _surfaceBg,
-                                enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderLine)),
-                                focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _primaryGreen)),
-                              ),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
-
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextFormField(
-                              controller: costController,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              validator: (v) => (v == null || v.isEmpty) ? "Kailangan" : null,
-                              onChanged: (_) => setModalState(() {}),
-                              decoration: InputDecoration(
-                                labelText: isInputPerKilo ? "Puhunan / Kilo (₱)" : "Puhunan / Sako (₱)",
-                                filled: true,
-                                fillColor: _surfaceBg,
-                                enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderLine)),
-                                focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _primaryGreen)),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: TextFormField(
-                              controller: sellingController,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              validator: (v) => (v == null || v.isEmpty) ? "Kailangan" : null,
-                              onChanged: (_) => setModalState(() {}),
-                              decoration: InputDecoration(
-                                labelText: isInputPerKilo ? "Benta / Kilo (₱)" : "Benta / Sako (₱)",
-                                filled: true,
-                                fillColor: _surfaceBg,
-                                enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderLine)),
-                                focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _primaryGreen)),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 16),
 
                       Container(
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
                           color: _surfaceBg,
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(14),
                           border: Border.all(color: _borderLine),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              "Awtomatikong Kwenta (${isInputPerKilo ? 'Converted to Sako' : 'Converted to Kilo'}):",
-                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _textSecondary),
-                            ),
-                            const SizedBox(height: 6),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            const Row(
                               children: [
+                                Icon(Icons.calculate_outlined, size: 16, color: _primaryGreen),
+                                SizedBox(width: 6),
                                 Text(
-                                  "Puhunan: ₱${calculatedCostSako.toStringAsFixed(2)} /sako  (₱${calculatedCostKilo.toStringAsFixed(2)}/kg)",
-                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _textPrimary),
+                                  "Awtomatikong Kwenta ng System",
+                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _textPrimary),
                                 ),
                               ],
                             ),
-                            Text(
-                              "Benta: ₱${calculatedSellingSako.toStringAsFixed(2)} /sako  (₱${calculatedSellingKilo.toStringAsFixed(2)}/kg)",
-                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _primaryGreen),
+                            const SizedBox(height: 12),
+
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _buildMiniCalcCard(
+                                    title: "Hectare 1",
+                                    costPerKg: h1CostPerKg,
+                                    profitPerKg: h1ProfitPerKg,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: _buildMiniCalcCard(
+                                    title: "Hectare 2",
+                                    costPerKg: h2CostPerKg,
+                                    profitPerKg: h2ProfitPerKg,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const Divider(height: 12),
-                            Text(
-                              "Kikitain (Tubó): +₱${calculatedProfitSako.toStringAsFixed(2)} /sako  (+₱${calculatedProfitKilo.toStringAsFixed(2)}/kg)",
-                              style: TextStyle(
-                                fontSize: 11, 
-                                fontWeight: FontWeight.bold, 
-                                color: calculatedProfitSako >= 0 ? _primaryGreen : _dangerRed
+                            const SizedBox(height: 12),
+
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: totalProfit >= 0 ? _primaryGreenSoft : _dangerRedBg,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Column(
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text("Kabuuang Ani: ${totalKg.toStringAsFixed(0)} kg", style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _textPrimary)),
+                                      Text("Puhunan/kg: ₱${overallCostPerKg.toStringAsFixed(2)}", style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _textPrimary)),
+                                    ],
+                                  ),
+                                  const Divider(height: 10, color: Colors.black12),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Text("Inaasahang Malinis na Tubó:", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _textPrimary)),
+                                      Text(
+                                        "₱${totalProfit.toStringAsFixed(2)}",
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w900,
+                                          color: totalProfit >= 0 ? _primaryGreen : _dangerRed,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ),
                             ),
                           ],
@@ -865,62 +788,38 @@ class _InventoryPageState extends State<InventoryPage> {
 
                       SizedBox(
                         width: double.infinity,
-                        height: 44,
+                        height: 48,
                         child: ElevatedButton(
                           style: ElevatedButton.styleFrom(
                             backgroundColor: _primaryGreen,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
                           onPressed: () async {
                             if (formKey.currentState!.validate()) {
-                              final inputStock = int.parse(stockController.text);
+                              final nav = Navigator.of(modalContext);
+                              final String productName = "$selectedType Palay ($selectedCondition)";
 
-                              final finalSakoPrice = calculatedCostSako;
-                              final finalKiloSellingPrice = calculatedSellingKilo;
+                              final newHarvestData = {
+                                'name': productName,
+                                'type': selectedType,
+                                'condition': selectedCondition,
+                                'srpPerKg': srp,
+                                'h1Cost': h1Cost,
+                                'h1Kg': h1Kg,
+                                'h2Cost': h2Cost,
+                                'h2Kg': h2Kg,
+                                'totalKg': totalKg,
+                                'totalCost': totalCost,
+                                'isDeleted': false,
+                                'createdAt': FieldValue.serverTimestamp(),
+                              };
 
-                              final querySnapshot = await FirebaseFirestore.instance
-                                  .collection("products")
-                                  .where("name", isEqualTo: selectedName)
-                                  .get();
-
-                              DocumentSnapshot? activeDoc;
-                              for (var doc in querySnapshot.docs) {
-                                final data = doc.data() as Map<String, dynamic>?;
-                                if (data?['isDeleted'] != true) {
-                                  activeDoc = doc;
-                                  break;
-                                }
-                              }
-
-                              if (activeDoc != null) {
-                                final currentStock = activeDoc.get('stock') ?? 0;
-                                await FirebaseFirestore.instance.collection("products").doc(activeDoc.id).update({
-                                  'stock': currentStock + inputStock,
-                                  'price': finalSakoPrice,
-                                  'sellingPrice': finalKiloSellingPrice,
-                                  'unit': "Sako",
-                                  'unitKg': unitKg,
-                                  'isDeleted': false,
-                                });
-                              } else {
-                                final newProduct = ProductModel(
-                                  name: selectedName,
-                                  category: "Regular",
-                                  unit: "Sako",
-                                  unitKg: unitKg,
-                                  price: finalSakoPrice,
-                                  sellingPrice: finalKiloSellingPrice,
-                                  stock: inputStock,
-                                  lowStockThreshold: 10,
-                                  createdAt: DateTime.now(),
-                                );
-                                await FirebaseFirestore.instance.collection("products").add(newProduct.toFirestore());
-                              }
-
-                              if (context.mounted) Navigator.pop(context);
+                              await FirebaseFirestore.instance.collection("products").add(newHarvestData);
+                              nav.pop();
                             }
                           },
-                          child: const Text("I-save sa Bodega", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          child: const Text("I-save sa Inbentaryo", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
                         ),
                       )
                     ],
@@ -934,23 +833,79 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
-  Widget _buildModeChip(String label, bool isSelected, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: isSelected ? _primaryGreen : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
+  Widget _buildSectionHeader(String title) {
+    return Row(
+      children: [
+        Container(
+          width: 4,
+          height: 14,
+          decoration: BoxDecoration(color: _primaryGreen, borderRadius: BorderRadius.circular(2)),
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.bold,
-            color: isSelected ? Colors.white : _textSecondary,
+        const SizedBox(width: 6),
+        Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _textPrimary)),
+      ],
+    );
+  }
+
+  Widget _buildInputField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    required Function(String) onChanged,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      validator: (v) => (v == null || v.isEmpty) ? "Kailangan" : null,
+      onChanged: onChanged,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, size: 18, color: _textSecondary),
+        filled: true,
+        fillColor: _surfaceBg,
+        contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderLine)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _primaryGreen)),
+      ),
+    );
+  }
+
+  Widget _buildMiniCalcCard({required String title, required double costPerKg, required double profitPerKg}) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: _borderLine),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _textSecondary)),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("Puhunan/kg:", style: TextStyle(fontSize: 10, color: _textSecondary)),
+              Text("₱${costPerKg.toStringAsFixed(2)}", style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _warningOrange)),
+            ],
           ),
-        ),
+          const SizedBox(height: 2),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("Tubó/kg:", style: TextStyle(fontSize: 10, color: _textSecondary)),
+              Text(
+                "₱${profitPerKg.toStringAsFixed(2)}",
+                style: TextStyle(
+                  fontSize: 10, 
+                  fontWeight: FontWeight.bold, 
+                  color: profitPerKg >= 0 ? _primaryGreen : _dangerRed
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

@@ -19,9 +19,7 @@ class _ReportsPageState extends State<ReportsPage> {
   static const Color _amberAlert = Color(0xFFD97706);
   static const Color _dangerRed = Color(0xFFDC2626);
   static const Color _borderColor = Color(0xFFE2E8F0);
-  static const Color _infoBlue = Color(0xFF2563EB);
 
-  // Timeframe Filter State
   String _selectedTimeFrame = 'today';
 
   @override
@@ -32,7 +30,7 @@ class _ReportsPageState extends State<ReportsPage> {
         elevation: 0.5,
         backgroundColor: Colors.white,
         title: const Text(
-          "Ulat sa Benta at Kita",
+          "Ulat sa Benta, Shipping at Kita",
           style: TextStyle(color: _textDark, fontSize: 18, fontWeight: FontWeight.bold),
         ),
         actions: [
@@ -56,12 +54,7 @@ class _ReportsPageState extends State<ReportsPage> {
             final orderDocs = ordersSnapshot.data?.docs ?? [];
             List<OrderModel> allOrders = orderDocs.map((d) => OrderModel.fromFirestore(d)).toList();
 
-            // KUMPUNI 1: Completed orders lang ang kukuhaan ng kita at puhunan
-            List<OrderModel> validOrders = allOrders.where((o) {
-              return o.status == OrderStatus.completed;
-            }).toList();
-
-            // Filter ayon sa napiling timeframe
+            List<OrderModel> validOrders = allOrders.where((o) => o.status == OrderStatus.completed).toList();
             List<OrderModel> filteredOrders = _filterOrdersByTimeFrame(validOrders, _selectedTimeFrame);
 
             return StreamBuilder<QuerySnapshot>(
@@ -74,8 +67,7 @@ class _ReportsPageState extends State<ReportsPage> {
                 final productDocs = productsSnapshot.data?.docs ?? [];
                 List<ProductModel> products = productDocs.map((d) => ProductModel.fromFirestore(d)).toList();
 
-                // Compute real-time analytics
-                final analytics = _computeAnalytics(filteredOrders, products);
+                final analytics = _computeAnalytics(filteredOrders, products, orderDocs);
 
                 return SingleChildScrollView(
                   physics: const BouncingScrollPhysics(),
@@ -84,8 +76,6 @@ class _ReportsPageState extends State<ReportsPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _buildOverallSummaryCard(analytics),
-                      const SizedBox(height: 16),
-                      _buildBreakdownSection(analytics),
                       const SizedBox(height: 16),
                       _buildQuickMetrics(analytics, filteredOrders.length),
                       const SizedBox(height: 16),
@@ -105,98 +95,76 @@ class _ReportsPageState extends State<ReportsPage> {
     );
   }
 
-  Map<String, dynamic> _computeAnalytics(List<OrderModel> orders, List<ProductModel> products) {
+  Map<String, dynamic> _computeAnalytics(List<OrderModel> orders, List<ProductModel> products, List<QueryDocumentSnapshot> rawOrderDocs) {
     double overallRevenue = 0.0;
     double overallCost = 0.0;
-
-    double kiloRevenue = 0.0;
-    double kiloCost = 0.0;
-    double totalKilosSold = 0.0;
-
-    double sakoRevenue = 0.0;
-    double sakoCost = 0.0;
-    int totalSakoSold = 0;
-
+    double totalShippingCollected = 0.0;
+    double totalDiscountsGiven = 0.0;
+    double totalKgSold = 0.0;
     int lowStockCount = 0;
-    final Map<String, _ProductStat> productStats = {};
 
-    // Map existing products for fast reference
+    final Map<String, _ProductStat> productStats = {};
     final Map<String, ProductModel> productMap = {};
+
+    // 1. Inventory Data
     for (var p in products) {
+      if (p.isDeleted) continue;
+
       if (p.id != null) productMap[p.id!] = p;
       productMap[p.name.trim().toLowerCase()] = p;
 
-      if (p.stock <= p.lowStockThreshold) {
+      double totalKgInStock = p.totalKg;
+      if (totalKgInStock <= p.lowStockThreshold) {
         lowStockCount++;
       }
 
       productStats[p.id ?? p.name] = _ProductStat(
         name: p.name,
-        metricDetail: p.metricDetail,
+        metricDetail: "${totalKgInStock.toStringAsFixed(0)} kg",
         salesCount: 0,
-        currentStock: p.stock,
+        currentStockKg: totalKgInStock,
         lowStockThreshold: p.lowStockThreshold,
         totalRevenue: 0.0,
       );
     }
 
+    // 2. Compute Raw Firestore Doc Financial Breakdown
+    for (var doc in rawOrderDocs) {
+      final data = doc.data() as Map<String, dynamic>? ?? {};
+      final String status = data['orderStatus'] ?? '';
+
+      // Tanging completed orders lang ang isasama sa totoong kita
+      if (status.toLowerCase() == 'completed') {
+        totalShippingCollected += (data['shippingFee'] ?? 0.0).toDouble();
+        totalDiscountsGiven += (data['discountAmount'] ?? 0.0).toDouble();
+      }
+    }
+
+    // 3. Compute Palay Sales & Cost
     for (var order in orders) {
       for (var item in order.items) {
-        // Presyo ng naibenta mula sa order item
         double itemSellingPrice = item.pricePerUnit;
         final int qty = item.quantity;
         final double lineRevenue = itemSellingPrice * qty;
 
-        // Kunin ang Product Reference batay sa Product ID o Pangalan
         String productId = item.productId;
-        String rawProductName = item.productName.trim();
+        String rawProductName = item.productName.trim().toLowerCase();
 
-        // Linisin ang pangalan sakaling may variation tag tulad ng "Rice Name (Sako)"
-        String cleanProductName = rawProductName
-            .replaceAll(RegExp(r'\s*\((Sako|Kilo|sako|kilo)\)'), '')
-            .trim()
-            .toLowerCase();
+        ProductModel? refProduct = productMap[productId] ?? productMap[rawProductName];
 
-        ProductModel? refProduct = productMap[productId] ?? productMap[cleanProductName] ?? productMap[rawProductName.toLowerCase()];
+        double totalProductCost = refProduct?.totalCost ?? 0.0;
+        double totalProductKg = refProduct?.totalKg ?? 0.0;
+        double costPerKg = totalProductKg > 0 ? (totalProductCost / totalProductKg) : 0.0;
 
-        // Weight/KG per Sako setup
-        double unitKg = (refProduct != null && refProduct.unitKg > 0) ? refProduct.unitKg : 50.0;
-
-        // DYNAMIC PUHUNAN (COST PRICE):
-        // Puhunan bawat sako batay sa dynamic data ng product model
-        double costPerSako = refProduct?.price ?? 0.0;
-
-        // KUMPUNI 2: Tiyaking tumpak ang Unit Checking (Per Sako vs Per Kilo)
-        String itemUnit = item.unit.toLowerCase();
-        String lowerItemName = rawProductName.toLowerCase();
-
-        bool isSakoOrder = itemUnit.contains("sako") ||
-            lowerItemName.endsWith("(sako)") ||
-            lowerItemName.contains("per sako");
-
-        double lineCost = 0.0;
-
-        if (isSakoOrder) {
-          // Benta at Puhunan para sa SAKO
-          lineCost = costPerSako * qty;
-          sakoRevenue += lineRevenue;
-          sakoCost += lineCost;
-          totalSakoSold += qty;
-        } else {
-          // Benta at Puhunan para sa KILO
-          double costPerKilo = unitKg > 0 ? (costPerSako / unitKg) : 0.0;
-          lineCost = costPerKilo * qty;
-          kiloRevenue += lineRevenue;
-          kiloCost += lineCost;
-          totalKilosSold += qty;
-        }
+        double lineCost = costPerKg * qty;
 
         overallRevenue += lineRevenue;
         overallCost += lineCost;
+        totalKgSold += qty;
 
         String statKey = productId.isNotEmpty && productStats.containsKey(productId)
             ? productId
-            : cleanProductName;
+            : rawProductName;
 
         if (productStats.containsKey(statKey)) {
           productStats[statKey]!.salesCount += qty;
@@ -205,34 +173,23 @@ class _ReportsPageState extends State<ReportsPage> {
       }
     }
 
-    final overallProfit = overallRevenue - overallCost;
-    final kiloProfit = kiloRevenue - kiloCost;
-    final sakoProfit = sakoRevenue - sakoCost;
-
+    // Profit = (Benta sa Palay - Puhunan) + Shipping Fees Collected - Discounts
+    final overallProfit = (overallRevenue - overallCost) + totalShippingCollected - totalDiscountsGiven;
     final topProducts = productStats.values.toList()
       ..sort((a, b) => b.totalRevenue.compareTo(a.totalRevenue));
 
     return {
       'overallRevenue': overallRevenue,
       'overallCost': overallCost,
+      'totalShippingCollected': totalShippingCollected,
+      'totalDiscountsGiven': totalDiscountsGiven,
       'overallProfit': overallProfit,
-
-      'kiloRevenue': kiloRevenue,
-      'kiloCost': kiloCost,
-      'kiloProfit': kiloProfit,
-      'totalKilosSold': totalKilosSold,
-
-      'sakoRevenue': sakoRevenue,
-      'sakoCost': sakoCost,
-      'sakoProfit': sakoProfit,
-      'totalSakoSold': totalSakoSold,
-
+      'totalKgSold': totalKgSold,
       'lowStockCount': lowStockCount,
       'topProducts': topProducts,
     };
   }
 
-  // DYNAMIC TIMEFRAME FILTERING LOGIC
   List<OrderModel> _filterOrdersByTimeFrame(List<OrderModel> orders, String timeFrame) {
     final now = DateTime.now();
     final todayStart = DateTime(now.year, now.month, now.day);
@@ -252,14 +209,14 @@ class _ReportsPageState extends State<ReportsPage> {
       final monthStart = DateTime(now.year, now.month, 1);
       return orders.where((o) => o.orderDate.isAfter(monthStart)).toList();
     }
-    return orders; // 'all' time
+    return orders;
   }
-
-  // UI COMPONENTS
 
   Widget _buildOverallSummaryCard(Map<String, dynamic> analytics) {
     final double revenue = analytics['overallRevenue'];
     final double cost = analytics['overallCost'];
+    final double shipping = analytics['totalShippingCollected'];
+    final double discounts = analytics['totalDiscountsGiven'];
     final double profit = analytics['overallProfit'];
     final bool isLoss = profit < 0;
 
@@ -285,7 +242,7 @@ class _ReportsPageState extends State<ReportsPage> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                "KABUUANG TALAAN NG NEGOSYO",
+                "KABUUANG TALAAN NG NEGOSYO (PALAY)",
                 style: TextStyle(color: _textMuted, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.5),
               ),
               Container(
@@ -322,24 +279,51 @@ class _ReportsPageState extends State<ReportsPage> {
           ),
           const Divider(height: 24, color: _borderColor),
 
-          Row(
+          // Detailed Financial Breakdown Grid
+          Column(
             children: [
-              Expanded(
-                child: _buildSummarySubTile(
-                  label: "Kabuuang Benta",
-                  value: _formatCurrency(revenue),
-                  color: _textDark,
-                  icon: Icons.payments_outlined,
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildSummarySubTile(
+                      label: "Benta sa Palay",
+                      value: _formatCurrency(revenue),
+                      color: _textDark,
+                      icon: Icons.payments_outlined,
+                    ),
+                  ),
+                  Container(height: 30, width: 1, color: _borderColor),
+                  Expanded(
+                    child: _buildSummarySubTile(
+                      label: "Koleksyon sa Delivery",
+                      value: _formatCurrency(shipping),
+                      color: Colors.blue.shade700,
+                      icon: Icons.local_shipping_outlined,
+                    ),
+                  ),
+                ],
               ),
-              Container(height: 30, width: 1, color: _borderColor),
-              Expanded(
-                child: _buildSummarySubTile(
-                  label: "Kabuuang Puhunan",
-                  value: _formatCurrency(cost),
-                  color: _textMuted,
-                  icon: Icons.shopping_bag_outlined,
-                ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildSummarySubTile(
+                      label: "Puhunan sa Palay",
+                      value: _formatCurrency(cost),
+                      color: _textMuted,
+                      icon: Icons.shopping_bag_outlined,
+                    ),
+                  ),
+                  Container(height: 30, width: 1, color: _borderColor),
+                  Expanded(
+                    child: _buildSummarySubTile(
+                      label: "Naibigay na Diskwento",
+                      value: "-${_formatCurrency(discounts)}",
+                      color: _dangerRed,
+                      icon: Icons.discount_outlined,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -371,99 +355,9 @@ class _ReportsPageState extends State<ReportsPage> {
     );
   }
 
-  Widget _buildBreakdownSection(Map<String, dynamic> analytics) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          "Hiwalay na Benta at Tubo (Per Unit)",
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: _textDark),
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: _buildUnitReportCard(
-                title: "PER KILO BENTA",
-                badgeLabel: "${analytics['totalKilosSold'].toStringAsFixed(0)} Kg Naibenta",
-                revenue: analytics['kiloRevenue'],
-                cost: analytics['kiloCost'],
-                profit: analytics['kiloProfit'],
-                accentColor: _infoBlue,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _buildUnitReportCard(
-                title: "PER SAKO BENTA",
-                badgeLabel: "${analytics['totalSakoSold']} Sako Naibenta",
-                revenue: analytics['sakoRevenue'],
-                cost: analytics['sakoCost'],
-                profit: analytics['sakoProfit'],
-                accentColor: _primaryGreen,
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildUnitReportCard({
-    required String title,
-    required String badgeLabel,
-    required double revenue,
-    required double cost,
-    required double profit,
-    required Color accentColor,
-  }) {
-    final bool isLoss = profit < 0;
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: _cardBg,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _borderColor),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(title, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: accentColor)),
-              Icon(Icons.inventory_2_outlined, size: 14, color: accentColor),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(badgeLabel, style: const TextStyle(fontSize: 10, color: _textMuted, fontWeight: FontWeight.w500)),
-          const Divider(height: 16, color: _borderColor),
-
-          const Text("Benta:", style: TextStyle(fontSize: 9, color: _textMuted)),
-          Text(_formatCurrency(revenue), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _textDark)),
-          const SizedBox(height: 6),
-
-          const Text("Puhunan:", style: TextStyle(fontSize: 9, color: _textMuted)),
-          Text(_formatCurrency(cost), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _textMuted)),
-          const SizedBox(height: 6),
-
-          Text(isLoss ? "Lugi:" : "Tubó:", style: TextStyle(fontSize: 9, color: isLoss ? _dangerRed : _primaryGreen, fontWeight: FontWeight.bold)),
-          Text(
-            "${profit >= 0 ? '+' : ''}${_formatCurrency(profit)}",
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-              color: isLoss ? _dangerRed : _primaryGreen,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildQuickMetrics(Map<String, dynamic> analytics, int orderCount) {
     final int lowStock = analytics['lowStockCount'];
+    final double totalKg = analytics['totalKgSold'];
 
     return Row(
       children: [
@@ -478,10 +372,10 @@ class _ReportsPageState extends State<ReportsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.shopping_bag_outlined, color: _primaryGreen, size: 20),
+                const Icon(Icons.scale_outlined, color: _primaryGreen, size: 20),
                 const SizedBox(height: 8),
-                Text("$orderCount", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: _textDark)),
-                const Text("Bilang ng Order", style: TextStyle(fontSize: 11, color: _textMuted)),
+                Text("${totalKg.toStringAsFixed(0)} kg", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: _textDark)),
+                const Text("Kabuuang Palay Sold", style: TextStyle(fontSize: 11, color: _textMuted)),
               ],
             ),
           ),
@@ -593,7 +487,7 @@ class _ReportsPageState extends State<ReportsPage> {
               ? const Text("Walang produkto sa listahan.", style: TextStyle(fontSize: 11, color: _textMuted))
               : Column(
             children: topProducts.take(5).map((p) {
-              bool isLow = p.currentStock <= p.lowStockThreshold;
+              bool isLow = p.currentStockKg <= p.lowStockThreshold;
 
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -610,7 +504,7 @@ class _ReportsPageState extends State<ReportsPage> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            "Naibenta: ${p.salesCount} • Benta: ${_formatCurrency(p.totalRevenue)}",
+                            "Naibenta: ${p.salesCount} kg • Benta: ${_formatCurrency(p.totalRevenue)}",
                             style: const TextStyle(fontSize: 10, color: _textMuted),
                           ),
                         ],
@@ -623,7 +517,7 @@ class _ReportsPageState extends State<ReportsPage> {
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
-                        isLow ? "Low: ${p.currentStock}" : "Stock: ${p.currentStock}",
+                        isLow ? "Low: ${p.currentStockKg.toStringAsFixed(0)} kg" : "Stock: ${p.currentStockKg.toStringAsFixed(0)} kg",
                         style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
@@ -652,7 +546,7 @@ class _ReportsPageState extends State<ReportsPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("Mga Transaksyon", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: _textDark)),
+          const Text("Mga Transaksyon sa Palay", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: _textDark)),
           const SizedBox(height: 10),
           orders.isEmpty
               ? const Text("Walang transaksyon sa napiling petsa.", style: TextStyle(fontSize: 11, color: _textMuted))
@@ -718,7 +612,7 @@ class _ProductStat {
   final String name;
   final String metricDetail;
   int salesCount;
-  int currentStock;
+  double currentStockKg;
   int lowStockThreshold;
   double totalRevenue;
 
@@ -726,7 +620,7 @@ class _ProductStat {
     required this.name,
     required this.metricDetail,
     required this.salesCount,
-    required this.currentStock,
+    required this.currentStockKg,
     required this.lowStockThreshold,
     required this.totalRevenue,
   });
