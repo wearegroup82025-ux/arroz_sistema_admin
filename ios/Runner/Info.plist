@@ -77,5 +77,10 @@
     <string>Kinakailangan ng app ang iyong lokasyon upang awtomatikong makuha ang iyong delivery address.</string>
     <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
     <string>Kinakailangan ng app ang iyong lokasyon upang mas madaling mahanap ang tamang address para sa delivery.</string>
+
+    <key>NSCameraUsageDescription</key>
+<string>Kailangan ng access sa camera para makakakuha ng larawan ng ani o resibo.</string>
+<key>NSPhotoLibraryUsageDescription</key>
+<string>Kailangan ng access sa gallery para makapili ng larawan.</string>
 </dict>
 </plist>

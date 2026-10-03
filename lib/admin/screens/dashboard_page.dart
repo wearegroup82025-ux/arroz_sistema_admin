@@ -15,7 +15,7 @@ import '../../services/weather/weather_repository_impl.dart';
 
 // Pages
 import 'inventory_page.dart';
-import 'order_page.dart';
+import 'admin_order_page.dart';
 import 'reports_page.dart';
 import 'weather_page.dart';
 import 'guidance_page.dart';
