@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -30,15 +31,41 @@ const Color _primaryGreenSoft = Color(0xFFD1FAE5);
 
 Widget _buildMultiPhotoPicker({
   required BuildContext context,
-  required List<File> images,
+  required List<XFile> images,
   required StateSetter setModalState,
   required ImagePicker picker,
-  String title = "Mga Larawan ng Produkto",
+  String title = "Mga Larawan ng Produkto (Opsyonal)",
   String subtitle = "Puwedeng pumili ng hanggang 9 na larawan",
 }) {
+  final media = MediaQuery.of(context);
+  final screenWidth = media.size.width;
+  final scale = screenWidth / 375;
+
   Future<void> openImageSourcePicker() async {
     if (images.length >= 9) return;
 
+    // Kung tumatakbo sa Web o PC/Desktop, rekta na sa Gallery / File Explorer
+    if (kIsWeb ||
+        defaultTargetPlatform == TargetPlatform.windows ||
+        defaultTargetPlatform == TargetPlatform.linux ||
+        defaultTargetPlatform == TargetPlatform.macOS) {
+      final remaining = 9 - images.length;
+      if (remaining <= 0) return;
+
+      final picked = await picker.pickMultiImage(
+        imageQuality: 85,
+        maxWidth: 1600,
+      );
+
+      if (picked.isEmpty) return;
+
+      setModalState(() {
+        images.addAll(picked.take(remaining));
+      });
+      return;
+    }
+
+    // Para sa Mobile (Android/iOS)
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -46,61 +73,75 @@ Widget _buildMultiPhotoPicker({
       useSafeArea: true,
       builder: (sheetContext) {
         return Container(
-          margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-          decoration: const BoxDecoration(
+          margin: EdgeInsets.fromLTRB(
+            screenWidth * 0.026,
+            0,
+            screenWidth * 0.026,
+            screenWidth * 0.026,
+          ),
+          padding: EdgeInsets.fromLTRB(
+            screenWidth * 0.032,
+            screenWidth * 0.026,
+            screenWidth * 0.032,
+            screenWidth * 0.032,
+          ),
+          decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.all(Radius.circular(20)),
+            borderRadius: BorderRadius.all(
+              Radius.circular(screenWidth * 0.053),
+            ),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 36,
-                height: 4,
+                width: screenWidth * 0.096,
+                height: screenWidth * 0.010,
                 decoration: BoxDecoration(
                   color: _borderLine,
-                  borderRadius: BorderRadius.circular(99),
+                  borderRadius: BorderRadius.circular(screenWidth * 0.26),
                 ),
               ),
-              const SizedBox(height: 12),
-              const Align(
+              SizedBox(height: screenWidth * 0.032),
+              Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
                   "Paano magdagdag ng larawan?",
                   style: TextStyle(
-                    fontSize: 13,
+                    fontSize: 13 * scale,
                     fontWeight: FontWeight.w800,
                     color: _textPrimary,
                   ),
                 ),
               ),
-              const SizedBox(height: 3),
-              const Align(
+              SizedBox(height: screenWidth * 0.008),
+              Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  "Pumili mula sa gallery o kumuha ng bagong larawan.",
+                  "Pumili mula sa gallery/PC storage o kumuha ng bagong larawan.",
                   style: TextStyle(
-                    fontSize: 9.5,
+                    fontSize: 9.5 * scale,
                     color: _textSecondary,
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: screenWidth * 0.032),
               Row(
                 children: [
                   Expanded(
                     child: _photoSourceButton(
+                      context: context,
                       icon: Icons.photo_library_outlined,
-                      title: "Gallery",
-                      subtitle: "Pumili ng marami",
+                      title: "Files / Gallery",
+                      subtitle: "Pumili mula sa storage",
                       onTap: () => Navigator.of(sheetContext)
                           .pop(ImageSource.gallery),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  SizedBox(width: screenWidth * 0.021),
                   Expanded(
                     child: _photoSourceButton(
+                      context: context,
                       icon: Icons.photo_camera_outlined,
                       title: "Camera",
                       subtitle: "Kumuha ngayon",
@@ -110,7 +151,7 @@ Widget _buildMultiPhotoPicker({
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
+              SizedBox(height: screenWidth * 0.010),
             ],
           ),
         );
@@ -130,7 +171,7 @@ Widget _buildMultiPhotoPicker({
 
       setModalState(() {
         if (images.length < 9) {
-          images.add(File(picked.path));
+          images.add(picked);
         }
       });
       return;
@@ -147,11 +188,11 @@ Widget _buildMultiPhotoPicker({
     if (picked.isEmpty) return;
 
     setModalState(() {
-      images.addAll(
-        picked.take(remaining).map((x) => File(x.path)),
-      );
+      images.addAll(picked.take(remaining));
     });
   }
+
+  final double boxDimension = screenWidth * 0.28;
 
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
@@ -161,64 +202,64 @@ Widget _buildMultiPhotoPicker({
         children: [
           Text(
             title,
-            style: const TextStyle(
-              fontSize: 11,
+            style: TextStyle(
+              fontSize: 11 * scale,
               fontWeight: FontWeight.bold,
               color: _textPrimary,
             ),
           ),
           Text(
             "${images.length}/9",
-            style: const TextStyle(
-              fontSize: 10,
+            style: TextStyle(
+              fontSize: 10 * scale,
               color: _textSecondary,
               fontWeight: FontWeight.w600,
             ),
           ),
         ],
       ),
-      const SizedBox(height: 4),
+      SizedBox(height: screenWidth * 0.010),
       Text(
         subtitle,
-        style: const TextStyle(fontSize: 10, color: _textSecondary),
+        style: TextStyle(fontSize: 10 * scale, color: _textSecondary),
       ),
-      const SizedBox(height: 8),
+      SizedBox(height: screenWidth * 0.021),
       SizedBox(
-        height: 105,
+        height: boxDimension,
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           itemCount: images.length < 9 ? images.length + 1 : images.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 8),
+          separatorBuilder: (_, __) => SizedBox(width: screenWidth * 0.021),
           itemBuilder: (context, index) {
             if (index == images.length && images.length < 9) {
               return Material(
                 color: Colors.transparent,
                 child: InkWell(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(screenWidth * 0.026),
                   onTap: openImageSourcePicker,
                   child: Container(
-                    width: 105,
+                    width: boxDimension,
                     decoration: BoxDecoration(
                       color: _surfaceBg,
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(screenWidth * 0.026),
                       border: Border.all(
                         color: _primaryGreen,
-                        width: 1.2,
+                        width: screenWidth * 0.0032,
                       ),
                     ),
-                    child: const Column(
+                    child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(
                           Icons.add_photo_alternate_outlined,
                           color: _primaryGreen,
-                          size: 28,
+                          size: 28 * scale,
                         ),
-                        SizedBox(height: 4),
+                        SizedBox(height: screenWidth * 0.010),
                         Text(
                           "Magdagdag",
                           style: TextStyle(
-                            fontSize: 10,
+                            fontSize: 10 * scale,
                             color: _primaryGreen,
                             fontWeight: FontWeight.bold,
                           ),
@@ -230,21 +271,28 @@ Widget _buildMultiPhotoPicker({
               );
             }
 
-            final file = images[index];
+            final xfile = images[index];
             return Stack(
               children: [
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: Image.file(
-                    file,
-                    width: 105,
-                    height: 105,
-                    fit: BoxFit.cover,
-                  ),
+                  borderRadius: BorderRadius.circular(screenWidth * 0.026),
+                  child: kIsWeb
+                      ? Image.network(
+                          xfile.path,
+                          width: boxDimension,
+                          height: boxDimension,
+                          fit: BoxFit.cover,
+                        )
+                      : Image.file(
+                          File(xfile.path),
+                          width: boxDimension,
+                          height: boxDimension,
+                          fit: BoxFit.cover,
+                        ),
                 ),
                 Positioned(
-                  top: 4,
-                  right: 4,
+                  top: screenWidth * 0.010,
+                  right: screenWidth * 0.010,
                   child: Material(
                     color: Colors.black54,
                     shape: const CircleBorder(),
@@ -252,13 +300,13 @@ Widget _buildMultiPhotoPicker({
                       customBorder: const CircleBorder(),
                       onTap: () =>
                           setModalState(() => images.removeAt(index)),
-                      child: const SizedBox(
-                        width: 25,
-                        height: 25,
+                      child: SizedBox(
+                        width: screenWidth * 0.066,
+                        height: screenWidth * 0.066,
                         child: Icon(
                           Icons.close,
                           color: Colors.white,
-                          size: 16,
+                          size: 16 * scale,
                         ),
                       ),
                     ),
@@ -266,22 +314,22 @@ Widget _buildMultiPhotoPicker({
                 ),
                 if (index == 0)
                   Positioned(
-                    left: 5,
-                    bottom: 5,
+                    left: screenWidth * 0.013,
+                    bottom: screenWidth * 0.013,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 3,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: screenWidth * 0.016,
+                        vertical: screenWidth * 0.008,
                       ),
                       decoration: BoxDecoration(
                         color: _primaryGreen,
-                        borderRadius: BorderRadius.circular(5),
+                        borderRadius: BorderRadius.circular(screenWidth * 0.013),
                       ),
-                      child: const Text(
+                      child: Text(
                         "MAIN",
                         style: TextStyle(
                           color: Colors.white,
-                          fontSize: 8,
+                          fontSize: 8 * scale,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -294,22 +342,22 @@ Widget _buildMultiPhotoPicker({
       ),
       if (images.isEmpty)
         Padding(
-          padding: const EdgeInsets.only(top: 7),
+          padding: EdgeInsets.only(top: screenWidth * 0.018),
           child: Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(9),
+            padding: EdgeInsets.all(screenWidth * 0.024),
             decoration: BoxDecoration(
               color: _infoBlueBg,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(screenWidth * 0.021),
             ),
-            child: const Row(
+            child: Row(
               children: [
-                Icon(Icons.info_outline, size: 15, color: _infoBlue),
-                SizedBox(width: 7),
+                Icon(Icons.info_outline, size: 15 * scale, color: _infoBlue),
+                SizedBox(width: screenWidth * 0.018),
                 Expanded(
                   child: Text(
-                    "Tip: Mag-upload ng 3–6 malinaw na larawan para mas professional ang product page.",
-                    style: TextStyle(fontSize: 10, color: _infoBlue),
+                    "Opsyonal: Maaari kang mag-upload ng mga larawan mula sa PC o mobile kung mayroon.",
+                    style: TextStyle(fontSize: 10 * scale, color: _infoBlue),
                   ),
                 ),
               ],
@@ -321,56 +369,64 @@ Widget _buildMultiPhotoPicker({
 }
 
 Widget _photoSourceButton({
+  required BuildContext context,
   required IconData icon,
   required String title,
   required String subtitle,
   required VoidCallback onTap,
 }) {
+  final media = MediaQuery.of(context);
+  final screenWidth = media.size.width;
+  final scale = screenWidth / 375;
+
   return Material(
     color: Colors.transparent,
     child: InkWell(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(screenWidth * 0.032),
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
+        padding: EdgeInsets.symmetric(
+          horizontal: screenWidth * 0.026,
+          vertical: screenWidth * 0.029,
+        ),
         decoration: BoxDecoration(
           color: _surfaceBg,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(screenWidth * 0.032),
           border: Border.all(color: _borderLine),
         ),
         child: Row(
           children: [
             Container(
-              width: 36,
-              height: 36,
+              width: screenWidth * 0.096,
+              height: screenWidth * 0.096,
               decoration: BoxDecoration(
                 color: _primaryGreenSoft,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(screenWidth * 0.026),
               ),
               child: Icon(
                 icon,
                 color: _primaryGreen,
-                size: 19,
+                size: 19 * scale,
               ),
             ),
-            const SizedBox(width: 8),
+            SizedBox(width: screenWidth * 0.021),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
-                      fontSize: 11,
+                    style: TextStyle(
+                      fontSize: 11 * scale,
                       fontWeight: FontWeight.w800,
                       color: _textPrimary,
                     ),
                   ),
-                  const SizedBox(height: 1),
+                  SizedBox(height: screenWidth * 0.0026),
                   Text(
                     subtitle,
-                    style: const TextStyle(
-                      fontSize: 8.5,
+                    style: TextStyle(
+                      fontSize: 8.5 * scale,
                       color: _textSecondary,
                     ),
                   ),
@@ -394,7 +450,7 @@ class InventoryInputPage extends StatefulWidget {
 class _InventoryInputPageState extends State<InventoryInputPage> {
   final _controller = _InventoryInputController();
   final _formKey = GlobalKey<FormState>();
-  final List<File> selectedImages = [];
+  final List<XFile> selectedImages = [];
   final TextEditingController descriptionController = TextEditingController();
   final TextEditingController totalCostController = TextEditingController();
 
@@ -428,6 +484,10 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
 
   @override
   Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final screenWidth = media.size.width;
+    final scale = screenWidth / 375;
+
     final double totalCost =
         double.tryParse(totalCostController.text) ?? 0.0;
 
@@ -457,18 +517,18 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
-                    fontSize: 12,
+                  style: TextStyle(
+                    fontSize: 12 * scale,
                     fontWeight: FontWeight.w800,
                     color: _textPrimary,
                   ),
                 ),
                 if (subtitle != null) ...[
-                  const SizedBox(height: 2),
+                  SizedBox(height: screenWidth * 0.0053),
                   Text(
                     subtitle,
-                    style: const TextStyle(
-                      fontSize: 9.5,
+                    style: TextStyle(
+                      fontSize: 9.5 * scale,
                       color: _textSecondary,
                     ),
                   ),
@@ -489,52 +549,50 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
     }) {
       return InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(
-          fontSize: 10.5,
+        labelStyle: TextStyle(
+          fontSize: 10.5 * scale,
           color: _textSecondary,
         ),
         prefixIcon: icon == null
             ? null
             : Icon(
                 icon,
-                size: 16,
+                size: 16 * scale,
                 color: iconColor ?? _textSecondary,
               ),
         filled: true,
         fillColor: green ? _primaryGreenSoft.withOpacity(0.28) : Colors.white,
         isDense: true,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 10,
-          vertical: 10,
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: screenWidth * 0.026,
+          vertical: screenWidth * 0.026,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(9),
+          borderRadius: BorderRadius.circular(screenWidth * 0.024),
           borderSide: const BorderSide(color: _borderLine),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(9),
-          borderSide: const BorderSide(
+          borderRadius: BorderRadius.circular(screenWidth * 0.024),
+          borderSide: BorderSide(
             color: _primaryGreen,
-            width: 1.3,
+            width: screenWidth * 0.0034,
           ),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(9),
+          borderRadius: BorderRadius.circular(screenWidth * 0.024),
           borderSide: const BorderSide(color: _dangerRed),
         ),
         focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(9),
-          borderSide: const BorderSide(
+          borderRadius: BorderRadius.circular(screenWidth * 0.024),
+          borderSide: BorderSide(
             color: _dangerRed,
-            width: 1.2,
+            width: screenWidth * 0.0032,
           ),
         ),
       );
     }
 
     return Scaffold(
-      // Let Flutter shrink the viewport when the keyboard opens so the
-      // focused field can be scrolled into view instead of being covered.
       resizeToAvoidBottomInset: true,
       backgroundColor: _surfaceBg,
       appBar: AppBar(
@@ -543,23 +601,23 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
         backgroundColor: _surfaceBg,
         foregroundColor: _textPrimary,
         centerTitle: false,
-        titleSpacing: 16,
-        title: const Column(
+        titleSpacing: screenWidth * 0.042,
+        title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               "Bagong Input",
               style: TextStyle(
-                fontSize: 17,
+                fontSize: 17 * scale,
                 fontWeight: FontWeight.w800,
                 color: _textPrimary,
               ),
             ),
-            SizedBox(height: 1),
+            SizedBox(height: screenWidth * 0.0026),
             Text(
               "Ani at puhunan",
               style: TextStyle(
-                fontSize: 9.5,
+                fontSize: 9.5 * scale,
                 color: _textSecondary,
                 fontWeight: FontWeight.w500,
               ),
@@ -573,7 +631,7 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
             icon: const Icon(Icons.close_rounded),
             color: _textSecondary,
           ),
-          const SizedBox(width: 6),
+          SizedBox(width: screenWidth * 0.016),
         ],
       ),
       body: SafeArea(
@@ -584,17 +642,22 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
           child: SingleChildScrollView(
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(14, 4, 14, 18),
+            padding: EdgeInsets.fromLTRB(
+              screenWidth * 0.037,
+              screenWidth * 0.010,
+              screenWidth * 0.037,
+              screenWidth * 0.048,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // PHOTO CARD
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(12),
+                  padding: EdgeInsets.all(screenWidth * 0.032),
                   decoration: BoxDecoration(
                     color: _cardBg,
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(screenWidth * 0.037),
                     border: Border.all(color: _borderLine),
                   ),
                   child: _buildMultiPhotoPicker(
@@ -602,20 +665,20 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                     images: selectedImages,
                     setModalState: setState,
                     picker: _controller.picker,
-                    title: "Mga Larawan ng Produkto",
+                    title: "Mga Larawan ng Produkto (Opsyonal)",
                     subtitle: "Puwedeng pumili ng hanggang 9 na larawan",
                   ),
                 ),
 
-                const SizedBox(height: 10),
+                SizedBox(height: screenWidth * 0.026),
 
                 // DESCRIPTION CARD
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(12),
+                  padding: EdgeInsets.all(screenWidth * 0.032),
                   decoration: BoxDecoration(
                     color: _cardBg,
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(screenWidth * 0.037),
                     border: Border.all(color: _borderLine),
                   ),
                   child: Column(
@@ -625,12 +688,12 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                         "Deskripsyon ng Produkto",
                         subtitle: "Maikling detalye na makikita sa product page",
                       ),
-                      const SizedBox(height: 8),
+                      SizedBox(height: screenWidth * 0.021),
                       TextFormField(
                         controller: descriptionController,
                         maxLines: 4,
                         maxLength: 1000,
-                        scrollPadding: const EdgeInsets.only(bottom: 120),
+                        scrollPadding: EdgeInsets.only(bottom: screenWidth * 0.32),
                         textCapitalization: TextCapitalization.sentences,
                         decoration: compactDecoration(
                           label: "Deskripsyon",
@@ -639,8 +702,8 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                         ).copyWith(
                           hintText:
                               "Halimbawa: Premium quality palay, bagong ani, malinis at maayos ang pagkakaimbak...",
-                          hintStyle: const TextStyle(
-                            fontSize: 10.5,
+                          hintStyle: TextStyle(
+                            fontSize: 10.5 * scale,
                             color: _textSecondary,
                           ),
                           alignLabelWithHint: true,
@@ -650,15 +713,15 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                   ),
                 ),
 
-                const SizedBox(height: 10),
+                SizedBox(height: screenWidth * 0.026),
 
                 // BASIC INPUT CARD
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(12),
+                  padding: EdgeInsets.all(screenWidth * 0.032),
                   decoration: BoxDecoration(
                     color: _cardBg,
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(screenWidth * 0.037),
                     border: Border.all(color: _borderLine),
                   ),
                   child: Column(
@@ -668,17 +731,17 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                         "Pangunahing Detalye",
                         subtitle: "Hectare, uri ng binhi, at puhunan",
                       ),
-                      const SizedBox(height: 10),
+                      SizedBox(height: screenWidth * 0.026),
 
-                      const Text(
+                      Text(
                         "Hectare",
                         style: TextStyle(
-                          fontSize: 10,
+                          fontSize: 10 * scale,
                           fontWeight: FontWeight.w700,
                           color: _textSecondary,
                         ),
                       ),
-                      const SizedBox(height: 5),
+                      SizedBox(height: screenWidth * 0.013),
 
                       Row(
                         children: ["Hectare 1", "Hectare 2"].map((h) {
@@ -686,43 +749,46 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                           return Expanded(
                             child: Padding(
                               padding: EdgeInsets.only(
-                                right: h == "Hectare 1" ? 6 : 0,
+                                right: h == "Hectare 1" ? screenWidth * 0.016 : 0,
                               ),
                               child: GestureDetector(
                                 onTap: () =>
                                     setState(() => selectedHectare = h),
                                 child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 160),
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 10),
+                                  padding: EdgeInsets.symmetric(
+                                      vertical: screenWidth * 0.026),
                                   decoration: BoxDecoration(
                                     color: isSel
                                         ? _primaryGreenSoft
                                         : _surfaceBg,
-                                    borderRadius: BorderRadius.circular(9),
+                                    borderRadius:
+                                        BorderRadius.circular(screenWidth * 0.024),
                                     border: Border.all(
                                       color: isSel
                                           ? _primaryGreen
                                           : _borderLine,
-                                      width: isSel ? 1.3 : 1,
+                                      width: isSel
+                                          ? screenWidth * 0.0034
+                                          : screenWidth * 0.0026,
                                     ),
                                   ),
                                   child: Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
                                       if (isSel) ...[
-                                        const Icon(
+                                        Icon(
                                           Icons.check_circle_rounded,
-                                          size: 14,
+                                          size: 14 * scale,
                                           color: _primaryGreen,
                                         ),
-                                        const SizedBox(width: 5),
+                                        SizedBox(width: screenWidth * 0.013),
                                       ],
                                       Text(
                                         h,
                                         style: TextStyle(
                                           fontWeight: FontWeight.w700,
-                                          fontSize: 11,
+                                          fontSize: 11 * scale,
                                           color: isSel
                                               ? _primaryGreen
                                               : _textSecondary,
@@ -737,7 +803,7 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                         }).toList(),
                       ),
 
-                      const SizedBox(height: 10),
+                      SizedBox(height: screenWidth * 0.026),
 
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -757,7 +823,7 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                                       value: e,
                                       child: Text(
                                         e,
-                                        style: const TextStyle(fontSize: 11),
+                                        style: TextStyle(fontSize: 11 * scale),
                                       ),
                                     ),
                                   )
@@ -769,11 +835,11 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                               },
                             ),
                           ),
-                          const SizedBox(width: 8),
+                          SizedBox(width: screenWidth * 0.021),
                           Expanded(
                             child: TextFormField(
                               controller: totalCostController,
-                              scrollPadding: const EdgeInsets.only(bottom: 120),
+                              scrollPadding: EdgeInsets.only(bottom: screenWidth * 0.32),
                               keyboardType:
                                   const TextInputType.numberWithOptions(
                                 decimal: true,
@@ -794,15 +860,15 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                   ),
                 ),
 
-                const SizedBox(height: 10),
+                SizedBox(height: screenWidth * 0.026),
 
                 // BREAKDOWN CARD
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(12),
+                  padding: EdgeInsets.all(screenWidth * 0.032),
                   decoration: BoxDecoration(
                     color: _cardBg,
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(screenWidth * 0.037),
                     border: Border.all(color: _borderLine),
                   ),
                   child: Column(
@@ -814,9 +880,9 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                         action: TextButton.icon(
                           style: TextButton.styleFrom(
                             foregroundColor: _primaryGreen,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 3,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: screenWidth * 0.016,
+                              vertical: screenWidth * 0.008,
                             ),
                             minimumSize: Size.zero,
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -834,20 +900,20 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                               );
                             });
                           },
-                          icon: const Icon(
+                          icon: Icon(
                             Icons.add_circle_outline_rounded,
-                            size: 15,
+                            size: 15 * scale,
                           ),
-                          label: const Text(
+                          label: Text(
                             "Magdagdag",
                             style: TextStyle(
                               fontWeight: FontWeight.w700,
-                              fontSize: 10.5,
+                              fontSize: 10.5 * scale,
                             ),
                           ),
                         ),
                       ),
-                      const SizedBox(height: 8),
+                      SizedBox(height: screenWidth * 0.021),
 
                       ...breakdownItems.asMap().entries.map((entry) {
                         final idx = entry.key;
@@ -866,11 +932,11 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                             itemSrp - itemCostPerKg;
 
                         return Container(
-                          margin: const EdgeInsets.only(bottom: 7),
-                          padding: const EdgeInsets.all(8),
+                          margin: EdgeInsets.only(bottom: screenWidth * 0.018),
+                          padding: EdgeInsets.all(screenWidth * 0.021),
                           decoration: BoxDecoration(
                             color: _surfaceBg,
-                            borderRadius: BorderRadius.circular(11),
+                            borderRadius: BorderRadius.circular(screenWidth * 0.029),
                             border: Border.all(color: _borderLine),
                           ),
                           child: Column(
@@ -892,8 +958,8 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                                               value: c,
                                               child: Text(
                                                 c,
-                                                style: const TextStyle(
-                                                  fontSize: 10.5,
+                                                style: TextStyle(
+                                                  fontSize: 10.5 * scale,
                                                 ),
                                               ),
                                             ),
@@ -908,12 +974,12 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                                       },
                                     ),
                                   ),
-                                  const SizedBox(width: 5),
+                                  SizedBox(width: screenWidth * 0.013),
                                   Expanded(
                                     flex: 2,
                                     child: TextFormField(
                                       controller: item.kgController,
-                                      scrollPadding: const EdgeInsets.only(bottom: 120),
+                                      scrollPadding: EdgeInsets.only(bottom: screenWidth * 0.32),
                                       keyboardType:
                                           const TextInputType.numberWithOptions(
                                         decimal: true,
@@ -926,12 +992,12 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                                       ),
                                     ),
                                   ),
-                                  const SizedBox(width: 5),
+                                  SizedBox(width: screenWidth * 0.013),
                                   Expanded(
                                     flex: 2,
                                     child: TextFormField(
                                       controller: item.srpController,
-                                      scrollPadding: const EdgeInsets.only(bottom: 120),
+                                      scrollPadding: EdgeInsets.only(bottom: screenWidth * 0.32),
                                       keyboardType:
                                           const TextInputType.numberWithOptions(
                                         decimal: true,
@@ -941,10 +1007,10 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                                           ? "SRP"
                                           : null,
                                       onChanged: (_) => setState(() {}),
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontWeight: FontWeight.w800,
                                         color: _primaryGreen,
-                                        fontSize: 11,
+                                        fontSize: 11 * scale,
                                       ),
                                       decoration: compactDecoration(
                                         label: "SRP / kg",
@@ -954,20 +1020,20 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                                   ),
                                   if (breakdownItems.length > 1)
                                     Padding(
-                                      padding: const EdgeInsets.only(
-                                        left: 2,
-                                        top: 8,
+                                      padding: EdgeInsets.only(
+                                        left: screenWidth * 0.0053,
+                                        top: screenWidth * 0.021,
                                       ),
                                       child: IconButton(
-                                        constraints: const BoxConstraints(
-                                          minWidth: 24,
-                                          minHeight: 24,
+                                        constraints: BoxConstraints(
+                                          minWidth: screenWidth * 0.064,
+                                          minHeight: screenWidth * 0.064,
                                         ),
                                         padding: EdgeInsets.zero,
-                                        icon: const Icon(
+                                        icon: Icon(
                                           Icons.remove_circle_outline,
                                           color: _dangerRed,
-                                          size: 18,
+                                          size: 18 * scale,
                                         ),
                                         onPressed: () {
                                           setState(() {
@@ -982,22 +1048,22 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                                 ],
                               ),
                               if (itemKg > 0 && totalCost > 0) ...[
-                                const SizedBox(height: 5),
+                                SizedBox(height: screenWidth * 0.013),
                                 Row(
                                   mainAxisAlignment:
                                       MainAxisAlignment.spaceBetween,
                                   children: [
                                     Text(
                                       "Puhunan: ₱${itemAllocatedCost.toStringAsFixed(2)}",
-                                      style: const TextStyle(
-                                        fontSize: 9,
+                                      style: TextStyle(
+                                        fontSize: 9 * scale,
                                         color: _warningOrange,
                                       ),
                                     ),
                                     Text(
                                       "Tubó/kg: ₱${itemProfitPerKg.toStringAsFixed(2)}",
                                       style: TextStyle(
-                                        fontSize: 9,
+                                        fontSize: 9 * scale,
                                         fontWeight: FontWeight.w700,
                                         color: itemProfitPerKg >= 0
                                             ? _primaryGreen
@@ -1015,12 +1081,12 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                   ),
                 ),
 
-                const SizedBox(height: 10),
+                SizedBox(height: screenWidth * 0.026),
 
                 // SUMMARY CARD
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(12),
+                  padding: EdgeInsets.all(screenWidth * 0.032),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
                       begin: Alignment.topLeft,
@@ -1030,41 +1096,43 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                         Colors.white,
                       ],
                     ),
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(screenWidth * 0.037),
                     border: Border.all(color: _primaryGreenSoft),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Row(
+                      Row(
                         children: [
                           Icon(
                             Icons.auto_graph_rounded,
-                            size: 16,
+                            size: 16 * scale,
                             color: _primaryGreen,
                           ),
-                          SizedBox(width: 5),
+                          SizedBox(width: screenWidth * 0.013),
                           Text(
                             "Awtomatikong Tantiya",
                             style: TextStyle(
-                              fontSize: 11.5,
+                              fontSize: 11.5 * scale,
                               fontWeight: FontWeight.w800,
                               color: _textPrimary,
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
+                      SizedBox(height: screenWidth * 0.021),
                       Row(
                         children: [
                           Expanded(
                             child: _summaryItem(
+                              context,
                               "Kabuuang Ani",
                               "${sumKg.toStringAsFixed(0)} kg",
                             ),
                           ),
                           Expanded(
                             child: _summaryItem(
+                              context,
                               "Avg Puhunan/kg",
                               "₱${overallCostPerKg.toStringAsFixed(2)}",
                               valueColor: _warningOrange,
@@ -1072,11 +1140,12 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 7),
+                      SizedBox(height: screenWidth * 0.018),
                       Row(
                         children: [
                           Expanded(
                             child: _summaryItem(
+                              context,
                               "Inaasahang Gross",
                               "₱${totalRevenue.toStringAsFixed(2)}",
                               valueColor: _infoBlue,
@@ -1084,6 +1153,7 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                           ),
                           Expanded(
                             child: _summaryItem(
+                              context,
                               "Avg Tubó/kg",
                               "₱${(overallRevenuePerKg - overallCostPerKg).toStringAsFixed(2)}",
                               valueColor: totalProfit >= 0
@@ -1093,17 +1163,18 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                           ),
                         ],
                       ),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 7),
-                        child: Divider(height: 1, color: _borderLine),
+                      Padding(
+                        padding: EdgeInsets.symmetric(
+                            vertical: screenWidth * 0.018),
+                        child: const Divider(height: 1, color: _borderLine),
                       ),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text(
+                          Text(
                             "Inaasahang Malinis na Tubó",
                             style: TextStyle(
-                              fontSize: 10.5,
+                              fontSize: 10.5 * scale,
                               fontWeight: FontWeight.w800,
                               color: _textPrimary,
                             ),
@@ -1111,7 +1182,7 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                           Text(
                             "₱${totalProfit.toStringAsFixed(2)}",
                             style: TextStyle(
-                              fontSize: 15,
+                              fontSize: 15 * scale,
                               fontWeight: FontWeight.w900,
                               color: totalProfit >= 0
                                   ? _primaryGreen
@@ -1124,12 +1195,12 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                   ),
                 ),
 
-                const SizedBox(height: 12),
+                SizedBox(height: screenWidth * 0.032),
 
                 // SAVE BUTTON
                 SizedBox(
                   width: double.infinity,
-                  height: 48,
+                  height: screenWidth * 0.128,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _primaryGreen,
@@ -1137,7 +1208,7 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                       disabledBackgroundColor: _primaryGreen.withOpacity(0.45),
                       elevation: 0,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(screenWidth * 0.032),
                       ),
                     ),
                     onPressed: _isSaving
@@ -1152,18 +1223,6 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                                 const SnackBar(
                                   content: Text(
                                     "Mag-input ng timbang ng ani (kg).",
-                                  ),
-                                  backgroundColor: _dangerRed,
-                                ),
-                              );
-                              return;
-                            }
-
-                            if (selectedImages.isEmpty) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    "Magdagdag muna ng kahit isang larawan ng produkto.",
                                   ),
                                   backgroundColor: _dangerRed,
                                 ),
@@ -1274,29 +1333,29 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           if (_isSaving) ...[
-                            const SizedBox(
-                              width: 16,
-                              height: 16,
+                            SizedBox(
+                              width: screenWidth * 0.042,
+                              height: screenWidth * 0.042,
                               child: CircularProgressIndicator(
-                                strokeWidth: 2,
+                                strokeWidth: screenWidth * 0.0053,
                                 color: Colors.white,
                               ),
                             ),
-                            const SizedBox(width: 8),
+                            SizedBox(width: screenWidth * 0.021),
                           ] else ...[
-                            const Icon(
+                            Icon(
                               Icons.save_rounded,
-                              size: 18,
+                              size: 18 * scale,
                             ),
-                            const SizedBox(width: 7),
+                            SizedBox(width: screenWidth * 0.018),
                           ],
                           Text(
                             _isSaving
                                 ? "Sine-save..."
                                 : "I-save sa Inbentaryo",
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontWeight: FontWeight.w800,
-                              fontSize: 12.5,
+                              fontSize: 12.5 * scale,
                             ),
                           ),
                         ],
@@ -1305,7 +1364,7 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                   ),
                 ),
 
-                const SizedBox(height: 4),
+                SizedBox(height: screenWidth * 0.010),
               ],
             ),
           ),
@@ -1315,26 +1374,31 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
   }
 
   Widget _summaryItem(
+    BuildContext context,
     String label,
     String value, {
     Color valueColor = _textPrimary,
   }) {
+    final media = MediaQuery.of(context);
+    final screenWidth = media.size.width;
+    final scale = screenWidth / 375;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
-          style: const TextStyle(
-            fontSize: 8.5,
+          style: TextStyle(
+            fontSize: 8.5 * scale,
             color: _textSecondary,
             fontWeight: FontWeight.w600,
           ),
         ),
-        const SizedBox(height: 2),
+        SizedBox(height: screenWidth * 0.0053),
         Text(
           value,
           style: TextStyle(
-            fontSize: 11,
+            fontSize: 11 * scale,
             color: valueColor,
             fontWeight: FontWeight.w800,
           ),
@@ -1350,15 +1414,15 @@ class _InventoryInputController {
   final List<String> riceConditions = const ["Basa / Sariwa", "Tuyo"];
 
   Future<List<String>> uploadProductImages(
-    List<File> imageFiles,
+    List<XFile> imageFiles,
     String productCode,
   ) async {
     final supabase = Supabase.instance.client;
     final List<String> urls = [];
 
     for (int i = 0; i < imageFiles.length; i++) {
-      final file = imageFiles[i];
-      final extension = file.path.split('.').last.toLowerCase();
+      final xfile = imageFiles[i];
+      final extension = xfile.path.split('.').last.toLowerCase();
       final safeExtension =
           ['jpg', 'jpeg', 'png', 'webp'].contains(extension)
               ? extension
@@ -1372,9 +1436,11 @@ class _InventoryInputController {
       final filePath =
           'products/${productCode.toString().replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_')}/${timestamp}_$i.$safeExtension';
 
-      await supabase.storage.from('product-images').upload(
+      final bytes = await xfile.readAsBytes();
+
+      await supabase.storage.from('product-images').uploadBinary(
         filePath,
-        file,
+        bytes,
         fileOptions: FileOptions(
           cacheControl: '31536000',
           contentType: contentType,
@@ -1400,9 +1466,6 @@ class _InventoryInputController {
         "${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}";
     final String baseCodePattern = "$hectarePrefix-$typePrefix-$dateStamp";
 
-    // Try to preserve the old sequential code. If Firestore requires an
-    // index or this query fails, use a timestamp-based suffix so saving the
-    // inventory item is not blocked by code generation.
     try {
       final querySnapshot = await FirebaseFirestore.instance
           .collection("products")
@@ -1418,5 +1481,4 @@ class _InventoryInputController {
       return "$baseCodePattern-${now.millisecondsSinceEpoch % 1000000}";
     }
   }
-
 }

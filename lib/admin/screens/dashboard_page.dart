@@ -15,7 +15,7 @@ import '../../services/weather/weather_repository_impl.dart';
 
 // Pages
 import 'inventory_page.dart';
-import 'admin_order_page.dart';
+import 'admin_order_page.dart'; // Dito nanggagaling ang OrderStatus at OrderStatus.parse()
 import 'reports_page.dart';
 import 'weather_page.dart';
 import 'guidance_page.dart';
@@ -249,13 +249,35 @@ class _DashboardPageState extends State<DashboardPage> {
             backgroundColor: _bg,
             endDrawer: _buildDrawer(),
             body: SafeArea(
-              child: Column(
-                children: [
-                  _buildHeader(isDesktop),
-                  Expanded(child: activeBody),
-                  _buildUniversalNavBar(isDesktop),
-                ],
-              ),
+              child: isDesktop
+                  ? Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildDesktopSidebar(menuList, safeIndex),
+                        Expanded(
+                          child: Column(
+                            children: [
+                              _buildHeader(true),
+                              Expanded(
+                                child: Center(
+                                  child: ConstrainedBox(
+                                    constraints: const BoxConstraints(maxWidth: 1440),
+                                    child: activeBody,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    )
+                  : Column(
+                      children: [
+                        _buildHeader(false),
+                        Expanded(child: activeBody),
+                        _buildUniversalNavBar(false),
+                      ],
+                    ),
             ),
           );
         },
@@ -265,8 +287,11 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _buildHeader(bool isDesktop) {
     return Container(
-      height: 60,
-      padding: EdgeInsets.symmetric(horizontal: isDesktop ? 24 : 12),
+      constraints: BoxConstraints(minHeight: isDesktop ? 64 : 58),
+      padding: EdgeInsets.symmetric(
+        horizontal: isDesktop ? 24 : 12,
+        vertical: isDesktop ? 8 : 6,
+      ),
       decoration: const BoxDecoration(
         color: _cardBg,
         border: Border(bottom: BorderSide(color: _border)),
@@ -346,21 +371,55 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Widget _buildDashboardHome(bool isDesktop, bool isTablet) {
-    return SingleChildScrollView(
-      padding: EdgeInsets.all(isDesktop ? 24 : 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    final horizontalPadding = isDesktop
+        ? 28.0
+        : isTablet
+            ? 22.0
+            : 14.0;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          padding: EdgeInsets.symmetric(
+            horizontal: horizontalPadding,
+            vertical: isDesktop ? 24 : 16,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+          Flex(
+            direction: isTablet || isDesktop
+                ? Axis.horizontal
+                : Axis.vertical,
+            crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text("Admin Command Center", style: TextStyle(color: _textMain, fontSize: 18, fontWeight: FontWeight.bold)),
-                  Text("Live metrics & operational status", style: TextStyle(color: _textSub, fontSize: 11)),
-                ],
+              const Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Admin Command Center",
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: _textMain,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      "Live metrics & operational status",
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: _textSub,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
               ),
+              SizedBox(height: isTablet || isDesktop ? 0 : 10),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
@@ -392,7 +451,7 @@ class _DashboardPageState extends State<DashboardPage> {
             physics: const NeverScrollableScrollPhysics(),
             gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
               maxCrossAxisExtent: isDesktop ? 280 : (isTablet ? 250 : 180),
-              mainAxisExtent: 125,
+              mainAxisExtent: isDesktop ? 128 : (isTablet ? 132 : 136),
               crossAxisSpacing: 10,
               mainAxisSpacing: 10,
             ),
@@ -432,7 +491,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 },
               ),
 
-              // 2. ORDERS MODULE KPI
+              // 2. ORDERS MODULE KPI (INAYOS NA LOGIC)
               StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance.collection('orders').snapshots(),
                 builder: (context, snapshot) {
@@ -441,10 +500,13 @@ class _DashboardPageState extends State<DashboardPage> {
                   if (snapshot.hasData) {
                     for (var doc in snapshot.data!.docs) {
                       final data = doc.data() as Map<String, dynamic>;
-                      final status = (data['status'] ?? '').toString().toLowerCase();
-                      final isPaid = data['isPaid'] ?? true;
+                      
+                      // Ginagamit ang OrderStatus.parse() para sa patas at tamang pagkilala sa status
+                      final rawStatus = (data['orderStatus'] ?? data['status'] ?? '').toString();
+                      final parsedStatus = OrderStatus.parse(rawStatus);
 
-                      if (isPaid == false || status == 'to pay' || status == 'pending' || status == 'unpaid') {
+                      // Bilangin lang kung ang status ay talagang OrderStatus.toPay
+                      if (parsedStatus == OrderStatus.toPay) {
                         toPayCount++;
                       }
                     }
@@ -465,32 +527,56 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
 
               // 3. GUIDANCE MODULE KPI
-              StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance.collection('crop_tracker').limit(1).snapshots(),
+              // Parehong Firestore document ang sinusulatan ng GuidancePage.
+              StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                stream: FirebaseFirestore.instance
+                    .collection('crop_tracker')
+                    .doc('active_crop')
+                    .snapshots(),
                 builder: (context, snapshot) {
                   String cropAgeText = "No Active Crop";
-                  String conditionText = "Optimal Condition";
+                  String conditionText = "Pumili ng planting date sa Guidance";
                   bool hasWarning = false;
 
-                  if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
-                    final data = snapshot.data!.docs.first.data() as Map<String, dynamic>?;
-                    final days = int.tryParse(data?['plantingDays']?.toString() ?? '0') ?? 0;
+                  final data = snapshot.data?.data();
+                  final plantingTimestamp = data?['plantingDate'];
 
-                    if (days > 0) {
-                      if (days <= 15) {
-                        cropAgeText = "Vegetative (Day $days)";
-                        conditionText = "Optimal Condition";
-                      } else if (days <= 60) {
-                        cropAgeText = "Reproductive (Day $days)";
-                        conditionText = "Watch Water Level";
-                      } else {
-                        cropAgeText = "Ripening (Day $days)";
-                        conditionText = "Ready for Harvest";
-                      }
+                  DateTime? plantingDate;
+                  if (plantingTimestamp is Timestamp) {
+                    plantingDate = plantingTimestamp.toDate();
+                  } else if (plantingTimestamp is String) {
+                    plantingDate = DateTime.tryParse(plantingTimestamp);
+                  }
+
+                  if (plantingDate != null) {
+                    final now = DateTime.now();
+                    final today = DateTime(now.year, now.month, now.day);
+                    final pDate = DateTime(
+                      plantingDate.year,
+                      plantingDate.month,
+                      plantingDate.day,
+                    );
+
+                    // Automatic na nagbabago ang age base sa saved planting date.
+                    final calculatedDays = today.difference(pDate).inDays;
+                    final days = calculatedDays < 0 ? 0 : calculatedDays;
+
+                    if (days == 0) {
+                      cropAgeText = "Day 0";
+                    } else if (days <= 15) {
+                      cropAgeText = "Vegetative (Day $days)";
+                    } else if (days <= 60) {
+                      cropAgeText = "Reproductive (Day $days)";
+                    } else {
+                      cropAgeText = "Ripening (Day $days)";
                     }
 
-                    if (data?['warning'] != null && data!['warning'].toString().isNotEmpty) {
-                      conditionText = data['warning'];
+                    conditionText =
+                        "Petsa ng tanim: ${pDate.month}/${pDate.day}/${pDate.year}";
+
+                    if (data?['warning'] != null &&
+                        data!['warning'].toString().isNotEmpty) {
+                      conditionText = data['warning'].toString();
                       hasWarning = true;
                     }
                   }
@@ -518,10 +604,10 @@ class _DashboardPageState extends State<DashboardPage> {
                   if (snapshot.hasData) {
                     for (var doc in snapshot.data!.docs) {
                       final data = doc.data() as Map<String, dynamic>;
-                      final isPaid = data['isPaid'] ?? false;
-                      final status = (data['status'] ?? '').toString().toLowerCase();
+                      final rawStatus = (data['orderStatus'] ?? data['status'] ?? '').toString();
+                      final parsedStatus = OrderStatus.parse(rawStatus);
 
-                      if (isPaid == true || status == 'completed' || status == 'paid' || status == 'delivered') {
+                      if (parsedStatus == OrderStatus.completed) {
                         double orderTotal = double.tryParse(data['totalAmount']?.toString() ?? data['totalPrice']?.toString() ?? '0') ?? 0.0;
 
                         if (orderTotal == 0.0 && data['items'] != null && data['items'] is List) {
@@ -586,8 +672,10 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
             ],
           ),
-        ],
-      ),
+          ],
+      )
+        );
+      },
     );
   }
 
@@ -764,26 +852,43 @@ class _DashboardPageState extends State<DashboardPage> {
                   ],
                 ),
                 const SizedBox(height: 10),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
+                LayoutBuilder(
+                  builder: (context, weatherConstraints) {
+                    final compact = weatherConstraints.maxWidth < 420;
+                    return Flex(
+                      direction: compact ? Axis.vertical : Axis.horizontal,
+                      crossAxisAlignment: compact
+                          ? CrossAxisAlignment.start
+                          : CrossAxisAlignment.center,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        _getWeatherIcon(weather.condition),
-                        const SizedBox(width: 10),
-                        Text("${weather.temperature.toStringAsFixed(1)}°C", style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                    Column(
+                        Row(
+                          children: [
+                            _getWeatherIcon(weather.condition),
+                            const SizedBox(width: 10),
+                            Text(
+                              "${weather.temperature.toStringAsFixed(1)}°C",
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (compact) const SizedBox(height: 10),
+                        Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(weather.condition, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
                         Text("Humidity: ${weather.humidity}%", style: const TextStyle(color: Colors.white70, fontSize: 10)),
                         Text("Feels Like: ${weather.feelsLike}°C", style: const TextStyle(color: Colors.white70, fontSize: 10)),
                       ],
-                    )
-                  ],
-                )
+                        ),
+                      ],
+                    );
+                  },
+                ),
               ],
             ),
           ),
@@ -797,6 +902,155 @@ class _DashboardPageState extends State<DashboardPage> {
     if (lower.contains('rain')) return const Icon(Icons.grain_rounded, color: Color(0xff93C5FD), size: 32);
     if (lower.contains('cloud')) return const Icon(Icons.cloud_queue_rounded, color: Colors.white70, size: 32);
     return const Icon(Icons.wb_sunny_rounded, color: Color(0xffFDE047), size: 32);
+  }
+
+  Widget _buildDesktopSidebar(
+    List<_NavigationItem> menuList,
+    int safeIndex,
+  ) {
+    return Container(
+      width: 248,
+      decoration: const BoxDecoration(
+        color: _cardBg,
+        border: Border(
+          right: BorderSide(color: _border),
+        ),
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 16, 18),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: _primary.withOpacity(0.10),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.eco_rounded,
+                    color: _primary,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text(
+                    "ArrozSistema",
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: _textMain,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1, color: _border),
+          const SizedBox(height: 12),
+          Expanded(
+            child: ListView.separated(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              itemCount: menuList.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 4),
+              itemBuilder: (context, index) {
+                final item = menuList[index];
+                final selected = safeIndex == index;
+
+                return Material(
+                  color: selected
+                      ? _primary.withOpacity(0.10)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () {
+                      if (index == safeIndex) return;
+                      setState(() => _currentMenuIndex = index);
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 11,
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            item.icon,
+                            size: 20,
+                            color: selected ? _primary : _textSub,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              item.title,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: selected ? _primary : _textMain,
+                                fontSize: 13,
+                                fontWeight: selected
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                          if (selected)
+                            Container(
+                              width: 5,
+                              height: 5,
+                              decoration: const BoxDecoration(
+                                color: _primary,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 14),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: _performLogout,
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 11,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.logout_rounded,
+                        color: Colors.redAccent,
+                        size: 20,
+                      ),
+                      SizedBox(width: 12),
+                      Text(
+                        "Logout",
+                        style: TextStyle(
+                          color: Colors.redAccent,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildUniversalNavBar(bool isDesktop) {
@@ -885,7 +1139,7 @@ class _DashboardPageState extends State<DashboardPage> {
               title: const Text("Orders"),
               onTap: () {
                 Navigator.pop(context);
-                setState(() => _currentMenuIndex = 2);
+                setState(() => _currentMenuIndex = 0);
               },
             ),
             ListTile(

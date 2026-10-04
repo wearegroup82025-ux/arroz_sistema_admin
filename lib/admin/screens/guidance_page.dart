@@ -1,5 +1,7 @@
 import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -8,59 +10,86 @@ import '../../domain/weather_repository.dart';
 import '../../services/weather/weather_api_service.dart';
 import '../../services/weather/weather_repository_impl.dart';
 
-class RiceVariety {
-  final String name;
-  final int totalMaturityDays;
-  final String description;
+/// IMPORTANT:
+/// The app intentionally exposes only two choices:
+///   1. Inbred
+///   2. Hybrid
+///
+/// Baseline values (DA-PhilRice):
+/// - Inbred: PSB Rc82 = 110 days
+/// - Hybrid: Mestiso 20 / NSIC Rc204H = 111 days
 
-  const RiceVariety(this.name, this.totalMaturityDays, this.description);
+enum RiceType {
+  inbred,
+  hybrid;
 
-  Map<String, dynamic> toJson() => {
-        'name': name,
-        'totalMaturityDays': totalMaturityDays,
-        'description': description,
-      };
+  String get label => this == RiceType.inbred ? 'Inbred' : 'Hybrid';
 
-  factory RiceVariety.fromJson(Map<String, dynamic> json) {
-    return RiceVariety(
-      json['name'] ?? 'NSIC Rc 222 (Pangkaraniwan)',
-      json['totalMaturityDays'] ?? 115,
-      json['description'] ?? '',
-    );
-  }
-}
+  String get referenceVariety =>
+      this == RiceType.inbred ? 'PSB Rc82' : 'Mestiso 20 (NSIC Rc204H)';
 
-const List<RiceVariety> kRiceVarieties = [
-  RiceVariety('NSIC Rc 222 (Pangkaraniwan / Inbred)', 115, 'Matagumpay sa tag-ulan at tag-araw. Aaniin sa loob ng 115 araw.'),
-  RiceVariety('NSIC Rc 192 (Maagang Anihin)', 105, 'Mabilis anihin (105 araw), maganda laban sa maikling ulan.'),
-  RiceVariety('NSIC Rc 216 (Magandang Kalidad)', 112, 'Maganda at masarap ang kalidad ng bigas. 112 araw.'),
-  RiceVariety('Mestiso 20 (Hybrid Rice)', 123, 'Mas mataas magbigay ng ani. 123 araw.'),
-];
+  int get maturityDays => this == RiceType.inbred ? 110 : 111;
 
-enum PlantingWindowStatus {
-  ideal('Magandang Panahon Magtanim', Color(0xFF059669), Icons.check_circle_rounded),
-  warning('Katamtaman / May Kaunting Panganib', Color(0xFFD97706), Icons.warning_amber_rounded),
-  bad('Delikado (Baha o Tagtuyot)', Color(0xFFDC2626), Icons.cancel_rounded);
-
-  final String label;
-  final Color color;
-  final IconData icon;
-
-  const PlantingWindowStatus(this.label, this.color, this.icon);
+  String get maturityNote => this == RiceType.inbred
+      ? 'Baseline: 110 araw (PSB Rc82, PhilRice)'
+      : 'Baseline: 111 araw (Mestiso 20/NSIC Rc204H, PhilRice)';
 }
 
 enum RiceStage {
-  preparation('Paghahanda ng Lupa', Icons.engineering_rounded),
-  planning('Pagpapatag at Binhi', Icons.calendar_month_rounded),
-  vegetative('Pagsusuwi (Tanim)', Icons.grass_rounded),
-  reproductive('Paglilihi at Bulaklak', Icons.eco_rounded),
-  ripening('Pagkahinog ng Butil', Icons.grain_rounded),
-  harvesting('Pag-aani at Pagpapatuyo', Icons.inventory_2_rounded);
+  notStarted,
+  establishment,
+  vegetative,
+  reproductive,
+  ripening,
+  harvest;
 
-  final String label;
-  final IconData icon;
+  String get label {
+    switch (this) {
+      case RiceStage.notStarted:
+        return 'Hindi pa Nagtatanim';
+      case RiceStage.establishment:
+        return 'Pagtatatag ng Tanim';
+      case RiceStage.vegetative:
+        return 'Vegetative / Pagsusuwi';
+      case RiceStage.reproductive:
+        return 'Reproductive / Panicle at Bulaklak';
+      case RiceStage.ripening:
+        return 'Pagkahinog';
+      case RiceStage.harvest:
+        return 'Panahon ng Pag-aani';
+    }
+  }
 
-  const RiceStage(this.label, this.icon);
+  IconData get icon {
+    switch (this) {
+      case RiceStage.notStarted:
+        return Icons.event_available_rounded;
+      case RiceStage.establishment:
+        return Icons.grass_rounded;
+      case RiceStage.vegetative:
+        return Icons.eco_rounded;
+      case RiceStage.reproductive:
+        return Icons.spa_rounded;
+      case RiceStage.ripening:
+        return Icons.grain_rounded;
+      case RiceStage.harvest:
+        return Icons.agriculture_rounded;
+    }
+  }
+}
+
+class _CropProfile {
+  final int maturityDays;
+  final int establishmentEnd;
+  final int vegetativeEnd;
+  final int reproductiveEnd;
+
+  const _CropProfile({
+    required this.maturityDays,
+    required this.establishmentEnd,
+    required this.vegetativeEnd,
+    required this.reproductiveEnd,
+  });
 }
 
 class GuidancePage extends StatefulWidget {
@@ -71,6 +100,8 @@ class GuidancePage extends StatefulWidget {
 }
 
 class _GuidancePageState extends State<GuidancePage> {
+  static const String _cropTrackerDocId = 'active_crop';
+
   late final WeatherRepository _weatherRepository;
   Future<WeatherEntity>? _weatherFuture;
 
@@ -79,9 +110,8 @@ class _GuidancePageState extends State<GuidancePage> {
 
   DateTime? _plantingDate;
   int _cropAgeDays = 0;
-
-  RiceVariety _selectedVariety = kRiceVarieties[0];
-  RiceStage _selectedStage = RiceStage.planning;
+  RiceType _selectedType = RiceType.inbred;
+  RiceStage _selectedStage = RiceStage.notStarted;
 
   Map<String, bool> _completedTasks = {};
 
@@ -96,178 +126,276 @@ class _GuidancePageState extends State<GuidancePage> {
 
   void _fetchWeather() {
     setState(() {
-      _weatherFuture = _weatherRepository.getWeatherByCoordinates(latitude, longitude);
+      _weatherFuture =
+          _weatherRepository.getWeatherByCoordinates(latitude, longitude);
     });
   }
 
-  /// EVALUATE PETSA: BERDE O PULA
-  static PlantingWindowStatus evaluateDate(DateTime date) {
-    final month = date.month;
+  DateTime _dateOnly(DateTime date) =>
+      DateTime(date.year, date.month, date.day);
 
-    // Ligtas (Mayo - Hulyo & Nobyembre - Enero)
-    if ((month >= 5 && month <= 7) || month == 11 || month == 12 || month == 1) {
-      return PlantingWindowStatus.ideal;
+  String _formatDate(DateTime date) =>
+      '${date.day.toString().padLeft(2, '0')}/'
+      '${date.month.toString().padLeft(2, '0')}/${date.year}';
+
+  _CropProfile get _profile {
+    final maturity = _selectedType.maturityDays;
+
+    final establishmentEnd = 14;
+    final vegetativeEnd = (maturity * 0.55).round();
+    final reproductiveEnd = (maturity * 0.82).round();
+
+    return _CropProfile(
+      maturityDays: maturity,
+      establishmentEnd: establishmentEnd,
+      vegetativeEnd: vegetativeEnd,
+      reproductiveEnd: reproductiveEnd,
+    );
+  }
+
+  RiceStage _stageForAge(int age) {
+    if (_plantingDate == null || age <= 0) {
+      return _plantingDate == null
+          ? RiceStage.notStarted
+          : RiceStage.establishment;
     }
 
-    // Delikado (Agosto - Oktubre & Pebrero - Abril)
-    if ((month >= 8 && month <= 10) || (month >= 2 && month <= 4)) {
-      return PlantingWindowStatus.bad;
+    final p = _profile;
+
+    if (age <= p.establishmentEnd) {
+      return RiceStage.establishment;
+    }
+    if (age <= p.vegetativeEnd) {
+      return RiceStage.vegetative;
+    }
+    if (age <= p.reproductiveEnd) {
+      return RiceStage.reproductive;
+    }
+    if (age < p.maturityDays) {
+      return RiceStage.ripening;
+    }
+    return RiceStage.harvest;
+  }
+
+  void _updateCropAgeAndStage({bool rebuild = true}) {
+    if (_plantingDate == null) {
+      _cropAgeDays = 0;
+      _selectedStage = RiceStage.notStarted;
+      if (rebuild && mounted) setState(() {});
+      return;
     }
 
-    return PlantingWindowStatus.warning;
+    final today = _dateOnly(DateTime.now());
+    final planted = _dateOnly(_plantingDate!);
+    final diff = today.difference(planted).inDays;
+
+    _cropAgeDays = diff < 0 ? 0 : diff;
+    _selectedStage = _stageForAge(_cropAgeDays);
+
+    if (rebuild && mounted) setState(() {});
   }
 
   Future<void> _loadSavedData() async {
     final prefs = await SharedPreferences.getInstance();
-    final savedDateStr = prefs.getString('guidance_planting_date');
-    if (savedDateStr != null) {
-      _plantingDate = DateTime.tryParse(savedDateStr);
+
+    DateTime? localDate;
+    final savedDate = prefs.getString('guidance_planting_date');
+    if (savedDate != null) {
+      localDate = DateTime.tryParse(savedDate);
     }
 
-    final vIndex = prefs.getInt('guidance_variety_index') ?? 0;
-    if (vIndex >= 0 && vIndex < kRiceVarieties.length) {
-      _selectedVariety = kRiceVarieties[vIndex];
+    final savedType = prefs.getString('guidance_rice_type');
+    RiceType localType = RiceType.inbred;
+    if (savedType == RiceType.hybrid.name) {
+      localType = RiceType.hybrid;
     }
+
+    if (mounted) {
+      setState(() {
+        _plantingDate = localDate;
+        _selectedType = localType;
+      });
+      _updateCropAgeAndStage();
+    }
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('crop_tracker')
+          .doc(_cropTrackerDocId)
+          .get();
+
+      final data = doc.data();
+      final firestoreDate = data?['plantingDate'];
+
+      DateTime? cloudDate;
+      if (firestoreDate is Timestamp) {
+        cloudDate = firestoreDate.toDate();
+      } else if (firestoreDate is String) {
+        cloudDate = DateTime.tryParse(firestoreDate);
+      }
+
+      final cloudType =
+          data?['riceType']?.toString().toLowerCase().trim() == 'hybrid'
+              ? RiceType.hybrid
+              : RiceType.inbred;
+
+      if (!mounted) return;
+
+      setState(() {
+        if (cloudDate != null) _plantingDate = _dateOnly(cloudDate);
+        _selectedType = cloudType;
+      });
+
+      if (_plantingDate != null) {
+        await prefs.setString(
+          'guidance_planting_date',
+          _plantingDate!.toIso8601String(),
+        );
+      }
+      await prefs.setString('guidance_rice_type', _selectedType.name);
+
+      _updateCropAgeAndStage();
+    } catch (_) {}
 
     final tasksJson = prefs.getString('guidance_completed_tasks');
     if (tasksJson != null) {
       try {
-        final Map<String, dynamic> decoded = json.decode(tasksJson);
-        _completedTasks = decoded.map((k, v) => MapEntry(k, v as bool));
+        final decoded = json.decode(tasksJson);
+        if (decoded is Map<String, dynamic>) {
+          _completedTasks = decoded.map(
+            (key, value) => MapEntry(key, value == true),
+          );
+        }
       } catch (_) {}
     }
 
-    _updateCropAgeAndStage();
+    if (mounted) setState(() {});
   }
 
   Future<void> _saveData() async {
     final prefs = await SharedPreferences.getInstance();
+
     if (_plantingDate != null) {
-      await prefs.setString('guidance_planting_date', _plantingDate!.toIso8601String());
+      await prefs.setString(
+        'guidance_planting_date',
+        _dateOnly(_plantingDate!).toIso8601String(),
+      );
     } else {
       await prefs.remove('guidance_planting_date');
     }
-    await prefs.setInt('guidance_variety_index', kRiceVarieties.indexOf(_selectedVariety));
-    await prefs.setString('guidance_completed_tasks', json.encode(_completedTasks));
+
+    await prefs.setString('guidance_rice_type', _selectedType.name);
+    await prefs.setString(
+      'guidance_completed_tasks',
+      json.encode(_completedTasks),
+    );
+
+    try {
+      final data = <String, dynamic>{
+        'plantingDays': _cropAgeDays,
+        'riceType': _selectedType.name,
+        'riceTypeLabel': _selectedType.label,
+        'referenceVariety': _selectedType.referenceVariety,
+        'maturityDays': _selectedType.maturityDays,
+        'cropStage': _selectedStage.label,
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      if (_plantingDate != null) {
+        data['plantingDate'] =
+            Timestamp.fromDate(_dateOnly(_plantingDate!));
+      } else {
+        data['plantingDate'] = FieldValue.delete();
+      }
+
+      await FirebaseFirestore.instance
+          .collection('crop_tracker')
+          .doc(_cropTrackerDocId)
+          .set(data, SetOptions(merge: true));
+    } catch (_) {}
   }
 
-  void _updateCropAgeAndStage() {
-    if (_plantingDate == null) {
-      setState(() {
-        _cropAgeDays = 0;
-        _selectedStage = RiceStage.planning;
-      });
-      return;
-    }
-
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final pDate = DateTime(_plantingDate!.year, _plantingDate!.month, _plantingDate!.day);
-    final diff = today.difference(pDate).inDays;
+  Future<void> _selectPlantingDate(DateTime selectedDate) async {
+    final cleanDate = _dateOnly(selectedDate);
 
     setState(() {
-      _cropAgeDays = diff < 0 ? 0 : diff;
-      final totalDays = _selectedVariety.totalMaturityDays;
-
-      if (_cropAgeDays == 0) {
-        _selectedStage = RiceStage.planning;
-      } else if (_cropAgeDays <= (totalDays * 0.35).round()) {
-        _selectedStage = RiceStage.vegetative;
-      } else if (_cropAgeDays <= (totalDays * 0.65).round()) {
-        _selectedStage = RiceStage.reproductive;
-      } else if (_cropAgeDays <= totalDays - 2) {
-        _selectedStage = RiceStage.ripening;
-      } else {
-        _selectedStage = RiceStage.harvesting;
-      }
+      _plantingDate = cleanDate;
     });
+
+    _updateCropAgeAndStage();
+    await _saveData();
+
+    if (mounted) Navigator.of(context).pop();
   }
 
-  /// BUKAS NG POP-UP MODAL SA PAGPINDO SA BUTTON
-  void _openColoredCalendarDialog() {
-    showDialog(
+  Future<void> _openCalendar() async {
+    WeatherEntity? currentWeather;
+    try {
+      currentWeather = await _weatherFuture;
+    } catch (_) {}
+
+    if (!mounted) return;
+
+    await showDialog<void>(
       context: context,
-      builder: (ctx) {
-        return _ColoredCalendarModal(
-          initialDate: _plantingDate ?? DateTime.now(),
-          onDateSelected: (selectedDate) async {
-            final status = evaluateDate(selectedDate);
-
-            if (status == PlantingWindowStatus.bad) {
-              bool proceed = await showDialog<bool>(
-                    context: context,
-                    builder: (alertCtx) => AlertDialog(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                      title: const Row(
-                        children: [
-                          Icon(Icons.warning_amber_rounded, color: Color(0xFFDC2626), size: 28),
-                          SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              "BABALA SA PAGTATANIM",
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFFDC2626)),
-                            ),
-                          ),
-                        ],
-                      ),
-                      content: const Text(
-                        "Ang napili mong araw ay PULA sa kalendaryo. Delikado ito sa baha o matinding tagtuyot sa Pampanga.\n\nSigurado ka bang gusto mong itala ang petsang ito?",
-                        style: TextStyle(fontSize: 13, color: Color(0xFF334155)),
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(alertCtx, false),
-                          child: const Text("Pumili ng Iba", style: TextStyle(color: Color(0xFF64748B))),
-                        ),
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
-                          onPressed: () => Navigator.pop(alertCtx, true),
-                          child: const Text("Ituloy Pa Rin", style: TextStyle(color: Colors.white)),
-                        ),
-                      ],
-                    ),
-                  ) ??
-                  false;
-
-              if (!proceed) return;
-            }
-
-            setState(() {
-              _plantingDate = selectedDate;
-            });
-            _updateCropAgeAndStage();
-            _saveData();
-            Navigator.pop(ctx); // Isara ang modal pagkatapos pumili
-          },
-        );
-      },
+      builder: (_) => _PlantingDateDialog(
+        initialDate: _plantingDate ?? _dateOnly(DateTime.now()),
+        selectedDate: _plantingDate,
+        onDateSelected: _selectPlantingDate,
+        weatherData: currentWeather,
+        profile: _profile,
+      ),
     );
+  }
+
+  Future<void> _changeRiceType(RiceType? value) async {
+    if (value == null) return;
+
+    setState(() {
+      _selectedType = value;
+      _selectedStage = _stageForAge(_cropAgeDays);
+    });
+
+    await _saveData();
   }
 
   @override
   Widget build(BuildContext context) {
-    final status = _plantingDate != null ? evaluateDate(_plantingDate!) : null;
-
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        scrolledUnderElevation: 0,
         backgroundColor: const Color(0xFFF8FAFC),
         elevation: 0,
+        scrolledUnderElevation: 0,
         titleSpacing: 20,
         title: const Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text("GABAY SA PAGSASA-KA (PHILRICE)", style: TextStyle(color: Color(0xFF64748B), fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.8)),
-            Text("Capalangan, Pampanga", style: TextStyle(color: Color(0xFF0F172A), fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+            Text(
+              'GABAY SA PALAY',
+              style: TextStyle(
+                color: Color(0xFF64748B),
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.8,
+              ),
+            ),
+            Text(
+              'Capalangan, Pampanga',
+              style: TextStyle(
+                color: Color(0xFF0F172A),
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
           ],
         ),
         actions: [
-          Container(
-            margin: const EdgeInsets.only(right: 16),
-            decoration: const BoxDecoration(color: Color(0xFFE2E8F0), shape: BoxShape.circle),
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
             child: IconButton(
-              icon: const Icon(Icons.refresh_rounded, color: Color(0xFF0F172A), size: 20),
+              tooltip: 'I-refresh ang panahon',
+              icon: const Icon(Icons.refresh_rounded),
               onPressed: _fetchWeather,
             ),
           ),
@@ -276,40 +404,84 @@ class _GuidancePageState extends State<GuidancePage> {
       body: FutureBuilder<WeatherEntity>(
         future: _weatherFuture,
         builder: (context, snapshot) {
-          return SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildHeroStatusBanner(status),
-                const SizedBox(height: 16),
-                
-                // MALINIS NA CARD NA MAY BUTTON LAMANG
-                _buildCalendarLauncherCard(status),
+          return LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth;
+              final isDesktop = width >= 1000;
+              final isTablet = width >= 700;
+              final horizontalPadding = isDesktop
+                  ? 32.0
+                  : isTablet
+                      ? 24.0
+                      : 16.0;
 
-                const SizedBox(height: 16),
-                _buildCropConfigurationCard(),
-                const SizedBox(height: 16),
-                const Text("Lagay at Yugto ng Tanim sa Bukid", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-                const SizedBox(height: 8),
-                _buildStageSelector(),
-                const SizedBox(height: 16),
-                _buildInteractiveTaskChecklist(),
-              ],
-            ),
+              return SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                padding: EdgeInsets.fromLTRB(
+                  horizontalPadding,
+                  12,
+                  horizontalPadding,
+                  32,
+                ),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1280),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildStatusCard(),
+                        const SizedBox(height: 16),
+                        if (isDesktop)
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(child: _buildDateCard()),
+                              const SizedBox(width: 16),
+                              Expanded(child: _buildRiceTypeCard()),
+                            ],
+                          )
+                        else ...[
+                          _buildDateCard(),
+                          const SizedBox(height: 16),
+                          _buildRiceTypeCard(),
+                        ],
+                        const SizedBox(height: 16),
+                        if (isDesktop)
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(flex: 5, child: _buildStageCard()),
+                              const SizedBox(width: 16),
+                              Expanded(flex: 7, child: _buildChecklistCard()),
+                            ],
+                          )
+                        else ...[
+                          _buildStageCard(),
+                          const SizedBox(height: 16),
+                          _buildChecklistCard(),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
           );
         },
       ),
     );
   }
 
-  Widget _buildHeroStatusBanner(PlantingWindowStatus? status) {
+  Widget _buildStatusCard() {
+    final hasDate = _plantingDate != null;
+    final isFuture = hasDate &&
+        _dateOnly(_plantingDate!).isAfter(_dateOnly(DateTime.now()));
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: status?.color ?? const Color(0xFF059669),
+        color: const Color(0xFF059669),
         borderRadius: BorderRadius.circular(24),
       ),
       child: Column(
@@ -317,62 +489,90 @@ class _GuidancePageState extends State<GuidancePage> {
         children: [
           Row(
             children: [
-              Icon(status?.icon ?? Icons.eco_rounded, color: Colors.white, size: 24),
+              const Icon(Icons.eco_rounded, color: Colors.white),
               const SizedBox(width: 8),
-              Text(
-                _plantingDate == null ? "Pumili ng Petsa ng Tanim" : "Edad ng Palay: Araw $_cropAgeDays",
-                style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+              Expanded(
+                child: Text(
+                  !hasDate
+                      ? 'Pumili ng petsa ng tanim'
+                      : isFuture
+                          ? 'Nakatakdang magtanim'
+                          : 'Araw $_cropAgeDays ng palay',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Text(
-            _plantingDate == null
-                ? "Pindutin ang button sa ibaba para magbukas ang kalendaryong may gabay na kulay."
-                : "Petsa ng Tanim: ${_plantingDate!.month}/${_plantingDate!.day}/${_plantingDate!.year} (${status?.label})",
-            style: const TextStyle(color: Colors.white, fontSize: 12),
+            !hasDate
+                ? 'Piliin ang aktuwal na petsa ng pagtatanim.'
+                : '${_formatDate(_plantingDate!)} • ${_selectedType.label} • '
+                    '${_selectedType.maturityDays} araw na baseline',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+            ),
           ),
+          if (hasDate) ...[
+            const SizedBox(height: 8),
+            Text(
+              isFuture
+                  ? 'Magsisimula ang Day 1 sa mismong napiling petsa.'
+                  : 'Kasalukuyang yugto: ${_selectedStage.label}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  /// MALINIS NA CARD WITH BUTTON
-  Widget _buildCalendarLauncherCard(PlantingWindowStatus? status) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
+  Widget _buildDateCard() {
+    return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("📅 Kalendaryo ng Pagtatanim", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F172A))),
-          const SizedBox(height: 4),
           const Text(
-            "Pindutin ang button para buksan ang kalendaryo. Nakakultimada na roon ang Berde (Ligtas) at Pula (Baha/Tuyot).",
+            '📅 Petsa ng Pagtatanim',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+          const SizedBox(height: 5),
+          const Text(
+            'Puwede mong baguhin ang petsa anumang oras. Ang Day, yugto, at maturity target ay awtomatikong nire-recalculate.',
             style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
           ),
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: status?.color ?? const Color(0xFF059669),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              ),
-              icon: const Icon(Icons.calendar_month_rounded, size: 20),
+              onPressed: _openCalendar,
+              icon: const Icon(Icons.calendar_month_rounded),
               label: Text(
                 _plantingDate == null
-                    ? "Buksan ang Kalendaryo ng Tanim"
-                    : "Baguhin ang Petsa (${_plantingDate!.month}/${_plantingDate!.day}/${_plantingDate!.year})",
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    ? 'Pumili ng Petsa'
+                    : 'Baguhin ang Petsa (${_formatDate(_plantingDate!)})',
               ),
-              onPressed: _openColoredCalendarDialog,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF059669),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
             ),
           ),
         ],
@@ -380,33 +580,177 @@ class _GuidancePageState extends State<GuidancePage> {
     );
   }
 
-  Widget _buildCropConfigurationCard() {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
+  Widget _buildRiceTypeCard() {
+    return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("🌾 Uri ng Binhi na Gagamitin (PhilRice)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF0F172A))),
-          const SizedBox(height: 8),
-          DropdownButtonFormField<RiceVariety>(
-            value: _selectedVariety,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
-              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          const Text(
+            '🌾 Uri ng Palay',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+              color: Color(0xFF0F172A),
             ),
-            items: kRiceVarieties.map((v) => DropdownMenuItem(value: v, child: Text(v.name, style: const TextStyle(fontSize: 12)))).toList(),
-            onChanged: (val) {
-              if (val != null) {
-                setState(() => _selectedVariety = val);
-                _updateCropAgeAndStage();
-                _saveData();
-              }
+          ),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<RiceType>(
+            value: _selectedType,
+            isExpanded: true,
+            decoration: InputDecoration(
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            ),
+            items: RiceType.values
+                .map(
+                  (type) => DropdownMenuItem(
+                    value: type,
+                    child: Text(
+                      type.label,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                )
+                .toList(),
+            onChanged: _changeRiceType,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _selectedType.maturityNote,
+            style: const TextStyle(
+              fontSize: 11,
+              color: Color(0xFF64748B),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStageCard() {
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '🌱 Awtomatikong Yugto ng Tanim',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              CircleAvatar(
+                radius: 20,
+                backgroundColor: const Color(0xFF059669),
+                child: Icon(
+                  _selectedStage.icon,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _selectedStage.label,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              if (_plantingDate != null) ...[
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    'Day $_cropAgeDays / ${_profile.maturityDays}',
+                    textAlign: TextAlign.end,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF64748B),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 12),
+          LinearProgressIndicator(
+            value: _plantingDate == null
+                ? 0
+                : (_cropAgeDays / _profile.maturityDays).clamp(0.0, 1.0).toDouble(),
+            minHeight: 8,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Target maturity: ${_profile.maturityDays} araw '
+            '(${_selectedType.referenceVariety})',
+            style: const TextStyle(
+              fontSize: 11,
+              color: Color(0xFF64748B),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChecklistCard() {
+    final tasks = _getTasksForStage(_selectedStage);
+
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Mga Gagawin • ${_selectedStage.label}',
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+          const Divider(),
+          ...tasks.map(
+            (task) {
+              final checked = _completedTasks[task] ?? false;
+              return CheckboxListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                activeColor: const Color(0xFF059669),
+                title: Text(
+                  task,
+                  style: TextStyle(
+                    fontSize: 12,
+                    decoration:
+                        checked ? TextDecoration.lineThrough : null,
+                    color: const Color(0xFF334155),
+                  ),
+                ),
+                value: checked,
+                onChanged: (value) {
+                  setState(() {
+                    _completedTasks[task] = value ?? false;
+                  });
+                  _saveData();
+                },
+              );
             },
           ),
         ],
@@ -414,163 +758,287 @@ class _GuidancePageState extends State<GuidancePage> {
     );
   }
 
-  Widget _buildStageSelector() {
-    return SizedBox(
-      height: 70,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        itemCount: RiceStage.values.length,
-        itemBuilder: (context, index) {
-          final stage = RiceStage.values[index];
-          final isSelected = _selectedStage == stage;
-          return GestureDetector(
-            onTap: () => setState(() => _selectedStage = stage),
-            child: Container(
-              margin: const EdgeInsets.only(right: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: isSelected ? const Color(0xFF059669) : Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: isSelected ? const Color(0xFF059669) : const Color(0xFFE2E8F0)),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(stage.icon, color: isSelected ? Colors.white : const Color(0xFF059669), size: 18),
-                  const SizedBox(height: 4),
-                  Text(
-                    stage.label,
-                    style: TextStyle(fontSize: 10, color: isSelected ? Colors.white : const Color(0xFF0F172A), fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildInteractiveTaskChecklist() {
-    final tasks = _getTasksForStage(_selectedStage);
+  Widget _card({required Widget child}) {
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text("Mga Gagawin sa Bukid: ${_selectedStage.label}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F172A))),
-          const Divider(),
-          ...tasks.map((task) {
-            final isChecked = _completedTasks[task] ?? false;
-            return CheckboxListTile(
-              dense: true,
-              activeColor: const Color(0xFF059669),
-              title: Text(task, style: TextStyle(fontSize: 12, decoration: isChecked ? TextDecoration.lineThrough : null, color: const Color(0xFF334155))),
-              value: isChecked,
-              onChanged: (val) {
-                setState(() => _completedTasks[task] = val ?? false);
-                _saveData();
-              },
-            );
-          }),
-        ],
-      ),
+      child: child,
     );
   }
 
   List<String> _getTasksForStage(RiceStage stage) {
     switch (stage) {
-      case RiceStage.preparation:
+      case RiceStage.notStarted:
         return [
-          "Mag-araro at magsuklay ng lupa 2 hanggang 3 linggo bago magtanim.",
-          "Subukan kung maganda ang binhi (Germination Test).",
+          'Pumili muna ng aktuwal na petsa ng pagtatanim.',
+          'Tiyaking tama ang napiling uri: Inbred o Hybrid.',
         ];
-      case RiceStage.planning:
+
+      case RiceStage.establishment:
         return [
-          "Pantayin nang husto ang lupa gamit ang suyod o leveling board.",
-          "Ihanda ang gagamiting abono at mga kagamitan sa bukid.",
+          'Bantayan ang batang palay laban sa golden apple snail at iba pang peste.',
+          'Panatilihing maayos ang kondisyon ng tubig at field establishment.',
         ];
+
       case RiceStage.vegetative:
         return [
-          "Unang Pag-aabono (10-14 araw pagkatanim): Maglagay ng Complete (14-14-14).",
-          "Pangalawang Pag-aabono (28-30 araw): Tingnan ang kulay ng dahon (LCC) bago maglagay ng Urea.",
+          'Regular na obserbahan ang pagsusuwi at kulay ng dahon.',
+          'Gamitin ang Leaf Color Chart (LCC) kung bahagi ito ng iyong nutrient-management recommendation.',
         ];
+
       case RiceStage.reproductive:
         return [
-          "Panatilihing may tubig na humigit-kumulang 3 hanggang 5 sentimetro ang lalim sa petak.",
-          "Bantayan ang mga pesteng atangya o tipaklong habang nagbubulaklak ang palay.",
+          'Bantayan ang panicle initiation, pagbuo ng uhay, at pamumulaklak.',
+          'Iangkop ang nitrogen management sa variety, crop establishment, tubig, lupa, at klima.',
         ];
+
       case RiceStage.ripening:
         return [
-          "Patuyuin na ang petak (alisin ang tubig) 7 hanggang 10 araw bago mag-ani.",
+          'Bantayan ang paghinog ng butil at kondisyon ng taniman.',
+          'Ihanda ang harvesting at drying equipment bago umabot sa maturity target.',
         ];
-      case RiceStage.harvesting:
+
+      case RiceStage.harvest:
         return [
-          "Mag-ani kapag kulay ginto na ang 80% hanggang 85% ng mga butil sa ulay.",
-          "Patuyuin agad ang naaning palay sa loob ng 24 oras upang hindi masira.",
+          'Suriin ang maturity ng pananim bago mag-ani; huwag umasa sa calendar date lamang.',
+          'Ihanda ang agarang pagpapatuyo pagkatapos ng ani.',
         ];
     }
   }
 }
 
-/// POP-UP DIALOG NG CUSTOM CALENDAR NA MAY KULAY
-class _ColoredCalendarModal extends StatefulWidget {
+class _PlantingDateDialog extends StatefulWidget {
   final DateTime initialDate;
-  final Function(DateTime) onDateSelected;
+  final DateTime? selectedDate;
+  final ValueChanged<DateTime> onDateSelected;
+  final WeatherEntity? weatherData;
+  final _CropProfile profile;
 
-  const _ColoredCalendarModal({required this.initialDate, required this.onDateSelected});
+  const _PlantingDateDialog({
+    required this.initialDate,
+    required this.selectedDate,
+    required this.onDateSelected,
+    this.weatherData,
+    required this.profile,
+  });
 
   @override
-  State<_ColoredCalendarModal> createState() => _ColoredCalendarModalState();
+  State<_PlantingDateDialog> createState() => _PlantingDateDialogState();
 }
 
-class _ColoredCalendarModalState extends State<_ColoredCalendarModal> {
+class _PlantingDateDialogState extends State<_PlantingDateDialog> {
   late DateTime _focusedMonth;
+  DateTime? _previewDate;
 
   @override
   void initState() {
     super.initState();
-    _focusedMonth = widget.initialDate;
+    _focusedMonth =
+        DateTime(widget.initialDate.year, widget.initialDate.month, 1);
+    _previewDate = widget.selectedDate ?? widget.initialDate;
   }
 
-  String _getMonthName(int month) {
-    const months = ['Enero', 'Pebrero', 'Marso', 'Abril', 'Mayo', 'Hulyo', 'Hulyo', 'Agosto', 'Setyembre', 'Oktubre', 'Nobyembre', 'Disyembre'];
+  String _monthName(int month) {
+    const months = [
+      'Enero',
+      'Pebrero',
+      'Marso',
+      'Abril',
+      'Mayo',
+      'Hunyo',
+      'Hulyo',
+      'Agosto',
+      'Setyembre',
+      'Oktubre',
+      'Nobyembre',
+      'Disyembre',
+    ];
     return months[month - 1];
+  }
+
+  String _formatShortDate(DateTime date) =>
+      '${date.day}/${date.month}/${date.year}';
+
+  bool _sameDate(DateTime? a, DateTime b) {
+    if (a == null) return false;
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  Map<String, dynamic> _getPlantingSuitability(DateTime date) {
+    final harvestDate = date.add(Duration(days: widget.profile.maturityDays));
+
+    // 1. Weather Forecast Check para sa napiling araw
+    if (widget.weatherData != null) {
+      final condition = widget.weatherData!.condition?.toLowerCase() ?? '';
+      if (condition.contains('rain') ||
+          condition.contains('storm') ||
+          condition.contains('heavy') ||
+          condition.contains('thunder')) {
+        return {
+          'isGood': false,
+          'color': const Color(0xFFEF4444), // RED
+          'reason':
+              'HINDI ADVISABLE: May inaasahang malakas na ulan o bagyo na pwedeng makasira o mahanaw ang binhi.',
+        };
+      }
+    }
+
+    // 2. TAGTUYOT / MATAAS NA INIT (Marso hanggang Abril)
+    if (date.month == 3 || date.month == 4) {
+      return {
+        'isGood': false,
+        'color': const Color(0xFFEF4444), // RED
+        'reason':
+            'HINDI ADVISABLE (Tagtuyot): Peak ng matinding init sa Capalangan. Mabilis matuyo ang patubig sa bukid at maaaring ma-heat stress ang palay.',
+      };
+    }
+
+    // 3. PEAK NG BAHA AT HABAGAT (Hulyo hanggang Setyembre)
+    if (date.month >= 7 && date.month <= 9) {
+      return {
+        'isGood': false,
+        'color': const Color(0xFFEF4444), // RED
+        'reason':
+            'HINDI ADVISABLE (Peligro sa Baha): Ang crop duration (${_formatShortDate(date)} - ${_formatShortDate(harvestDate)}) ay tatapat sa peak ng Habagat at Bagyo sa Pampanga. Malaki ang posibilidad na malunod ang palay.',
+      };
+    }
+
+    // 4. TRANSITION WINDOW (Huling kalahati ng Hunyo)
+    if (date.month == 6 && date.day > 15) {
+      return {
+        'isGood': false,
+        'color': const Color(0xFFEF4444), // RED
+        'reason':
+            'HINDI ADVISABLE: Ang pag-aani (${_formatShortDate(harvestDate)}) ay tatapat sa panahon ng bagyo at pag-apaw ng tubig sa Pampanga.',
+      };
+    }
+
+    // 5. UNANG TANIM / EARLY WET SEASON (Mayo hanggang Gitna ng Hunyo)
+    if (date.month == 5 || (date.month == 6 && date.day <= 15)) {
+      return {
+        'isGood': true,
+        'color': const Color(0xFF059669), // GREEN
+        'reason':
+            'MAGANDANG MAGTANIM (Unang Tanim): Sapat ang ulan para sa pagpapatatag at makakahabol sa pag-ani (${_formatShortDate(harvestDate)}) bago ang matinding baha ng Agosto.',
+      };
+    }
+
+    // 6. PANGALAWANG TANIM / DRY SEASON (Nobyembre hanggang Pebrero)
+    if (date.month >= 11 || date.month <= 2) {
+      return {
+        'isGood': true,
+        'color': const Color(0xFF059669), // GREEN
+        'reason':
+            'MAGANDANG MAGTANIM (Dry Season): Ligtas sa baha at bagyo. Aani ng ${_formatShortDate(harvestDate)}. Siguraduhin lamang ang sapat na irigasyon.',
+      };
+    }
+
+    // Default Fallback
+    return {
+      'isGood': true,
+      'color': const Color(0xFF059669), // GREEN
+      'reason':
+          'MAGANDANG MAGTANIM: Maayos ang panahon para sa pagpapalago ng palay hanggang sa pag-ani (${_formatShortDate(harvestDate)}).',
+    };
+  }
+
+  void _confirmSelection(DateTime date, Map<String, dynamic> suitability) {
+    if (!suitability['isGood']) {
+      // Magpakita ng Warning Dialog kapag Pula (Not Advisable)
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Color(0xFFEF4444), size: 28),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Babala sa Pagtatanim',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFFEF4444),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            'Ang napili mong petsa (${_formatShortDate(date)}) ay HINDI ADVISABLE dahil:\n\n'
+            '${suitability['reason']}\n\n'
+            'Sigurado ka bang gusto mo pa ring itakda ang petsang ito?',
+            style: const TextStyle(fontSize: 13, color: Color(0xFF334155)),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Pumili ng Ibang Petsa'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFEF4444),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () {
+                Navigator.pop(ctx);
+                widget.onDateSelected(date);
+              },
+              child: const Text('Ipagpatuloy Pa Rin'),
+            ),
+          ],
+        ),
+      );
+    } else {
+      // Diretso select kapag Green
+      widget.onDateSelected(date);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final year = _focusedMonth.year;
     final month = _focusedMonth.month;
+    final days = DateUtils.getDaysInMonth(year, month);
+    final first = DateTime(year, month, 1);
+    final start = first.weekday % 7;
 
-    final daysInMonth = DateUtils.getDaysInMonth(year, month);
-    final firstDayOfMonth = DateTime(year, month, 1);
-    final startingWeekday = firstDayOfMonth.weekday % 7;
+    final selectedInfo = _previewDate != null
+        ? _getPlantingSuitability(_previewDate!)
+        : null;
 
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // HEADER NG POP-UP
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+      ),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 20),
+      child: SafeArea(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  "${_getMonthName(month)} $year",
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                ),
                 Row(
                   children: [
+                    Expanded(
+                      child: Text(
+                        '${_monthName(month)} $year',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
                     IconButton(
                       icon: const Icon(Icons.chevron_left_rounded),
                       onPressed: () {
@@ -589,104 +1057,207 @@ class _ColoredCalendarModalState extends State<_ColoredCalendarModal> {
                     ),
                   ],
                 ),
-              ],
-            ),
-            const SizedBox(height: 6),
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _buildLegendItem(
+                        const Color(0xFF059669), 'Magandang Magtanim'),
+                    const SizedBox(width: 16),
+                    _buildLegendItem(
+                        const Color(0xFFEF4444), 'Hindi Advisable'),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: ['Ling', 'Lun', 'Mar', 'Miy', 'Huw', 'Biy', 'Sab']
+                      .map(
+                        (day) => SizedBox(
+                          width: 34,
+                          child: Text(
+                            day,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF64748B),
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+                const SizedBox(height: 8),
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: start + days,
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 7,
+                    mainAxisSpacing: 6,
+                    crossAxisSpacing: 6,
+                    childAspectRatio: 1.05,
+                  ),
+                  itemBuilder: (context, index) {
+                    if (index < start) {
+                      return const SizedBox.shrink();
+                    }
 
-            // LEGEND SA LOOB NG MODAL
-            const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _ModalLegendDot(color: Color(0xFF059669), label: "Berde = Ligtas"),
-                SizedBox(width: 16),
-                _ModalLegendDot(color: Color(0xFFDC2626), label: "Pula = Delikado"),
-              ],
-            ),
-            const SizedBox(height: 12),
+                    final day = index - start + 1;
+                    final date = DateTime(year, month, day);
+                    final isPreviewed = _sameDate(_previewDate, date);
+                    final isCurrentlySaved = _sameDate(widget.selectedDate, date);
+                    final isToday = _sameDate(DateTime.now(), date);
 
-            // MGA ARAW SA LINGGO
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: ['Ling', 'Lun', 'Mar', 'Miy', 'Huw', 'Biy', 'Sab']
-                  .map((d) => SizedBox(
-                        width: 32,
-                        child: Text(d, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
-                      ))
-                  .toList(),
-            ),
-            const SizedBox(height: 8),
+                    final suitability = _getPlantingSuitability(date);
+                    final Color statusColor = suitability['color'];
 
-            // GRID NG MGA ARAW SA POP-UP
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: startingWeekday + daysInMonth,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 7,
-                mainAxisSpacing: 6,
-                crossAxisSpacing: 6,
-              ),
-              itemBuilder: (context, index) {
-                if (index < startingWeekday) {
-                  return const SizedBox.shrink();
-                }
-
-                final dayNumber = index - startingWeekday + 1;
-                final currentDate = DateTime(year, month, dayNumber);
-                final status = _GuidancePageState.evaluateDate(currentDate);
-
-                return InkWell(
-                  onTap: () => widget.onDateSelected(currentDate),
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: status.color.withOpacity(0.2),
+                    return InkWell(
+                      onTap: () {
+                        // Unang pindot: I-preview lang muna ang impormasyon
+                        setState(() {
+                          _previewDate = date;
+                        });
+                      },
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: status.color, width: 1.5),
-                    ),
-                    child: Center(
-                      child: Text(
-                        "$dayNumber",
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: status.color,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: isPreviewed
+                              ? statusColor
+                              : statusColor.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: isPreviewed
+                                ? statusColor
+                                : isCurrentlySaved
+                                    ? Colors.amber.shade700
+                                    : isToday
+                                        ? Colors.blueAccent
+                                        : statusColor.withOpacity(0.4),
+                            width: isPreviewed || isCurrentlySaved || isToday ? 2 : 1,
+                          ),
+                        ),
+                        child: Center(
+                          child: Text(
+                            '$day',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: isPreviewed
+                                  ? Colors.white
+                                  : const Color(0xFF0F172A),
+                            ),
+                          ),
                         ),
                       ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 12),
+                if (selectedInfo != null && _previewDate != null) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: (selectedInfo['color'] as Color).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color:
+                            (selectedInfo['color'] as Color).withOpacity(0.4),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              selectedInfo['isGood']
+                                  ? Icons.check_circle_rounded
+                                  : Icons.warning_rounded,
+                              color: selectedInfo['color'],
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '${_formatShortDate(_previewDate!)} • ${selectedInfo['isGood'] ? 'Magandang Magtanim' : 'Hindi Advisable'}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: selectedInfo['color'],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          selectedInfo['reason'],
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: selectedInfo['color'],
+                            height: 1.3,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: selectedInfo['color'],
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                            ),
+                            onPressed: () {
+                              _confirmSelection(_previewDate!, selectedInfo);
+                            },
+                            child: Text(
+                              'Piliin ang Petsang Ito (${_formatShortDate(_previewDate!)})',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                );
-              },
+                ],
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Isara'),
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Isara", style: TextStyle(color: Color(0xFF64748B))),
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
-}
 
-class _ModalLegendDot extends StatelessWidget {
-  final Color color;
-  final String label;
-
-  const _ModalLegendDot({required this.color, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildLegendItem(Color color, String label) {
     return Row(
       children: [
         Container(
           width: 10,
           height: 10,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+          ),
         ),
         const SizedBox(width: 4),
-        Text(label, style: TextStyle(fontSize: 11, color: Colors.grey[800], fontWeight: FontWeight.bold)),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+        ),
       ],
     );
   }

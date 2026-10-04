@@ -166,6 +166,7 @@ class _InventoryPageState extends State<InventoryPage> {
             final docs = snapshot.data?.docs ?? [];
 
             double totalExpectedValuation = 0.0;
+            double totalFixedCost = 0.0;
             double totalExpectedProfit = 0.0;
             int totalRemainingStockKg = 0;
             int totalInitialStockKg = 0;
@@ -182,21 +183,21 @@ class _InventoryPageState extends State<InventoryPage> {
                       .toDouble();
               final double totalCost = (data['totalCost'] ?? 0.0).toDouble();
 
-              double totalRevenue = 0.0;
+              double batchExpectedGross = 0.0;
               final List breakdowns = data['breakdowns'] ?? [];
               for (var b in breakdowns) {
                 final double bKg = ((b['kg'] ?? 0.0) as num).toDouble();
                 final double bSrp = ((b['srp'] ?? 0.0) as num).toDouble();
-                totalRevenue += (bKg * bSrp);
+                batchExpectedGross += (bKg * bSrp);
               }
 
-              final double totalProfit = totalRevenue - totalCost;
-
-              totalExpectedValuation += totalRevenue;
-              totalExpectedProfit += totalProfit;
+              totalExpectedValuation += batchExpectedGross;
+              totalFixedCost += totalCost;
               totalRemainingStockKg += remainingKg.toInt();
               totalInitialStockKg += initialKg.toInt();
             }
+
+            totalExpectedProfit = totalExpectedValuation - totalFixedCost;
 
             return Column(
               children: [
@@ -363,7 +364,7 @@ class _InventoryPageState extends State<InventoryPage> {
                     Icons.account_balance_wallet_outlined,
                     _infoBlue),
                 const SizedBox(width: 8),
-                _buildMetricCardFixed("Natitirang Stock", "$totalStockKg / $totalInitialKg kg",
+                _buildMetricCardFixed("Current Stock", "$totalStockKg / $totalInitialKg kg",
                     Icons.scale_outlined, _primaryGreen),
                 const SizedBox(width: 8),
                 _buildMetricCardFixed(
@@ -473,6 +474,7 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
+  // --- INAYOS AT PINAGANDANG BATCH CARD ---
   Widget _buildBatchCardWithSeparatedConditions(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>? ?? {};
 
@@ -488,6 +490,7 @@ class _InventoryPageState extends State<InventoryPage> {
         ((data['remainingKg'] ?? initialKg) as num).toDouble();
     final double soldKg = initialKg - remainingKg;
 
+    // Gross at Profit computations
     double totalExpectedGross = 0.0;
     for (var b in breakdownsData) {
       final double bKg = ((b['kg'] ?? 0.0) as num).toDouble();
@@ -495,14 +498,10 @@ class _InventoryPageState extends State<InventoryPage> {
       totalExpectedGross += (bKg * bSrp);
     }
 
-    // Puhunan per kg na nakapako batay sa orihinal na kabuuang ani
     final double fixedCostPerKg = initialKg > 0 ? totalCost / initialKg : 0.0;
     final double avgSrpPerKg = initialKg > 0 ? totalExpectedGross / initialKg : 0.0;
-    
-    // Inaasahang Tubó sa Buong Ani
     final double totalExpectedProfit = totalExpectedGross - totalCost;
 
-    // Aktwal / Kasalukuyang Benta at Tubó
     final double currentGrossSold = soldKg * avgSrpPerKg;
     final double currentCostSold = soldKg * fixedCostPerKg;
     final double currentProfitSold = currentGrossSold - currentCostSold;
@@ -522,13 +521,14 @@ class _InventoryPageState extends State<InventoryPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // HEADER ROW (NILAGAY DIN ANG CURRENT STOCK DITO PARA MADALING MAKITA NI FARMER)
           Row(
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
-                  width: 48,
-                  height: 48,
+                  width: 44,
+                  height: 44,
                   color: Colors.grey.shade200,
                   child: imageUrl.isNotEmpty
                       ? (imageUrl.startsWith('http')
@@ -558,16 +558,40 @@ class _InventoryPageState extends State<InventoryPage> {
                   ],
                 ),
               ),
+              // CURRENT STOCK HIGHLIGHT SA ITTAAS
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _primaryGreenSoft,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: _primaryGreen.withOpacity(0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    const Text("Natitirang Stock",
+                        style: TextStyle(fontSize: 8, color: _primaryGreen, fontWeight: FontWeight.bold)),
+                    Text(
+                      "${remainingKg.toStringAsFixed(0)} kg left",
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                        color: _primaryGreen,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               IconButton(
                 constraints: const BoxConstraints(),
-                padding: const EdgeInsets.symmetric(horizontal: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 2),
                 icon: const Icon(Icons.edit_note_rounded,
                     size: 20, color: _infoBlue),
                 onPressed: () => _showEditProductModal(context, doc),
               ),
               IconButton(
                 constraints: const BoxConstraints(),
-                padding: const EdgeInsets.symmetric(horizontal: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 2),
                 icon: const Icon(Icons.archive_outlined,
                     size: 18, color: _textSecondary),
                 onPressed: () =>
@@ -575,123 +599,76 @@ class _InventoryPageState extends State<InventoryPage> {
               )
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
 
-          const Text("MGA KONDISYON NG ANI (SEPARATED):",
-              style: TextStyle(
-                  fontSize: 9,
-                  fontWeight: FontWeight.bold,
-                  color: _textSecondary)),
-          const SizedBox(height: 6),
-
+          // MALINIS AT MAS IMPORMATIBONG KONDISYON LIST (NANDITO NA ANG SRP/KG AT STOCK RATIO)
           ...breakdownsData.map((b) {
             final String cond = b['condition'] ?? "N/A";
             final double bKg = ((b['kg'] ?? 0.0) as num).toDouble();
             final double bSrp = ((b['srp'] ?? 0.0) as num).toDouble();
-            final double bCostShare =
-                ((b['allocatedCost'] ?? 0.0) as num).toDouble();
-            final double bCostPerKg = bKg > 0 ? bCostShare / bKg : 0.0;
-            final double bProfitPerKg = bSrp - bCostPerKg;
-            final double bGrossValue = bKg * bSrp;
-            final double bTotalProfit = bGrossValue - bCostShare;
 
             bool isDry = cond.toLowerCase().contains("tuyo");
 
             return Container(
               margin: const EdgeInsets.only(bottom: 6),
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
                 color: _cardBg,
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
                     color: isDry
-                        ? _warningOrange.withOpacity(0.5)
-                        : _infoBlue.withOpacity(0.5)),
+                        ? _warningOrange.withOpacity(0.3)
+                        : _infoBlue.withOpacity(0.3)),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Expanded(
-                        child: Row(
-                          children: [
-                            Icon(
-                                isDry
-                                    ? Icons.wb_sunny_rounded
-                                    : Icons.water_drop_rounded,
-                                size: 14,
-                                color: isDry ? _warningOrange : _infoBlue),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(
-                                "$name - $cond",
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  color: isDry ? _warningOrange : _infoBlue,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
+                      Icon(
+                          isDry
+                              ? Icons.wb_sunny_rounded
+                              : Icons.water_drop_rounded,
+                          size: 14,
+                          color: isDry ? _warningOrange : _infoBlue),
+                      const SizedBox(width: 6),
+                      Text(
+                        cond,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: isDry ? _warningOrange : _infoBlue,
                         ),
                       ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      Text(
+                        "SRP: ₱${bSrp.toStringAsFixed(2)}/kg",
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: _primaryGreen,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
                           color: _surfaceBg,
                           borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: _borderLine),
                         ),
                         child: Text(
-                            "Kabuuang Nakuha: ${bKg.toStringAsFixed(0)} kg",
-                            style: const TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: _textPrimary)),
+                          "${bKg.toStringAsFixed(0)} kg",
+                          style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: _textSecondary),
+                        ),
                       ),
                     ],
                   ),
-                  const Divider(height: 8, color: _borderLine),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _buildMiniInfo(
-                          "SRP/kg", "₱${bSrp.toStringAsFixed(2)}", _primaryGreen),
-                      _buildMiniInfo("Puhunan/kg",
-                          "₱${bCostPerKg.toStringAsFixed(2)}", _warningOrange),
-                      _buildMiniInfo(
-                          "Tubó/kg",
-                          "₱${bProfitPerKg.toStringAsFixed(2)}",
-                          bProfitPerKg >= 0 ? _primaryGreen : _dangerRed),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: _surfaceBg,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text("Puhunan Share: ₱${bCostShare.toStringAsFixed(2)}",
-                            style: const TextStyle(
-                                fontSize: 9, color: _textSecondary)),
-                        Text("Inaasahang Tubó: ₱${bTotalProfit.toStringAsFixed(2)}",
-                            style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
-                                color: bTotalProfit >= 0
-                                    ? _primaryGreen
-                                    : _dangerRed)),
-                      ],
-                    ),
-                  )
                 ],
               ),
             );
@@ -699,47 +676,52 @@ class _InventoryPageState extends State<InventoryPage> {
 
           const SizedBox(height: 4),
 
-          // OVERALL SUMMARY CARD
+          // KABUUANG COMPUTATION AT KITA BOX (SOLO & KUMPLETO)
           Container(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: _infoBlueBg,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(color: _infoBlue.withOpacity(0.3)),
             ),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Row(
                   children: [
-                    Icon(Icons.analytics_rounded, size: 12, color: _infoBlue),
+                    Icon(Icons.analytics_rounded, size: 14, color: _infoBlue),
                     SizedBox(width: 4),
                     Text("KABUUANG COMPUTATION AT KITA",
                         style: TextStyle(
-                            fontSize: 9,
+                            fontSize: 10,
                             fontWeight: FontWeight.bold,
                             color: _infoBlue)),
                   ],
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 8),
+
+                // KABUUANG STOCKS AT PUHUNAN
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _buildSummaryColumn("Fixed Puhunan",
-                        "₱${totalCost.toStringAsFixed(2)}", _warningOrange),
                     _buildSummaryColumn(
-                        "Puhunan/kg",
-                        "₱${fixedCostPerKg.toStringAsFixed(2)}",
-                        _textPrimary),
-                    _buildSummaryColumn(
-                        "Natitirang Stock",
+                        "Current Stock / Total",
                         "${remainingKg.toStringAsFixed(0)} / ${initialKg.toStringAsFixed(0)} kg",
                         _infoBlue),
+                    _buildSummaryColumn("Kabuuang Puhunan",
+                        "₱${totalCost.toStringAsFixed(2)}", _warningOrange),
+                    _buildSummaryColumn(
+                        "Puhunan / kg",
+                        "₱${fixedCostPerKg.toStringAsFixed(2)}",
+                        _textPrimary),
                   ],
                 ),
                 const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 4.0),
+                  padding: EdgeInsets.symmetric(vertical: 6.0),
                   child: Divider(height: 1, color: Color(0xFFCBD5E1)),
                 ),
+
+                // BENTA AT KITA COMPUTATIONS
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -747,14 +729,14 @@ class _InventoryPageState extends State<InventoryPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text("Pinaka Total Gross Value",
+                          const Text("Inaasahang Benta (Gross)",
                               style: TextStyle(
-                                  fontSize: 8, color: _textSecondary)),
+                                  fontSize: 8, color: _textSecondary, fontWeight: FontWeight.w600)),
                           FittedBox(
                             fit: BoxFit.scaleDown,
                             child: Text(_formatCurrency(totalExpectedGross),
                                 style: const TextStyle(
-                                    fontSize: 11,
+                                    fontSize: 12,
                                     fontWeight: FontWeight.bold,
                                     color: _textPrimary)),
                           ),
@@ -783,7 +765,7 @@ class _InventoryPageState extends State<InventoryPage> {
                                   ? "+${_formatCurrency(totalExpectedProfit)}"
                                   : "-${_formatCurrency(totalExpectedProfit.abs())}",
                               style: TextStyle(
-                                fontSize: 11,
+                                fontSize: 12,
                                 fontWeight: FontWeight.w900,
                                 color: totalExpectedProfit >= 0
                                     ? _primaryGreen
@@ -812,18 +794,6 @@ class _InventoryPageState extends State<InventoryPage> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildMiniInfo(String label, String val, Color valColor) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(fontSize: 8, color: _textSecondary)),
-        Text(val,
-            style: TextStyle(
-                fontSize: 10, fontWeight: FontWeight.bold, color: valColor)),
-      ],
     );
   }
 

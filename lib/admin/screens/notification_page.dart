@@ -38,15 +38,51 @@ class _NotificationPageState extends State<NotificationPage> {
           ),
         ),
         actions: [
-          TextButton.icon(
+          IconButton(
+            tooltip: "Mark all read",
+            icon: const Icon(Icons.done_all_rounded, size: 20, color: _brandPrimary),
             onPressed: _markAllAsRead,
-            icon: const Icon(Icons.done_all_rounded, size: 18, color: _brandPrimary),
-            label: const Text(
-              "Mark all read",
-              style: TextStyle(color: _brandPrimary, fontWeight: FontWeight.w700, fontSize: 13),
-            ),
           ),
-          const SizedBox(width: 8),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert_rounded, color: _textDark),
+            tooltip: "Delete options",
+            onSelected: (value) {
+              if (value == 'clear_current') {
+                _confirmDeleteFiltered();
+              } else if (value == 'clear_all') {
+                _confirmDeleteAll();
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'clear_current',
+                child: Row(
+                  children: [
+                    const Icon(Icons.cleaning_services_rounded, size: 18, color: Colors.orange),
+                    const SizedBox(width: 8),
+                    Text(
+                      _activeTab == 'All' ? "Delete all shown" : "Delete '$_activeTab' notifications",
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'clear_all',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete_forever_rounded, size: 18, color: Colors.red),
+                    SizedBox(width: 8),
+                    Text(
+                      "Delete ALL notifications",
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.red),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 4),
         ],
       ),
       body: SafeArea(
@@ -140,10 +176,8 @@ class _NotificationPageState extends State<NotificationPage> {
           final data = doc.data() as Map<String, dynamic>;
           final recipient = data['recipientType'] ?? '';
 
-          // Customer notifications are not shown in this admin hub.
           if (recipient == 'customer') return false;
 
-          // Reject explicitly marked dummy/test notifications.
           final isReal = data['isReal'];
           if (isReal is bool && !isReal) return false;
 
@@ -183,8 +217,6 @@ class _NotificationPageState extends State<NotificationPage> {
                 data['body'] != null &&
                 data['timestamp'] != null;
 
-            // Only real app-generated records, or legacy records that are
-            // complete and have a supported notification type, are shown.
             return hasRequiredContent &&
                 (hasRealMarker || validTypes.contains(type) || isWeatherType);
           }
@@ -217,7 +249,24 @@ class _NotificationPageState extends State<NotificationPage> {
           itemBuilder: (context, index) {
             final doc = filteredDocs[index];
             final data = doc.data() as Map<String, dynamic>;
-            return _buildNotificationCard(doc.id, data);
+
+            return Dismissible(
+              key: Key(doc.id),
+              direction: DismissDirection.endToStart,
+              background: Container(
+                alignment: Alignment.centerRight,
+                padding: const EdgeInsets.only(right: 20),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade400,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.delete_rounded, color: Colors.white, size: 24),
+              ),
+              onDismissed: (direction) {
+                _deleteSingleNotification(doc.id);
+              },
+              child: _buildNotificationCard(doc.id, data),
+            );
           },
         );
       },
@@ -358,6 +407,7 @@ class _NotificationPageState extends State<NotificationPage> {
                           ),
                           if (!isRead)
                             Container(
+                              margin: const EdgeInsets.only(right: 6),
                               width: 7,
                               height: 7,
                               decoration: const BoxDecoration(
@@ -365,6 +415,14 @@ class _NotificationPageState extends State<NotificationPage> {
                                 shape: BoxShape.circle,
                               ),
                             ),
+                          InkWell(
+                            onTap: () => _deleteSingleNotification(docId),
+                            borderRadius: BorderRadius.circular(20),
+                            child: const Padding(
+                              padding: EdgeInsets.all(2.0),
+                              child: Icon(Icons.close_rounded, size: 18, color: _textMuted),
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 4),
@@ -422,6 +480,142 @@ class _NotificationPageState extends State<NotificationPage> {
         ],
       ),
     );
+  }
+
+  // --- Deletion Functions ---
+
+  void _deleteSingleNotification(String docId) async {
+    await FirebaseFirestore.instance.collection('notifications').doc(docId).delete();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Notification deleted"),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  void _confirmDeleteFiltered() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Delete Notifications"),
+        content: Text(
+          _activeTab == 'All'
+              ? "Sigurado ka bang gusto mong burahin ang lahat ng visible notifications?"
+              : "Sigurado ka bang gusto mong burahin ang lahat ng '$_activeTab' notifications?",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _deleteFilteredNotifications();
+            },
+            child: const Text("Delete", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmDeleteAll() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Delete All Notifications"),
+        content: const Text("Sigurado ka bang gusto mong burahin ang LAHAT ng notifications sa system? Hindi na ito maibabalik."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _deleteAllNotifications();
+            },
+            child: const Text("Delete All", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _deleteFilteredNotifications() async {
+    final snapshot = await FirebaseFirestore.instance.collection('notifications').get();
+    final batch = FirebaseFirestore.instance.batch();
+
+    final weatherKeywords = [
+      'weather', 'rain', 'typhoon', 'bagyo', 'habagat', 'amihan', 'monsoon',
+      'hightide', 'lowtide', 'tide', 'flood', 'baha', 'dam', 'spillway',
+      'landslide', 'storm', 'thunderstorm', 'lightning', 'cyclone', 'tsunami',
+      'stormsurge', 'heatindex', 'heatwave', 'drought', 'elprino', 'lanina',
+      'wind', 'gale', 'volcano', 'ashfall', 'earthquake', 'fog', 'cloud',
+      'humidity', 'uv', 'airquality'
+    ];
+
+    int count = 0;
+    for (var doc in snapshot.docs) {
+      final data = doc.data();
+      final type = (data['type'] ?? '').toString().toLowerCase().trim();
+      final subCategory = (data['subCategory'] ?? '').toString().toLowerCase().trim();
+      final recipient = data['recipientType'] ?? '';
+      if (recipient == 'customer') continue;
+
+      final isWeatherType = weatherKeywords.contains(type) || weatherKeywords.contains(subCategory);
+
+      bool matches = false;
+      if (_activeTab == 'All') {
+        matches = true;
+      } else if (_activeTab == 'Messages' && (type == 'message' || type == 'messages')) {
+        matches = true;
+      } else if (_activeTab == 'Weather' && isWeatherType) {
+        matches = true;
+      } else if (_activeTab == 'Orders' && (type == 'order' || type == 'orders')) {
+        matches = true;
+      } else if (_activeTab == 'Users' && (type == 'user' || type == 'users')) {
+        matches = true;
+      } else if (_activeTab == 'Stock' && (type == 'stock' || type == 'stocks')) {
+        matches = true;
+      }
+
+      if (matches) {
+        batch.delete(doc.reference);
+        count++;
+      }
+    }
+
+    if (count > 0) {
+      await batch.commit();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("$count notification(s) deleted.")),
+        );
+      }
+    }
+  }
+
+  void _deleteAllNotifications() async {
+    final snapshot = await FirebaseFirestore.instance.collection('notifications').get();
+    final batch = FirebaseFirestore.instance.batch();
+
+    for (var doc in snapshot.docs) {
+      batch.delete(doc.reference);
+    }
+
+    await batch.commit();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("All notifications deleted.")),
+      );
+    }
   }
 
   void _markAllAsRead() async {
