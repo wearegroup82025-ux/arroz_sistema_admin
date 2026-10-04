@@ -9,12 +9,16 @@ class HarvestBreakdownItem {
   String condition;
   TextEditingController kgController;
   TextEditingController srpController;
+  /// Photos that belong ONLY to this condition/product row.
+  /// Maximum of 9 photos per row.
+  final List<XFile> imageFiles;
 
   HarvestBreakdownItem({
     required this.condition,
     required this.kgController,
     required this.srpController,
-  });
+    List<XFile>? imageFiles,
+  }) : imageFiles = imageFiles ?? [];
 }
 
 const Color _surfaceBg = Color(0xFFF8FAFC);
@@ -29,345 +33,6 @@ const Color _infoBlue = Color(0xFF2563EB);
 const Color _infoBlueBg = Color(0xFFEFF6FF);
 const Color _primaryGreenSoft = Color(0xFFD1FAE5);
 
-Widget _buildMultiPhotoPicker({
-  required BuildContext context,
-  required List<XFile> images,
-  required StateSetter setModalState,
-  required ImagePicker picker,
-  String title = "Mga Larawan ng Produkto (Opsyonal)",
-  String subtitle = "Puwedeng pumili ng hanggang 9 na larawan",
-}) {
-  final media = MediaQuery.of(context);
-  final screenWidth = media.size.width;
-  final scale = screenWidth / 375;
-
-  Future<void> openImageSourcePicker() async {
-    if (images.length >= 9) return;
-
-    // Kung tumatakbo sa Web o PC/Desktop, rekta na sa Gallery / File Explorer
-    if (kIsWeb ||
-        defaultTargetPlatform == TargetPlatform.windows ||
-        defaultTargetPlatform == TargetPlatform.linux ||
-        defaultTargetPlatform == TargetPlatform.macOS) {
-      final remaining = 9 - images.length;
-      if (remaining <= 0) return;
-
-      final picked = await picker.pickMultiImage(
-        imageQuality: 85,
-        maxWidth: 1600,
-      );
-
-      if (picked.isEmpty) return;
-
-      setModalState(() {
-        images.addAll(picked.take(remaining));
-      });
-      return;
-    }
-
-    // Para sa Mobile (Android/iOS)
-    final source = await showModalBottomSheet<ImageSource>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: false,
-      useSafeArea: true,
-      builder: (sheetContext) {
-        return Container(
-          margin: EdgeInsets.fromLTRB(
-            screenWidth * 0.026,
-            0,
-            screenWidth * 0.026,
-            screenWidth * 0.026,
-          ),
-          padding: EdgeInsets.fromLTRB(
-            screenWidth * 0.032,
-            screenWidth * 0.026,
-            screenWidth * 0.032,
-            screenWidth * 0.032,
-          ),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.all(
-              Radius.circular(screenWidth * 0.053),
-            ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: screenWidth * 0.096,
-                height: screenWidth * 0.010,
-                decoration: BoxDecoration(
-                  color: _borderLine,
-                  borderRadius: BorderRadius.circular(screenWidth * 0.26),
-                ),
-              ),
-              SizedBox(height: screenWidth * 0.032),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  "Paano magdagdag ng larawan?",
-                  style: TextStyle(
-                    fontSize: 13 * scale,
-                    fontWeight: FontWeight.w800,
-                    color: _textPrimary,
-                  ),
-                ),
-              ),
-              SizedBox(height: screenWidth * 0.008),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  "Pumili mula sa gallery/PC storage o kumuha ng bagong larawan.",
-                  style: TextStyle(
-                    fontSize: 9.5 * scale,
-                    color: _textSecondary,
-                  ),
-                ),
-              ),
-              SizedBox(height: screenWidth * 0.032),
-              Row(
-                children: [
-                  Expanded(
-                    child: _photoSourceButton(
-                      context: context,
-                      icon: Icons.photo_library_outlined,
-                      title: "Files / Gallery",
-                      subtitle: "Pumili mula sa storage",
-                      onTap: () => Navigator.of(sheetContext)
-                          .pop(ImageSource.gallery),
-                    ),
-                  ),
-                  SizedBox(width: screenWidth * 0.021),
-                  Expanded(
-                    child: _photoSourceButton(
-                      context: context,
-                      icon: Icons.photo_camera_outlined,
-                      title: "Camera",
-                      subtitle: "Kumuha ngayon",
-                      onTap: () => Navigator.of(sheetContext)
-                          .pop(ImageSource.camera),
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: screenWidth * 0.010),
-            ],
-          ),
-        );
-      },
-    );
-
-    if (source == null) return;
-
-    if (source == ImageSource.camera) {
-      final picked = await picker.pickImage(
-        source: ImageSource.camera,
-        imageQuality: 85,
-        maxWidth: 1600,
-      );
-
-      if (picked == null) return;
-
-      setModalState(() {
-        if (images.length < 9) {
-          images.add(picked);
-        }
-      });
-      return;
-    }
-
-    final remaining = 9 - images.length;
-    if (remaining <= 0) return;
-
-    final picked = await picker.pickMultiImage(
-      imageQuality: 85,
-      maxWidth: 1600,
-    );
-
-    if (picked.isEmpty) return;
-
-    setModalState(() {
-      images.addAll(picked.take(remaining));
-    });
-  }
-
-  final double boxDimension = screenWidth * 0.28;
-
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 11 * scale,
-              fontWeight: FontWeight.bold,
-              color: _textPrimary,
-            ),
-          ),
-          Text(
-            "${images.length}/9",
-            style: TextStyle(
-              fontSize: 10 * scale,
-              color: _textSecondary,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-      SizedBox(height: screenWidth * 0.010),
-      Text(
-        subtitle,
-        style: TextStyle(fontSize: 10 * scale, color: _textSecondary),
-      ),
-      SizedBox(height: screenWidth * 0.021),
-      SizedBox(
-        height: boxDimension,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          itemCount: images.length < 9 ? images.length + 1 : images.length,
-          separatorBuilder: (_, __) => SizedBox(width: screenWidth * 0.021),
-          itemBuilder: (context, index) {
-            if (index == images.length && images.length < 9) {
-              return Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(screenWidth * 0.026),
-                  onTap: openImageSourcePicker,
-                  child: Container(
-                    width: boxDimension,
-                    decoration: BoxDecoration(
-                      color: _surfaceBg,
-                      borderRadius: BorderRadius.circular(screenWidth * 0.026),
-                      border: Border.all(
-                        color: _primaryGreen,
-                        width: screenWidth * 0.0032,
-                      ),
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.add_photo_alternate_outlined,
-                          color: _primaryGreen,
-                          size: 28 * scale,
-                        ),
-                        SizedBox(height: screenWidth * 0.010),
-                        Text(
-                          "Magdagdag",
-                          style: TextStyle(
-                            fontSize: 10 * scale,
-                            color: _primaryGreen,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            }
-
-            final xfile = images[index];
-            return Stack(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(screenWidth * 0.026),
-                  child: kIsWeb
-                      ? Image.network(
-                          xfile.path,
-                          width: boxDimension,
-                          height: boxDimension,
-                          fit: BoxFit.cover,
-                        )
-                      : Image.file(
-                          File(xfile.path),
-                          width: boxDimension,
-                          height: boxDimension,
-                          fit: BoxFit.cover,
-                        ),
-                ),
-                Positioned(
-                  top: screenWidth * 0.010,
-                  right: screenWidth * 0.010,
-                  child: Material(
-                    color: Colors.black54,
-                    shape: const CircleBorder(),
-                    child: InkWell(
-                      customBorder: const CircleBorder(),
-                      onTap: () =>
-                          setModalState(() => images.removeAt(index)),
-                      child: SizedBox(
-                        width: screenWidth * 0.066,
-                        height: screenWidth * 0.066,
-                        child: Icon(
-                          Icons.close,
-                          color: Colors.white,
-                          size: 16 * scale,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                if (index == 0)
-                  Positioned(
-                    left: screenWidth * 0.013,
-                    bottom: screenWidth * 0.013,
-                    child: Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: screenWidth * 0.016,
-                        vertical: screenWidth * 0.008,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _primaryGreen,
-                        borderRadius: BorderRadius.circular(screenWidth * 0.013),
-                      ),
-                      child: Text(
-                        "MAIN",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 8 * scale,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            );
-          },
-        ),
-      ),
-      if (images.isEmpty)
-        Padding(
-          padding: EdgeInsets.only(top: screenWidth * 0.018),
-          child: Container(
-            width: double.infinity,
-            padding: EdgeInsets.all(screenWidth * 0.024),
-            decoration: BoxDecoration(
-              color: _infoBlueBg,
-              borderRadius: BorderRadius.circular(screenWidth * 0.021),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.info_outline, size: 15 * scale, color: _infoBlue),
-                SizedBox(width: screenWidth * 0.018),
-                Expanded(
-                  child: Text(
-                    "Opsyonal: Maaari kang mag-upload ng mga larawan mula sa PC o mobile kung mayroon.",
-                    style: TextStyle(fontSize: 10 * scale, color: _infoBlue),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-    ],
-  );
-}
-
 Widget _photoSourceButton({
   required BuildContext context,
   required IconData icon,
@@ -377,7 +42,7 @@ Widget _photoSourceButton({
 }) {
   final media = MediaQuery.of(context);
   final screenWidth = media.size.width;
-  final scale = screenWidth / 375;
+  final scale = (screenWidth / 375).clamp(0.90, 1.15);
 
   return Material(
     color: Colors.transparent,
@@ -450,7 +115,6 @@ class InventoryInputPage extends StatefulWidget {
 class _InventoryInputPageState extends State<InventoryInputPage> {
   final _controller = _InventoryInputController();
   final _formKey = GlobalKey<FormState>();
-  final List<XFile> selectedImages = [];
   final TextEditingController descriptionController = TextEditingController();
   final TextEditingController totalCostController = TextEditingController();
 
@@ -482,11 +146,333 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
     super.dispose();
   }
 
+  Future<void> _addBreakdownWithPhoto() async {
+    final newItem = HarvestBreakdownItem(
+      condition: _controller.riceConditions[
+        breakdownItems.length % _controller.riceConditions.length
+      ],
+      kgController: TextEditingController(),
+      srpController: TextEditingController(),
+    );
+
+    setState(() {
+      breakdownItems.add(newItem);
+    });
+
+    // Every newly added product/condition gets its own photo picker.
+    // It can contain up to 9 photos and never shares photos with another row.
+    await _pickMoreBreakdownPhotos(newItem);
+  }
+
+  Future<void> _pickMoreBreakdownPhotos(HarvestBreakdownItem item) async {
+    if (!mounted || item.imageFiles.length >= 9) return;
+
+    final remaining = 9 - item.imageFiles.length;
+
+    if (kIsWeb ||
+        defaultTargetPlatform == TargetPlatform.windows ||
+        defaultTargetPlatform == TargetPlatform.linux ||
+        defaultTargetPlatform == TargetPlatform.macOS) {
+      final picked = await _controller.picker.pickMultiImage(
+        imageQuality: 85,
+        maxWidth: 1600,
+      );
+
+      if (!mounted || picked.isEmpty) return;
+
+      setState(() {
+        item.imageFiles.addAll(picked.take(remaining));
+      });
+      return;
+    }
+
+    final media = MediaQuery.of(context);
+    final screenWidth = media.size.width;
+    final scale = (screenWidth / 375).clamp(0.90, 1.15);
+
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      useSafeArea: true,
+      builder: (sheetContext) {
+        return Container(
+          margin: EdgeInsets.fromLTRB(
+            screenWidth * 0.026,
+            0,
+            screenWidth * 0.026,
+            screenWidth * 0.026,
+          ),
+          padding: EdgeInsets.all(screenWidth * 0.032),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(screenWidth * 0.053),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                "Magdagdag ng larawan para sa produktong ito",
+                style: TextStyle(
+                  fontSize: 13 * scale,
+                  fontWeight: FontWeight.w800,
+                  color: _textPrimary,
+                ),
+              ),
+              SizedBox(height: screenWidth * 0.010),
+              Text(
+                "Maaari kang maglagay ng hanggang $remaining pang larawan.",
+                style: TextStyle(
+                  fontSize: 9.5 * scale,
+                  color: _textSecondary,
+                ),
+              ),
+              SizedBox(height: screenWidth * 0.032),
+              Row(
+                children: [
+                  Expanded(
+                    child: _photoSourceButton(
+                      context: context,
+                      icon: Icons.photo_library_outlined,
+                      title: "Gallery",
+                      subtitle: "Pumili ng larawan",
+                      onTap: () => Navigator.of(sheetContext)
+                          .pop(ImageSource.gallery),
+                    ),
+                  ),
+                  SizedBox(width: screenWidth * 0.021),
+                  Expanded(
+                    child: _photoSourceButton(
+                      context: context,
+                      icon: Icons.photo_camera_outlined,
+                      title: "Camera",
+                      subtitle: "Kumuha ngayon",
+                      onTap: () => Navigator.of(sheetContext)
+                          .pop(ImageSource.camera),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (!mounted || source == null) return;
+
+    if (source == ImageSource.camera) {
+      final picked = await _controller.picker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 85,
+        maxWidth: 1600,
+      );
+
+      if (!mounted || picked == null) return;
+
+      setState(() {
+        if (item.imageFiles.length < 9) {
+          item.imageFiles.add(picked);
+        }
+      });
+      return;
+    }
+
+    final picked = await _controller.picker.pickMultiImage(
+      imageQuality: 85,
+      maxWidth: 1600,
+    );
+
+    if (!mounted || picked.isEmpty) return;
+
+    setState(() {
+      item.imageFiles.addAll(picked.take(remaining));
+    });
+  }
+
+  void _removeBreakdownPhoto(HarvestBreakdownItem item, int photoIndex) {
+    setState(() {
+      item.imageFiles.removeAt(photoIndex);
+    });
+  }
+
+  Widget _breakdownPhotoPicker(
+    BuildContext context,
+    HarvestBreakdownItem item,
+    double screenWidth,
+    double scale,
+  ) {
+    final images = item.imageFiles;
+    final size = (screenWidth * 0.18).clamp(72.0, 96.0);
+
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(screenWidth * 0.021),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(screenWidth * 0.024),
+        border: Border.all(color: _borderLine),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Mga Larawan ng Produktong Ito",
+                      style: TextStyle(
+                        fontSize: 10.5 * scale,
+                        fontWeight: FontWeight.w800,
+                        color: _textPrimary,
+                      ),
+                    ),
+                    SizedBox(height: screenWidth * 0.0053),
+                    Text(
+                      "Hanggang 9 na larawan • ${images.length}/9",
+                      style: TextStyle(
+                        fontSize: 8.5 * scale,
+                        color: _textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (images.length < 9)
+                OutlinedButton.icon(
+                  onPressed: () => _pickMoreBreakdownPhotos(item),
+                  icon: Icon(
+                    Icons.add_a_photo_outlined,
+                    size: 14 * scale,
+                  ),
+                  label: Text(
+                    "Magdagdag",
+                    style: TextStyle(fontSize: 8.5 * scale),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _primaryGreen,
+                    side: const BorderSide(color: _primaryGreen),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: screenWidth * 0.018,
+                      vertical: screenWidth * 0.012,
+                    ),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+            ],
+          ),
+          SizedBox(height: screenWidth * 0.018),
+          if (images.isEmpty)
+            InkWell(
+              onTap: () => _pickMoreBreakdownPhotos(item),
+              borderRadius: BorderRadius.circular(screenWidth * 0.021),
+              child: Container(
+                height: size,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: _surfaceBg,
+                  borderRadius: BorderRadius.circular(screenWidth * 0.021),
+                  border: Border.all(
+                    color: _primaryGreen,
+                    width: screenWidth * 0.0026,
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.add_photo_alternate_outlined,
+                      color: _primaryGreen,
+                      size: 24 * scale,
+                    ),
+                    SizedBox(width: screenWidth * 0.016),
+                    Text(
+                      "Maglagay ng larawan",
+                      style: TextStyle(
+                        fontSize: 9.5 * scale,
+                        fontWeight: FontWeight.w700,
+                        color: _primaryGreen,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  ...images.asMap().entries.map((entry) {
+                    final photoIndex = entry.key;
+                    final image = entry.value;
+                    return Padding(
+                      padding: EdgeInsets.only(
+                        right: screenWidth * 0.016,
+                      ),
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          ClipRRect(
+                            borderRadius:
+                                BorderRadius.circular(screenWidth * 0.021),
+                            child: kIsWeb
+                                ? Image.network(
+                                    image.path,
+                                    width: size,
+                                    height: size,
+                                    fit: BoxFit.cover,
+                                  )
+                                : Image.file(
+                                    File(image.path),
+                                    width: size,
+                                    height: size,
+                                    fit: BoxFit.cover,
+                                  ),
+                          ),
+                          Positioned(
+                            right: -5,
+                            top: -5,
+                            child: Material(
+                              color: _dangerRed,
+                              shape: const CircleBorder(),
+                              child: InkWell(
+                                customBorder: const CircleBorder(),
+                                onTap: () => _removeBreakdownPhoto(
+                                  item,
+                                  photoIndex,
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(3),
+                                  child: Icon(
+                                    Icons.close,
+                                    color: Colors.white,
+                                    size: 12 * scale,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
     final screenWidth = media.size.width;
-    final scale = screenWidth / 375;
+    final scale = (screenWidth / 375).clamp(0.90, 1.15);
 
     final double totalCost =
         double.tryParse(totalCostController.text) ?? 0.0;
@@ -651,27 +637,6 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // PHOTO CARD
-                Container(
-                  width: double.infinity,
-                  padding: EdgeInsets.all(screenWidth * 0.032),
-                  decoration: BoxDecoration(
-                    color: _cardBg,
-                    borderRadius: BorderRadius.circular(screenWidth * 0.037),
-                    border: Border.all(color: _borderLine),
-                  ),
-                  child: _buildMultiPhotoPicker(
-                    context: context,
-                    images: selectedImages,
-                    setModalState: setState,
-                    picker: _controller.picker,
-                    title: "Mga Larawan ng Produkto (Opsyonal)",
-                    subtitle: "Puwedeng pumili ng hanggang 9 na larawan",
-                  ),
-                ),
-
-                SizedBox(height: screenWidth * 0.026),
-
                 // DESCRIPTION CARD
                 Container(
                   width: double.infinity,
@@ -887,19 +852,7 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                             minimumSize: Size.zero,
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           ),
-                          onPressed: () {
-                            setState(() {
-                              breakdownItems.add(
-                                HarvestBreakdownItem(
-                                  condition: _controller.riceConditions[
-                                      breakdownItems.length %
-                                          _controller.riceConditions.length],
-                                  kgController: TextEditingController(),
-                                  srpController: TextEditingController(),
-                                ),
-                              );
-                            });
-                          },
+                          onPressed: _addBreakdownWithPhoto,
                           icon: Icon(
                             Icons.add_circle_outline_rounded,
                             size: 15 * scale,
@@ -1046,6 +999,13 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                                       ),
                                     ),
                                 ],
+                              ),
+                              SizedBox(height: screenWidth * 0.018),
+                              _breakdownPhotoPicker(
+                                context,
+                                item,
+                                screenWidth,
+                                scale,
                               ),
                               if (itemKg > 0 && totalCost > 0) ...[
                                 SizedBox(height: screenWidth * 0.013),
@@ -1242,8 +1202,10 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                                 selectedType,
                               );
 
-                              final List<Map<String, dynamic>> breakdowns =
-                                  breakdownItems.map((item) {
+                              final List<Map<String, dynamic>> breakdowns = [];
+
+                              for (int i = 0; i < breakdownItems.length; i++) {
+                                final item = breakdownItems[i];
                                 final double bKg = double.tryParse(
                                       item.kgController.text,
                                     ) ??
@@ -1256,37 +1218,56 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                                     ? (bKg / sumKg) * totalCost
                                     : 0.0;
 
-                                return {
+                                String breakdownImageUrl = '';
+                                List<String> breakdownImageUrls = [];
+
+                                // Each breakdown/product has its OWN set of up to 9 images.
+                                if (item.imageFiles.isNotEmpty) {
+                                  try {
+                                    breakdownImageUrls =
+                                        await _controller.uploadProductImages(
+                                      item.imageFiles,
+                                      '${uniqueCode}_breakdown_$i',
+                                    );
+                                    if (breakdownImageUrls.isNotEmpty) {
+                                      breakdownImageUrl =
+                                          breakdownImageUrls.first;
+                                    }
+                                  } catch (e, stackTrace) {
+                                    debugPrint(
+                                      "BREAKDOWN IMAGE UPLOAD FAILED: $e",
+                                    );
+                                    debugPrint(stackTrace.toString());
+                                    if (context.mounted) {
+                                      Navigator.of(context).pop(
+                                        "Hindi ma-upload ang larawan ng ${item.condition}: $e",
+                                      );
+                                    }
+                                    return;
+                                  }
+                                }
+
+                                breakdowns.add({
                                   'condition': item.condition,
                                   'kg': bKg,
                                   'srp': bSrp,
                                   'allocatedCost': bAllocatedCost,
-                                };
-                              }).toList();
-
-                              List<String> imageUrls = [];
-
-                              if (selectedImages.isNotEmpty) {
-                                try {
-                                  imageUrls =
-                                      await _controller.uploadProductImages(
-                                    selectedImages,
-                                    uniqueCode,
-                                  );
-                                } catch (e, stackTrace) {
-                                  debugPrint(
-                                    "MULTIPLE IMAGE UPLOAD FAILED: $e",
-                                  );
-                                  debugPrint(stackTrace.toString());
-
-                                  if (context.mounted) {
-                                    Navigator.of(context).pop(
-                                      "Hindi ma-upload ang mga larawan: $e",
-                                    );
-                                  }
-                                  return;
-                                }
+                                  'imageUrl': breakdownImageUrl,
+                                  'imageUrls': breakdownImageUrls,
+                                });
                               }
+
+                              // The product-level image list is now built from
+                              // the photos of each condition/product row. This
+                              // keeps every row independent while preserving
+                              // compatibility with existing product-page code.
+                              final List<String> imageUrls = breakdowns
+                                  .expand<String>(
+                                    (b) => List<String>.from(
+                                      b['imageUrls'] ?? const <String>[],
+                                    ),
+                                  )
+                                  .toList();
 
                               final Map<String, dynamic> newHarvestData = {
                                 'productCode': uniqueCode,
@@ -1381,7 +1362,7 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
   }) {
     final media = MediaQuery.of(context);
     final screenWidth = media.size.width;
-    final scale = screenWidth / 375;
+    final scale = (screenWidth / 375).clamp(0.90, 1.15);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
