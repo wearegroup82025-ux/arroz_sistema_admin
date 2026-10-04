@@ -12,7 +12,6 @@ class InventoryPage extends StatefulWidget {
   State<InventoryPage> createState() => _InventoryPageState();
 }
 
-
 class _InventoryPageState extends State<InventoryPage> {
   static const Color _surfaceBg = Color(0xFFF8FAFC);
   static const Color _cardBg = Color(0xFFFFFFFF);
@@ -87,35 +86,6 @@ class _InventoryPageState extends State<InventoryPage> {
     }
 
     return urls;
-  }
-
-  Future<String> _generateStructuredCode(String hectare, String type) async {
-    final String hectarePrefix = hectare.replaceAll(" ", "").toUpperCase();
-    final String typePrefix =
-        type.toUpperCase().padRight(3, 'X').substring(0, 3);
-
-    final now = DateTime.now();
-    final String dateStamp =
-        "${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}";
-    final String baseCodePattern = "$hectarePrefix-$typePrefix-$dateStamp";
-
-    // Try to preserve the old sequential code. If Firestore requires an
-    // index or this query fails, use a timestamp-based suffix so saving the
-    // inventory item is not blocked by code generation.
-    try {
-      final querySnapshot = await FirebaseFirestore.instance
-          .collection("products")
-          .where("hectare", isEqualTo: hectare)
-          .where("type", isEqualTo: type)
-          .get();
-
-      final int sequenceNumber = querySnapshot.docs.length + 1;
-      final String sequenceStr = sequenceNumber.toString().padLeft(3, '0');
-      return "$baseCodePattern-$sequenceStr";
-    } catch (e) {
-      debugPrint("CODE GENERATION QUERY FAILED: $e");
-      return "$baseCodePattern-${now.millisecondsSinceEpoch % 1000000}";
-    }
   }
 
   String _formatCurrency(double amount) {
@@ -197,18 +167,20 @@ class _InventoryPageState extends State<InventoryPage> {
 
             double totalExpectedValuation = 0.0;
             double totalExpectedProfit = 0.0;
-            int totalStockKg = 0;
+            int totalRemainingStockKg = 0;
+            int totalInitialStockKg = 0;
 
             for (var doc in docs) {
               final data = doc.data() as Map<String, dynamic>? ?? {};
               if (data['isDeleted'] == true) continue;
 
-              final double currentTotalKg =
-                  ((data['remainingKg'] ?? data['totalKg'] ?? 0.0) as num)
-                      .toDouble();
               final double initialKg =
-                  ((data['totalKg'] ?? 0.0) as num).toDouble();
-              final totalCost = (data['totalCost'] ?? 0.0).toDouble();
+                  ((data['initialKg'] ?? data['totalKg'] ?? 0.0) as num)
+                      .toDouble();
+              final double remainingKg =
+                  ((data['remainingKg'] ?? initialKg) as num)
+                      .toDouble();
+              final double totalCost = (data['totalCost'] ?? 0.0).toDouble();
 
               double totalRevenue = 0.0;
               final List breakdowns = data['breakdowns'] ?? [];
@@ -218,15 +190,12 @@ class _InventoryPageState extends State<InventoryPage> {
                 totalRevenue += (bKg * bSrp);
               }
 
-              final double remainingValuation =
-                  initialKg > 0 ? (totalRevenue / initialKg) * currentTotalKg : 0.0;
-              final double remainingCost =
-                  initialKg > 0 ? (totalCost / initialKg) * currentTotalKg : 0.0;
-              final double totalProfit = remainingValuation - remainingCost;
+              final double totalProfit = totalRevenue - totalCost;
 
-              totalExpectedValuation += remainingValuation;
+              totalExpectedValuation += totalRevenue;
               totalExpectedProfit += totalProfit;
-              totalStockKg += currentTotalKg.toInt();
+              totalRemainingStockKg += remainingKg.toInt();
+              totalInitialStockKg += initialKg.toInt();
             }
 
             return Column(
@@ -234,7 +203,8 @@ class _InventoryPageState extends State<InventoryPage> {
                 _buildHeaderAndAnalytics(
                   totalValue: totalExpectedValuation,
                   totalProfit: totalExpectedProfit,
-                  totalStockKg: totalStockKg,
+                  totalStockKg: totalRemainingStockKg,
+                  totalInitialKg: totalInitialStockKg,
                 ),
                 Padding(
                   padding:
@@ -342,6 +312,7 @@ class _InventoryPageState extends State<InventoryPage> {
     required double totalValue,
     required double totalProfit,
     required int totalStockKg,
+    required int totalInitialKg,
   }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -392,7 +363,7 @@ class _InventoryPageState extends State<InventoryPage> {
                     Icons.account_balance_wallet_outlined,
                     _infoBlue),
                 const SizedBox(width: 8),
-                _buildMetricCardFixed("Kabuuang Ani", "$totalStockKg kg",
+                _buildMetricCardFixed("Natitirang Stock", "$totalStockKg / $totalInitialKg kg",
                     Icons.scale_outlined, _primaryGreen),
                 const SizedBox(width: 8),
                 _buildMetricCardFixed(
@@ -411,7 +382,7 @@ class _InventoryPageState extends State<InventoryPage> {
   Widget _buildMetricCardFixed(
       String label, String value, IconData icon, Color accentColor) {
     return Container(
-      width: 115,
+      width: 125,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       decoration: BoxDecoration(
         color: _surfaceBg,
@@ -455,15 +426,14 @@ class _InventoryPageState extends State<InventoryPage> {
 
   Widget _buildFolderSection(
       String hectareGroup, List<DocumentSnapshot> batchList) {
-    double folderTotalKg = 0;
+    double folderRemainingKg = 0;
     double folderInitialKg = 0;
 
     for (var doc in batchList) {
       final data = doc.data() as Map<String, dynamic>? ?? {};
-      folderTotalKg +=
-          ((data['remainingKg'] ?? data['totalKg'] ?? 0.0) as num).toDouble();
-      folderInitialKg +=
-          ((data['initialKg'] ?? data['totalKg'] ?? 0.0) as num).toDouble();
+      final double initial = ((data['initialKg'] ?? data['totalKg'] ?? 0.0) as num).toDouble();
+      folderInitialKg += initial;
+      folderRemainingKg += ((data['remainingKg'] ?? initial) as num).toDouble();
     }
 
     return Container(
@@ -490,7 +460,7 @@ class _InventoryPageState extends State<InventoryPage> {
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
             child: Text(
-              "${batchList.length} Batch(es) | ${folderTotalKg.toStringAsFixed(0)} kg natitira sa ${folderInitialKg.toStringAsFixed(0)} kg",
+              "${batchList.length} Batch(es) | Stock: ${folderRemainingKg.toStringAsFixed(0)}/${folderInitialKg.toStringAsFixed(0)} kg",
               style: const TextStyle(fontSize: 10, color: _textSecondary),
             ),
           ),
@@ -516,22 +486,26 @@ class _InventoryPageState extends State<InventoryPage> {
         ((data['initialKg'] ?? data['totalKg'] ?? 0.0) as num).toDouble();
     final double remainingKg =
         ((data['remainingKg'] ?? initialKg) as num).toDouble();
+    final double soldKg = initialKg - remainingKg;
 
-    double totalRevenue = 0.0;
+    double totalExpectedGross = 0.0;
     for (var b in breakdownsData) {
       final double bKg = ((b['kg'] ?? 0.0) as num).toDouble();
       final double bSrp = ((b['srp'] ?? 0.0) as num).toDouble();
-      totalRevenue += (bKg * bSrp);
+      totalExpectedGross += (bKg * bSrp);
     }
 
-    final double overallCostPerKg = initialKg > 0 ? totalCost / initialKg : 0.0;
-    final double overallRevenuePerKg =
-        initialKg > 0 ? totalRevenue / initialKg : 0.0;
-    final double overallProfitPerKg = overallRevenuePerKg - overallCostPerKg;
+    // Puhunan per kg na nakapako batay sa orihinal na kabuuang ani
+    final double fixedCostPerKg = initialKg > 0 ? totalCost / initialKg : 0.0;
+    final double avgSrpPerKg = initialKg > 0 ? totalExpectedGross / initialKg : 0.0;
+    
+    // Inaasahang Tubó sa Buong Ani
+    final double totalExpectedProfit = totalExpectedGross - totalCost;
 
-    final double currentRevenue = remainingKg * overallRevenuePerKg;
-    final double currentCost = remainingKg * overallCostPerKg;
-    final double totalProfit = currentRevenue - currentCost;
+    // Aktwal / Kasalukuyang Benta at Tubó
+    final double currentGrossSold = soldKg * avgSrpPerKg;
+    final double currentCostSold = soldKg * fixedCostPerKg;
+    final double currentProfitSold = currentGrossSold - currentCostSold;
 
     final Timestamp? createdAtTs = data['createdAt'] as Timestamp?;
     final DateTime? createdAt = createdAtTs?.toDate();
@@ -672,7 +646,8 @@ class _InventoryPageState extends State<InventoryPage> {
                           borderRadius: BorderRadius.circular(4),
                           border: Border.all(color: _borderLine),
                         ),
-                        child: Text("${bKg.toStringAsFixed(0)} kg",
+                        child: Text(
+                            "Kabuuang Nakuha: ${bKg.toStringAsFixed(0)} kg",
                             style: const TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.bold,
@@ -704,10 +679,10 @@ class _InventoryPageState extends State<InventoryPage> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text("Puhunan: ₱${bCostShare.toStringAsFixed(2)}",
+                        Text("Puhunan Share: ₱${bCostShare.toStringAsFixed(2)}",
                             style: const TextStyle(
                                 fontSize: 9, color: _textSecondary)),
-                        Text("Tubó: ₱${bTotalProfit.toStringAsFixed(2)}",
+                        Text("Inaasahang Tubó: ₱${bTotalProfit.toStringAsFixed(2)}",
                             style: TextStyle(
                                 fontSize: 9,
                                 fontWeight: FontWeight.bold,
@@ -724,7 +699,7 @@ class _InventoryPageState extends State<InventoryPage> {
 
           const SizedBox(height: 4),
 
-          // OVERALL SUMMARY CARD SA ILALIM
+          // OVERALL SUMMARY CARD
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
@@ -738,7 +713,7 @@ class _InventoryPageState extends State<InventoryPage> {
                   children: [
                     Icon(Icons.analytics_rounded, size: 12, color: _infoBlue),
                     SizedBox(width: 4),
-                    Text("KABUUANG OVERALL COMPUTATION",
+                    Text("KABUUANG COMPUTATION AT KITA",
                         style: TextStyle(
                             fontSize: 9,
                             fontWeight: FontWeight.bold,
@@ -749,16 +724,16 @@ class _InventoryPageState extends State<InventoryPage> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _buildSummaryColumn("Kabuuang Puhunan",
+                    _buildSummaryColumn("Fixed Puhunan",
                         "₱${totalCost.toStringAsFixed(2)}", _warningOrange),
                     _buildSummaryColumn(
-                        "Avg Puhunan/kg",
-                        "₱${overallCostPerKg.toStringAsFixed(2)}",
+                        "Puhunan/kg",
+                        "₱${fixedCostPerKg.toStringAsFixed(2)}",
                         _textPrimary),
                     _buildSummaryColumn(
-                        "Avg Tubó/kg",
-                        "₱${overallProfitPerKg.toStringAsFixed(2)}",
-                        overallProfitPerKg >= 0 ? _primaryGreen : _dangerRed),
+                        "Natitirang Stock",
+                        "${remainingKg.toStringAsFixed(0)} / ${initialKg.toStringAsFixed(0)} kg",
+                        _infoBlue),
                   ],
                 ),
                 const Padding(
@@ -772,17 +747,23 @@ class _InventoryPageState extends State<InventoryPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text("Gross Value",
+                          const Text("Pinaka Total Gross Value",
                               style: TextStyle(
                                   fontSize: 8, color: _textSecondary)),
                           FittedBox(
                             fit: BoxFit.scaleDown,
-                            child: Text(_formatCurrency(currentRevenue),
+                            child: Text(_formatCurrency(totalExpectedGross),
                                 style: const TextStyle(
-                                    fontSize: 12,
+                                    fontSize: 11,
                                     fontWeight: FontWeight.bold,
                                     color: _textPrimary)),
                           ),
+                          const SizedBox(height: 2),
+                          Text("Aktwal Nabenta: ${_formatCurrency(currentGrossSold)}",
+                              style: const TextStyle(
+                                  fontSize: 8,
+                                  fontWeight: FontWeight.w600,
+                                  color: _infoBlue)),
                         ],
                       ),
                     ),
@@ -790,7 +771,7 @@ class _InventoryPageState extends State<InventoryPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          const Text("MALINIS NA TUBÓ",
+                          const Text("INAASAHANG TOTAL TUBÓ",
                               style: TextStyle(
                                   fontSize: 8,
                                   fontWeight: FontWeight.bold,
@@ -798,16 +779,27 @@ class _InventoryPageState extends State<InventoryPage> {
                           FittedBox(
                             fit: BoxFit.scaleDown,
                             child: Text(
-                              totalProfit >= 0
-                                  ? "+${_formatCurrency(totalProfit)}"
-                                  : "-${_formatCurrency(totalProfit.abs())}",
+                              totalExpectedProfit >= 0
+                                  ? "+${_formatCurrency(totalExpectedProfit)}"
+                                  : "-${_formatCurrency(totalExpectedProfit.abs())}",
                               style: TextStyle(
-                                fontSize: 12,
+                                fontSize: 11,
                                 fontWeight: FontWeight.w900,
-                                color: totalProfit >= 0
+                                color: totalExpectedProfit >= 0
                                     ? _primaryGreen
                                     : _dangerRed,
                               ),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            "Kasalukuyang Tubó (Nabenta): ${_formatCurrency(currentProfitSold)}",
+                            style: TextStyle(
+                              fontSize: 8,
+                              fontWeight: FontWeight.bold,
+                              color: currentProfitSold >= 0
+                                  ? _primaryGreen
+                                  : _dangerRed,
                             ),
                           ),
                         ],
@@ -1493,7 +1485,6 @@ class _InventoryPageState extends State<InventoryPage> {
                       ),
                       const Divider(height: 16),
 
-                      // EDIT MULTIPLE PRODUCT PHOTOS
                       _buildEditablePhotoPicker(
                         context: context,
                         existingUrls: existingImageUrls,

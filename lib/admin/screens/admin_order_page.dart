@@ -787,16 +787,23 @@ class _OrdersPageState extends State<OrdersPage> {
                                         if (pSnap.exists) {
                                           final pData = pSnap.data() as Map<String, dynamic>? ?? {};
                                           final double currentRemainingKg = ((pData['remainingKg'] ?? pData['totalKg'] ?? 0.0) as num).toDouble();
+                                          final int currentTotalSold = (pData['totalSold'] ?? pData['sold'] ?? 0) as int;
 
                                           double newRemainingKg = currentRemainingKg;
+                                          int newTotalSold = currentTotalSold;
+
                                           if (shouldDeductStock) {
                                             newRemainingKg = (currentRemainingKg - deductionKg).clamp(0.0, double.infinity);
+                                            newTotalSold = currentTotalSold + item.quantity;
                                           } else if (shouldRestoreStock) {
                                             newRemainingKg = currentRemainingKg + deductionKg;
+                                            newTotalSold = (currentTotalSold - item.quantity).clamp(0, 999999);
                                           }
 
                                           transaction.update(productRef, {
                                             'remainingKg': newRemainingKg,
+                                            'totalSold': newTotalSold,
+                                            'sold': newTotalSold,
                                             'updatedAt': FieldValue.serverTimestamp(),
                                           });
                                         }

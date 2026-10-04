@@ -19,6 +19,37 @@ class _UserManagementPageState extends State<UserManagementPage> {
   static const Color textMain = Color(0xff0F172A);
   static const Color textMuted = Color(0xff64748B);
 
+  // Helper para sa Profile Picture
+  Widget _buildProfileAvatar({
+    required Map<String, dynamic> data,
+    required double radius,
+    required bool isBlocked,
+  }) {
+    final photoUrl = data['photoUrl'] ?? data['photoURL'] ?? data['imageUrl'] ?? data['profilePic'];
+    final name = (data['fullName'] ?? data['name'] ?? 'U').toString();
+
+    if (photoUrl != null && photoUrl.toString().trim().isNotEmpty) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor: Colors.grey.shade200,
+        backgroundImage: NetworkImage(photoUrl.toString().trim()),
+      );
+    }
+
+    return CircleAvatar(
+      backgroundColor: isBlocked ? Colors.red.shade50 : const Color(0xffEFF6FF),
+      radius: radius,
+      child: Text(
+        name.isNotEmpty ? name[0].toUpperCase() : 'U',
+        style: TextStyle(
+          fontWeight: FontWeight.bold,
+          color: isBlocked ? Colors.red : primaryBlue,
+          fontSize: radius * 0.8,
+        ),
+      ),
+    );
+  }
+
   // Helper para sa Phone Number Fallback
   String _getPhoneNumber(Map<String, dynamic> data) {
     final phone = data['phoneNumber'] ??
@@ -215,17 +246,10 @@ class _UserManagementPageState extends State<UserManagementPage> {
             ),
             Row(
               children: [
-                CircleAvatar(
-                  backgroundColor: isBlocked ? Colors.red.shade50 : const Color(0xffEFF6FF),
+                _buildProfileAvatar(
+                  data: data,
                   radius: 26,
-                  child: Text(
-                    (data['fullName'] ?? data['name'] ?? 'U')[0].toUpperCase(),
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: isBlocked ? Colors.red : primaryBlue,
-                      fontSize: 22,
-                    ),
-                  ),
+                  isBlocked: isBlocked,
                 ),
                 const SizedBox(width: 14),
                 Expanded(
@@ -708,14 +732,10 @@ class _UserManagementPageState extends State<UserManagementPage> {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    CircleAvatar(
-                      backgroundColor: isBlocked ? Colors.red.shade50 : const Color(0xffEFF6FF),
+                    _buildProfileAvatar(
+                      data: rawData,
                       radius: 20,
-                      child: Icon(
-                        isBlocked ? Icons.block : Icons.person_outline_rounded,
-                        color: isBlocked ? Colors.red : primaryBlue,
-                        size: 20,
-                      ),
+                      isBlocked: isBlocked,
                     ),
                     const SizedBox(width: 12),
                     Expanded(

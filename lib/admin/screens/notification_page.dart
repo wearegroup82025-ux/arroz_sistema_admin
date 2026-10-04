@@ -62,7 +62,7 @@ class _NotificationPageState extends State<NotificationPage> {
   }
 
   Widget _buildCustomFilterBar() {
-    final filters = ['All', 'Weather', 'Orders', 'Users', 'Stock'];
+    final filters = ['All', 'Messages', 'Weather', 'Orders', 'Users', 'Stock'];
 
     return Container(
       color: _cardWhite,
@@ -139,7 +139,15 @@ class _NotificationPageState extends State<NotificationPage> {
         final allDocs = snapshot.data!.docs.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
           final recipient = data['recipientType'] ?? '';
-          return recipient != 'customer';
+
+          // Customer notifications are not shown in this admin hub.
+          if (recipient == 'customer') return false;
+
+          // Reject explicitly marked dummy/test notifications.
+          final isReal = data['isReal'];
+          if (isReal is bool && !isReal) return false;
+
+          return true;
         }).toList();
 
         allDocs.sort((a, b) {
@@ -169,9 +177,27 @@ class _NotificationPageState extends State<NotificationPage> {
 
           if (_activeTab == 'All') {
             final validTypes = ['order', 'orders', 'user', 'users', 'stock', 'stocks'];
-            return validTypes.contains(type) || isWeatherType;
+            final hasRealMarker = data['isReal'] == true;
+            final hasRequiredContent =
+                data['title'] != null &&
+                data['body'] != null &&
+                data['timestamp'] != null;
+
+            // Only real app-generated records, or legacy records that are
+            // complete and have a supported notification type, are shown.
+            return hasRequiredContent &&
+                (hasRealMarker || validTypes.contains(type) || isWeatherType);
           }
 
+          final hasRequiredContent =
+              data['title'] != null &&
+              data['body'] != null &&
+              data['timestamp'] != null;
+
+          if (!hasRequiredContent) return false;
+          if (_activeTab == 'Messages') {
+            return type == 'message' || type == 'messages';
+          }
           if (_activeTab == 'Weather') return isWeatherType;
           if (_activeTab == 'Orders') return type == 'order' || type == 'orders';
           if (_activeTab == 'Users') return type == 'user' || type == 'users';
@@ -240,6 +266,12 @@ class _NotificationPageState extends State<NotificationPage> {
       }
     } else {
       switch (type) {
+        case 'message':
+        case 'messages':
+          icon = Icons.chat_bubble_rounded;
+          iconColor = const Color(0xff7C3AED);
+          iconBg = const Color(0xffF5F3FF);
+          break;
         case 'order':
         case 'orders':
           icon = Icons.shopping_cart_rounded;

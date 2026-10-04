@@ -1,5 +1,5 @@
-import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
 
 class AdminConversationPage extends StatefulWidget {
   final String userId;
@@ -19,13 +19,11 @@ class _AdminConversationPageState extends State<AdminConversationPage> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
-  // Modern Enterprise Palette - Gamit ang exact Green shade (#2A6F4A)
-  static const Color _bg = Color(0xffF8FAFC);
-  static const Color _cardBg = Color(0xffFFFFFF);
-  static const Color _primary = Color(0xff2A6F4A);
-  static const Color _textMain = Color(0xff0F172A);
-  static const Color _textSub = Color(0xff64748B);
-  static const Color _border = Color(0xffE2E8F0);
+  static const Color _green = Color(0xff2E7D32);
+  static const Color _background = Color(0xffF0F2F5);
+  static const Color _text = Color(0xff050505);
+  static const Color _subText = Color(0xff65676B);
+  static const Color _otherBubble = Color(0xffE4E6EB);
 
   @override
   void initState() {
@@ -33,8 +31,8 @@ class _AdminConversationPageState extends State<AdminConversationPage> {
     _markAsRead();
   }
 
-  void _markAsRead() {
-    FirebaseFirestore.instance
+  Future<void> _markAsRead() async {
+    await FirebaseFirestore.instance
         .collection('chats')
         .doc(widget.userId)
         .set({'unreadByAdmin': false}, SetOptions(merge: true));
@@ -47,7 +45,7 @@ class _AdminConversationPageState extends State<AdminConversationPage> {
     _controller.clear();
 
     final chatRef =
-    FirebaseFirestore.instance.collection('chats').doc(widget.userId);
+        FirebaseFirestore.instance.collection('chats').doc(widget.userId);
 
     await chatRef.collection('messages').add({
       'senderId': 'admin',
@@ -61,6 +59,14 @@ class _AdminConversationPageState extends State<AdminConversationPage> {
       'unreadByUser': true,
       'unreadByAdmin': false,
     }, SetOptions(merge: true));
+
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    }
   }
 
   @override
@@ -72,28 +78,52 @@ class _AdminConversationPageState extends State<AdminConversationPage> {
 
   @override
   Widget build(BuildContext context) {
-    final displayName = widget.userName ?? widget.userId;
+    final displayName = widget.userName?.trim().isNotEmpty == true
+        ? widget.userName!.trim()
+        : 'Customer';
+
+    final initial = displayName[0].toUpperCase();
 
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: _background,
       appBar: AppBar(
+        backgroundColor: Colors.white,
         elevation: 0,
-        backgroundColor: _cardBg,
         surfaceTintColor: Colors.transparent,
-        iconTheme: const IconThemeData(color: _textMain),
+        iconTheme: const IconThemeData(color: _text),
+        titleSpacing: 0,
         title: Row(
           children: [
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: _primary.withOpacity(0.12),
-              child: Text(
-                displayName.isNotEmpty ? displayName[0].toUpperCase() : 'C',
-                style: const TextStyle(
-                  color: _primary,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
+            Stack(
+              children: [
+                CircleAvatar(
+                  radius: 20,
+                  backgroundColor: _green.withOpacity(.12),
+                  child: Text(
+                    initial,
+                    style: const TextStyle(
+                      color: _green,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
-              ),
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    width: 11,
+                    height: 11,
+                    decoration: BoxDecoration(
+                      color: const Color(0xff31A24C),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white,
+                        width: 2,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -102,26 +132,29 @@ class _AdminConversationPageState extends State<AdminConversationPage> {
                 children: [
                   Text(
                     displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      color: _textMain,
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
+                      color: _text,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
                     ),
-                    overflow: TextOverflow.ellipsis,
                   ),
-                  Text(
-                    "User ID: ${widget.userId}",
-                    style: const TextStyle(color: _textSub, fontSize: 11),
-                    overflow: TextOverflow.ellipsis,
+                  const Text(
+                    'Active now',
+                    style: TextStyle(
+                      color: _subText,
+                      fontSize: 12,
+                    ),
                   ),
                 ],
               ),
             ),
           ],
         ),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1.0),
-          child: Container(color: _border, height: 1.0),
+        bottom: const PreferredSize(
+          preferredSize: Size.fromHeight(1),
+          child: Divider(height: 1, thickness: 1),
         ),
       ),
       body: Column(
@@ -135,156 +168,146 @@ class _AdminConversationPageState extends State<AdminConversationPage> {
                   .orderBy('timestamp', descending: true)
                   .snapshots(),
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: CircularProgressIndicator(color: _primary),
-                  );
-                }
-
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const Center(
+                if (snapshot.hasError) {
+                  return Center(
                     child: Text(
-                      "Start the conversation by sending a message.",
-                      style: TextStyle(color: _textSub, fontSize: 13),
+                      'Error: ${snapshot.error}',
+                      style: const TextStyle(color: _subText),
                     ),
                   );
                 }
 
-                final messages = snapshot.data!.docs;
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(
+                    child: CircularProgressIndicator(color: _green),
+                  );
+                }
+
+                final messages = snapshot.data?.docs ?? [];
+
+                if (messages.isEmpty) {
+                  return _EmptyConversation(
+                    name: displayName,
+                    initial: initial,
+                  );
+                }
 
                 return ListView.builder(
                   controller: _scrollController,
                   reverse: true,
-                  padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
                     final msg =
-                    messages[index].data() as Map<String, dynamic>;
-                    final bool isAdmin = msg['senderId'] == 'admin';
-                    final Timestamp? time = msg['timestamp'] as Timestamp?;
+                        messages[index].data() as Map<String, dynamic>;
 
-                    return Align(
-                      alignment: isAdmin
-                          ? Alignment.centerRight
-                          : Alignment.centerLeft,
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        constraints: BoxConstraints(
-                          maxWidth: MediaQuery.of(context).size.width * 0.75,
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isAdmin ? _primary : _cardBg,
-                          borderRadius: BorderRadius.only(
-                            topLeft: const Radius.circular(14),
-                            topRight: const Radius.circular(14),
-                            bottomLeft: Radius.circular(isAdmin ? 14 : 2),
-                            bottomRight: Radius.circular(isAdmin ? 2 : 14),
-                          ),
-                          border: isAdmin ? null : Border.all(color: _border),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.02),
-                              blurRadius: 4,
-                              offset: const Offset(0, 1),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: isAdmin
-                              ? CrossAxisAlignment.end
-                              : CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              msg['text'] ?? '',
-                              style: TextStyle(
-                                color: isAdmin ? Colors.white : _textMain,
-                                fontSize: 14,
-                                height: 1.3,
-                              ),
-                            ),
-                            if (time != null) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                _formatTime(time),
-                                style: TextStyle(
-                                  color: isAdmin
-                                      ? Colors.white.withOpacity(0.7)
-                                      : _textSub,
-                                  fontSize: 9,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
+                    final isAdmin = msg['senderId'] == 'admin';
+                    final text = msg['text'] ?? '';
+                    final timestamp = msg['timestamp'] as Timestamp?;
+
+                    return _MessageBubble(
+                      text: text,
+                      isAdmin: isAdmin,
+                      timestamp: timestamp,
+                      otherInitial: initial,
                     );
                   },
                 );
               },
             ),
           ),
+          _MessageInput(
+            controller: _controller,
+            onSend: _sendMessage,
+          ),
+        ],
+      ),
+    );
+  }
+}
 
-          // Message Input Field
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: const BoxDecoration(
-              color: _cardBg,
-              border: Border(top: BorderSide(color: _border)),
+class _MessageBubble extends StatelessWidget {
+  final String text;
+  final bool isAdmin;
+  final Timestamp? timestamp;
+  final String otherInitial;
+
+  const _MessageBubble({
+    required this.text,
+    required this.isAdmin,
+    required this.timestamp,
+    required this.otherInitial,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        mainAxisAlignment:
+            isAdmin ? MainAxisAlignment.end : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (!isAdmin) ...[
+            CircleAvatar(
+              radius: 14,
+              backgroundColor: const Color(0xff2E7D32).withOpacity(.12),
+              child: Text(
+                otherInitial,
+                style: const TextStyle(
+                  color: Color(0xff2E7D32),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ),
-            child: SafeArea(
-              child: Row(
+            const SizedBox(width: 6),
+          ],
+          Flexible(
+            child: Container(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * .72,
+              ),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 9,
+              ),
+              decoration: BoxDecoration(
+                color: isAdmin
+                    ? const Color(0xff2E7D32)
+                    : const Color(0xffE4E6EB),
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(20),
+                  topRight: const Radius.circular(20),
+                  bottomLeft: Radius.circular(isAdmin ? 20 : 5),
+                  bottomRight: Radius.circular(isAdmin ? 5 : 20),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: isAdmin
+                    ? CrossAxisAlignment.end
+                    : CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _controller,
-                      style: const TextStyle(color: _textMain, fontSize: 14),
-                      decoration: InputDecoration(
-                        hintText: "Type a reply...",
-                        hintStyle:
-                        const TextStyle(color: _textSub, fontSize: 14),
-                        filled: true,
-                        fillColor: _bg,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 10,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: const BorderSide(color: _border),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: const BorderSide(color: _border),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: const BorderSide(color: _primary),
-                        ),
-                      ),
+                  Text(
+                    text,
+                    style: TextStyle(
+                      color: isAdmin ? Colors.white : const Color(0xff050505),
+                      fontSize: 15,
+                      height: 1.25,
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Material(
-                    color: _primary,
-                    borderRadius: BorderRadius.circular(24),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(24),
-                      onTap: _sendMessage,
-                      child: const Padding(
-                        padding: EdgeInsets.all(10),
-                        child: Icon(
-                          Icons.send_rounded,
-                          color: Colors.white,
-                          size: 20,
-                        ),
+                  if (timestamp != null) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      _formatTime(timestamp!),
+                      style: TextStyle(
+                        color: isAdmin
+                            ? Colors.white.withOpacity(.75)
+                            : const Color(0xff65676B),
+                        fontSize: 9,
                       ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
@@ -294,11 +317,121 @@ class _AdminConversationPageState extends State<AdminConversationPage> {
     );
   }
 
-  String _formatTime(Timestamp timestamp) {
+  static String _formatTime(Timestamp timestamp) {
     final date = timestamp.toDate();
     final hour = date.hour % 12 == 0 ? 12 : date.hour % 12;
     final minute = date.minute.toString().padLeft(2, '0');
     final period = date.hour >= 12 ? 'PM' : 'AM';
-    return "$hour:$minute $period";
+    return '$hour:$minute $period';
+  }
+}
+
+class _EmptyConversation extends StatelessWidget {
+  final String name;
+  final String initial;
+
+  const _EmptyConversation({
+    required this.name,
+    required this.initial,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircleAvatar(
+            radius: 38,
+            backgroundColor: const Color(0xff2E7D32).withOpacity(.12),
+            child: Text(
+              initial,
+              style: const TextStyle(
+                color: Color(0xff2E7D32),
+                fontSize: 30,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            name,
+            style: const TextStyle(
+              color: Color(0xff050505),
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Start a conversation',
+            style: TextStyle(
+              color: Color(0xff65676B),
+              fontSize: 13,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MessageInput extends StatelessWidget {
+  final TextEditingController controller;
+  final VoidCallback onSend;
+
+  const _MessageInput({
+    required this.controller,
+    required this.onSend,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        color: Colors.white,
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: TextField(
+                controller: controller,
+                textCapitalization: TextCapitalization.sentences,
+                minLines: 1,
+                maxLines: 5,
+                onSubmitted: (_) => onSend(),
+                decoration: InputDecoration(
+                  hintText: 'Aa',
+                  hintStyle: const TextStyle(
+                    color: Color(0xff65676B),
+                    fontSize: 15,
+                  ),
+                  filled: true,
+                  fillColor: const Color(0xffF0F2F5),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(22),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+            ),
+            IconButton(
+              onPressed: onSend,
+              icon: const Icon(
+                Icons.send_rounded,
+                color: Color(0xff2E7D32),
+                size: 25,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

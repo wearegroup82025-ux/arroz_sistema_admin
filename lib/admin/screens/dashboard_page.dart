@@ -4,7 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 
-// Auth Page (Palitan ang path ayon sa tunay na kinaroroonan ng iyong LoginPage)
+// Auth Page
 import 'login_page.dart'; 
 
 // Domain & Services
@@ -110,15 +110,12 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // INAYOS NA LOGOUT FUNCTION WITH FIREBASE SIGN-OUT & REDIRECTION
   void _performLogout() async {
     try {
-      // 1. I-sign out sa Firebase Auth
       await FirebaseAuth.instance.signOut();
 
       if (!mounted) return;
 
-      // 2. Magpakita ng feedback message
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Naka-logout na ang session."),
@@ -126,7 +123,6 @@ class _DashboardPageState extends State<DashboardPage> {
         ),
       );
 
-      // 3. I-redirect sa LoginPage at alisin ang buong navigation stack
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (context) => const LoginPage()), 
         (route) => false,
@@ -140,13 +136,12 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   void _initRealtimeListeners() {
-    // 1. INVENTORY LISTENER (products collection)
     _inventorySub = FirebaseFirestore.instance.collection('products').snapshots().listen((snap) {
       for (var change in snap.docChanges) {
         if (change.type == DocumentChangeType.modified || change.type == DocumentChangeType.added) {
           final data = change.doc.data();
           if (data != null) {
-            final stockVal = int.tryParse(data['stock']?.toString() ?? '0') ?? 0;
+            final stockVal = int.tryParse(data['remainingKg']?.toString() ?? data['totalKg']?.toString() ?? data['stock']?.toString() ?? '0') ?? 0;
             final lowThreshold = int.tryParse(data['lowStockThreshold']?.toString() ?? '10') ?? 10;
 
             if (stockVal <= lowThreshold) {
@@ -161,7 +156,6 @@ class _DashboardPageState extends State<DashboardPage> {
       }
     });
 
-    // 2. ORDERS LISTENER
     _ordersSub = FirebaseFirestore.instance.collection('orders').snapshots().listen((snap) {
       for (var change in snap.docChanges) {
         if (change.type == DocumentChangeType.added) {
@@ -176,7 +170,6 @@ class _DashboardPageState extends State<DashboardPage> {
       }
     });
 
-    // 3. WEATHER ALERTS LISTENER
     _weatherSub = FirebaseFirestore.instance.collection('weather_alerts').snapshots().listen((snap) {
       for (var change in snap.docChanges) {
         final data = change.doc.data();
@@ -230,350 +223,6 @@ class _DashboardPageState extends State<DashboardPage> {
     }
 
     return list;
-  }
-
-  void _openConversation(String userId) {
-    final controller = TextEditingController();
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: _cardBg,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-          ),
-          child: SizedBox(
-            height: MediaQuery.of(context).size.height * .75,
-            child: Column(
-              children: [
-                ListTile(
-                  leading: const CircleAvatar(
-                    child: Icon(Icons.person),
-                  ),
-                  title: Text(userId),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ),
-
-                const Divider(height: 1),
-
-                Expanded(
-                  child: StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('chats')
-                        .doc(userId)
-                        .collection('messages')
-                        .orderBy('timestamp', descending: true)
-                        .snapshots(),
-                    builder: (context, snapshot) {
-                      if (!snapshot.hasData) {
-                        return const Center(
-                          child: CircularProgressIndicator(),
-                        );
-                      }
-
-                      final docs = snapshot.data!.docs;
-
-                      return ListView.builder(
-                        reverse: true,
-                        itemCount: docs.length,
-                        itemBuilder: (context, index) {
-                          final msg =
-                          docs[index].data() as Map<String, dynamic>;
-
-                          final bool isAdmin =
-                              msg['senderId'] == 'admin';
-
-                          return Align(
-                            alignment: isAdmin
-                                ? Alignment.centerRight
-                                : Alignment.centerLeft,
-                            child: Container(
-                              margin: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 5),
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: isAdmin
-                                    ? _primary
-                                    : Colors.grey.shade300,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                msg['text'] ?? '',
-                                style: TextStyle(
-                                  color: isAdmin
-                                      ? Colors.white
-                                      : Colors.black,
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ),
-
-                Row(
-                  children: [
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.all(10),
-                        child: TextField(
-                          controller: controller,
-                          decoration: InputDecoration(
-                            hintText: "Reply...",
-                            border: OutlineInputBorder(
-                              borderRadius:
-                              BorderRadius.circular(20),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    IconButton(
-                      icon: const Icon(Icons.send),
-                      onPressed: () async {
-                        final text = controller.text.trim();
-
-                        if (text.isEmpty) return;
-
-                        controller.clear();
-
-                        final chatRef = FirebaseFirestore.instance
-                            .collection('chats')
-                            .doc(userId);
-
-                        await chatRef
-                            .collection('messages')
-                            .add({
-                          'senderId': 'admin',
-                          'text': text,
-                          'timestamp':
-                          FieldValue.serverTimestamp(),
-                        });
-
-                        await chatRef.set({
-                          'lastMessage': text,
-                          'lastUpdated':
-                          FieldValue.serverTimestamp(),
-                          'unreadByUser': true,
-                          'unreadByAdmin': false,
-                        }, SetOptions(merge: true));
-                      },
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  void _openChatList() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: _cardBg,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) {
-        return SizedBox(
-          height: MediaQuery.of(context).size.height * .75,
-          child: Column(
-            children: [
-              const SizedBox(height: 15),
-              const Text(
-                "Customer Messages",
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const Divider(),
-              Expanded(
-                child: StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection('chats')
-                      .orderBy('lastUpdated', descending: true)
-                      .snapshots(),
-                  builder: (context, snapshot) {
-                    if (!snapshot.hasData) {
-                      return const Center(
-                        child: CircularProgressIndicator(),
-                      );
-                    }
-
-                    final docs = snapshot.data!.docs;
-
-                    if (docs.isEmpty) {
-                      return const Center(
-                        child: Text("No conversations"),
-                      );
-                    }
-
-                    return ListView.builder(
-                      itemCount: docs.length,
-                      itemBuilder: (context, index) {
-                        final data =
-                        docs[index].data() as Map<String, dynamic>;
-
-                        final uid = docs[index].id;
-
-                        return ListTile(
-                          leading: const CircleAvatar(
-                            child: Icon(Icons.person),
-                          ),
-                          title: Text(
-                            data['userName'] ?? uid,
-                          ),
-                          subtitle: Text(
-                            data['lastMessage'] ?? "",
-                            maxLines: 1,
-                          ),
-                          trailing: (data['unreadByAdmin'] ?? false)
-                              ? const CircleAvatar(
-                            radius: 10,
-                            backgroundColor: Colors.red,
-                            child: Text(
-                              "!",
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12),
-                            ),
-                          )
-                              : null,
-                          onTap: () {
-                            Navigator.pop(context);
-                            _openConversation(uid);
-                          },
-                        );
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  void _openChatModal() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: _cardBg,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-          child: Container(
-            height: MediaQuery.of(context).size.height * 0.65,
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text("System Messages", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _textMain)),
-                    IconButton(icon: const Icon(Icons.close, size: 20), onPressed: () => Navigator.pop(context)),
-                  ],
-                ),
-                const Divider(color: _border),
-                Expanded(
-                  child: StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance.collection('messages').orderBy('timestamp', descending: true).snapshots(),
-                    builder: (context, snapshot) {
-                      if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                      final docs = snapshot.data!.docs;
-
-                      if (docs.isEmpty) {
-                        return const Center(child: Text("Walang mensahe.", style: TextStyle(color: _textSub)));
-                      }
-
-                      return ListView.builder(
-                        reverse: true,
-                        itemCount: docs.length,
-                        itemBuilder: (context, index) {
-                          final data = docs[index].data() as Map<String, dynamic>;
-                          final isMe = data['senderRole'] == widget.userRole;
-
-                          return Align(
-                            alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                            child: Container(
-                              margin: const EdgeInsets.symmetric(vertical: 4),
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                              decoration: BoxDecoration(
-                                color: isMe ? _primary : const Color(0xffF1F5F9),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                                children: [
-                                  Text(data['senderName'] ?? 'User', style: TextStyle(fontSize: 10, color: isMe ? Colors.white70 : _textSub, fontWeight: FontWeight.bold)),
-                                  Text(data['text'] ?? '', style: TextStyle(color: isMe ? Colors.white : _textMain, fontSize: 13)),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(top: 8.0),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _messageController,
-                          decoration: InputDecoration(
-                            hintText: "Isulat ang mensahe...",
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                            fillColor: _bg,
-                            filled: true,
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        icon: const Icon(Icons.send_rounded, color: _primary),
-                        onPressed: () async {
-                          if (_messageController.text.trim().isEmpty) return;
-                          final text = _messageController.text.trim();
-                          _messageController.clear();
-                          await FirebaseFirestore.instance.collection('messages').add({
-                            'text': text,
-                            'senderName': widget.userRole == 'admin' ? 'Admin' : 'User',
-                            'senderRole': widget.userRole,
-                            'timestamp': FieldValue.serverTimestamp(),
-                          });
-                        },
-                      )
-                    ],
-                  ),
-                )
-              ],
-            ),
-          ),
-        );
-      },
-    );
   }
 
   @override
@@ -732,71 +381,6 @@ class _DashboardPageState extends State<DashboardPage> {
           const SizedBox(height: 14),
 
           _buildGoogleStyleWeatherCard(),
-          const SizedBox(height: 14),
-
-          // LIVE FARM MARKET RATE CARD (REALTIME ACCURATE DATA)
-          StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance.collection('products').snapshots(),
-            builder: (context, snapshot) {
-              String rateDisplay = "₱0.00 / kg";
-              String productName = "No Product Registered";
-
-              if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
-                final docData = snapshot.data!.docs.first.data() as Map<String, dynamic>;
-                final price = docData['price']?.toString() ?? '0';
-                productName = docData['name'] ?? docData['productName'] ?? 'Palay';
-                rateDisplay = "₱$price.00 / kg";
-              }
-
-              return Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: _cardBg,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: _border),
-                  boxShadow: [
-                    BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 6, offset: const Offset(0, 2)),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: _primary.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(Icons.trending_up_rounded, color: _primary, size: 22),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: Colors.amber.withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: const Text("MARKET RATE", style: TextStyle(color: Colors.amber, fontSize: 9, fontWeight: FontWeight.bold)),
-                              ),
-                              const SizedBox(width: 6),
-                              Text("• $productName", style: const TextStyle(color: _textSub, fontSize: 10, fontWeight: FontWeight.w500)),
-                            ],
-                          ),
-                          const SizedBox(height: 2),
-                          Text(rateDisplay, style: const TextStyle(color: _textMain, fontSize: 18, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
           const SizedBox(height: 18),
 
           const Text("Operations & Metrics Overview", style: TextStyle(color: _textMain, fontSize: 15, fontWeight: FontWeight.bold)),
@@ -813,28 +397,31 @@ class _DashboardPageState extends State<DashboardPage> {
               mainAxisSpacing: 10,
             ),
             children: [
-              // 1. INVENTORY MODULE KPI
+              // 1. INVENTORY MODULE KPI (KILOGRAMS)
               StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance.collection('products').snapshots(),
                 builder: (context, snapshot) {
-                  int totalStock = 0;
+                  double totalStockKg = 0;
                   bool hasLowStock = false;
 
                   if (snapshot.hasData) {
                     for (var doc in snapshot.data!.docs) {
                       final data = doc.data() as Map<String, dynamic>;
-                      final stockVal = int.tryParse(data['stock']?.toString() ?? '0') ?? 0;
-                      final lowThreshold = int.tryParse(data['lowStockThreshold']?.toString() ?? '10') ?? 10;
+                      if (data['isDeleted'] == true) continue;
 
-                      totalStock += stockVal;
-                      if (stockVal <= lowThreshold) hasLowStock = true;
+                      final double currentTotalKg =
+                          ((data['remainingKg'] ?? data['totalKg'] ?? data['stock'] ?? 0.0) as num).toDouble();
+                      final lowThreshold = double.tryParse(data['lowStockThreshold']?.toString() ?? '10') ?? 10.0;
+
+                      totalStockKg += currentTotalKg;
+                      if (currentTotalKg <= lowThreshold) hasLowStock = true;
                     }
                   }
 
                   return _buildInteractiveKpiCard(
                     categoryLabel: "INVENTORY",
                     title: "Total Rice Stocks",
-                    value: "$totalStock Sacks",
+                    value: "${totalStockKg.toStringAsFixed(0)} kg",
                     subtitle: hasLowStock ? "Low Stock Alert!" : "Optimal Supply Level",
                     icon: Icons.inventory_2_rounded,
                     color: Colors.blue,
@@ -845,7 +432,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 },
               ),
 
-              // 2. ORDERS MODULE KPI (MGA UNPAID / TO PAY ORDERS LAMANG)
+              // 2. ORDERS MODULE KPI
               StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance.collection('orders').snapshots(),
                 builder: (context, snapshot) {
@@ -857,7 +444,6 @@ class _DashboardPageState extends State<DashboardPage> {
                       final status = (data['status'] ?? '').toString().toLowerCase();
                       final isPaid = data['isPaid'] ?? true;
 
-                      // KUKUNIN LANG ANG MGA HINDI PA PAID (isPaid == false O status na 'to pay' / 'pending')
                       if (isPaid == false || status == 'to pay' || status == 'pending' || status == 'unpaid') {
                         toPayCount++;
                       }
@@ -878,7 +464,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 },
               ),
 
-              // 3. GUIDANCE MODULE KPI (100% REALTIME DYNAMICAL DATA)
+              // 3. GUIDANCE MODULE KPI
               StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance.collection('crop_tracker').limit(1).snapshots(),
                 builder: (context, snapshot) {
@@ -923,7 +509,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 },
               ),
 
-              // 4. REPORTS MODULE KPI (MGA COMPLETED / PAID ORDERS LAMANG - ACCURATE)
+              // 4. REPORTS MODULE KPI
               StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance.collection('orders').snapshots(),
                 builder: (context, snapshot) {
@@ -935,11 +521,9 @@ class _DashboardPageState extends State<DashboardPage> {
                       final isPaid = data['isPaid'] ?? false;
                       final status = (data['status'] ?? '').toString().toLowerCase();
 
-                      // BABASAHIN LANG ANG REVENUE KUNG NAKUMPLETO O NABAYARAN NA ANG ORDER (isPaid == true)
                       if (isPaid == true || status == 'completed' || status == 'paid' || status == 'delivered') {
                         double orderTotal = double.tryParse(data['totalAmount']?.toString() ?? data['totalPrice']?.toString() ?? '0') ?? 0.0;
 
-                        // Kung walang direct total sum sa top field, kwentahin mula sa items list
                         if (orderTotal == 0.0 && data['items'] != null && data['items'] is List) {
                           final items = data['items'] as List<dynamic>;
                           for (var item in items) {
