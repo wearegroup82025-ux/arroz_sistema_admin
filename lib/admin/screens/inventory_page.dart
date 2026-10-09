@@ -678,13 +678,7 @@ class _InventoryPageState extends State<InventoryPage> {
                           color: _surfaceBg,
                           borderRadius: BorderRadius.circular(4),
                         ),
-                        child: Text(
-                          "${displayKg.toStringAsFixed(0)} kg",
-                          style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: _textSecondary),
-                        ),
+                       
                       ),
                     ],
                   ),
