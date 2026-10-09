@@ -457,7 +457,7 @@ class _DashboardPageState extends State<DashboardPage> {
           _buildGoogleStyleWeatherCard(),
           const SizedBox(height: 16),
 
-          const Text("Buod ng Sakahan", style: TextStyle(color: _textMain, fontSize: 15, fontWeight: FontWeight.bold)),
+          const Text("Shortcuts", style: TextStyle(color: _textMain, fontSize: 15, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
 
           GridView(
@@ -573,9 +573,9 @@ class _DashboardPageState extends State<DashboardPage> {
                     if (days == 0) {
                       cropAgeText = "Araw 0";
                     } else if (days <= 15) {
-                      cropAgeText = "Lumalaki (Day $days)";
+                      cropAgeText = "Pag Usbong (Day $days)";
                     } else if (days <= 60) {
-                      cropAgeText = "Naglalaman (Day $days)";
+                      cropAgeText = "Pagsusuwi (Day $days)";
                     } else {
                       cropAgeText = "Edad ng palay (Day $days)";
                     }
@@ -1056,8 +1056,8 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _buildUniversalNavBar() {
     final primaryItems = [
       {'index': 0, 'icon': Icons.grid_view_rounded, 'label': 'Dashboard'},
-      {'index': 1, 'icon': Icons.inventory_2_outlined, 'label': 'Imbak'},
-      {'index': 2, 'icon': Icons.shopping_bag_outlined, 'label': 'Benta'},
+      {'index': 1, 'icon': Icons.inventory_2_outlined, 'label': 'Inventory'},
+      {'index': 2, 'icon': Icons.shopping_bag_outlined, 'label': 'Orders'},
       {'index': 3, 'icon': Icons.menu_book_outlined, 'label': 'Gabay'},
     ];
 
@@ -1105,9 +1105,9 @@ class _DashboardPageState extends State<DashboardPage> {
                 ],
               ),
               itemBuilder: (context) => [
-                const PopupMenuItem(value: 4, child: Text("Kikitain at Ulat")),
-                const PopupMenuItem(value: 5, child: Text("Ulat ng Panahon")),
-                if (widget.userRole == 'admin') const PopupMenuItem(value: 6, child: Text("Mga Tao sa System")),
+                const PopupMenuItem(value: 4, child: Text("Reports")),
+                const PopupMenuItem(value: 5, child: Text("Weather Updates")),
+                if (widget.userRole == 'admin') const PopupMenuItem(value: 6, child: Text("User Management")),
               ],
             ),
           ),

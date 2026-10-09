@@ -20,6 +20,9 @@ class _ReportsPageState extends State<ReportsPage> {
   static const Color _dangerRed = Color(0xFFDC2626);
   static const Color _borderColor = Color(0xFFE2E8F0);
 
+  final Map<String, double> _orderShippingFees = {};
+  final Map<String, double> _orderDiscounts = {};
+
   String _selectedTimeFrame = 'today';
 
   @override
@@ -52,6 +55,8 @@ class _ReportsPageState extends State<ReportsPage> {
             }
 
             final orderDocs = ordersSnapshot.data?.docs ?? [];
+            _cacheOrderFeesAndDiscounts(orderDocs);
+
             List<OrderModel> allOrders = orderDocs.map((d) => OrderModel.fromFirestore(d)).toList();
 
             List<OrderModel> validOrders = allOrders.where((o) => o.status == OrderStatus.completed).toList();
@@ -67,7 +72,7 @@ class _ReportsPageState extends State<ReportsPage> {
                 final productDocs = productsSnapshot.data?.docs ?? [];
                 List<ProductModel> products = productDocs.map((d) => ProductModel.fromFirestore(d)).toList();
 
-                final analytics = _computeAnalytics(filteredOrders, products, orderDocs);
+                final analytics = _computeAnalytics(filteredOrders, products);
 
                 return SingleChildScrollView(
                   physics: const BouncingScrollPhysics(),
@@ -95,8 +100,42 @@ class _ReportsPageState extends State<ReportsPage> {
     );
   }
 
-  Map<String, dynamic> _computeAnalytics(List<OrderModel> orders, List<ProductModel> products, List<QueryDocumentSnapshot> rawOrderDocs) {
-    double overallRevenue = 0.0;
+  void _cacheOrderFeesAndDiscounts(List<QueryDocumentSnapshot> orderDocs) {
+    _orderShippingFees.clear();
+    _orderDiscounts.clear();
+
+    for (final doc in orderDocs) {
+      final data = doc.data() as Map<String, dynamic>? ?? {};
+      final orderId = doc.id;
+
+      _orderShippingFees[orderId] = _parseMoneyValue(data, [
+        'shippingFee',
+        'shipping_fee',
+        'deliveryFee',
+        'delivery_fee',
+        'shippingCost',
+      ]);
+
+      _orderDiscounts[orderId] = _parseMoneyValue(data, [
+        'discountAmount',
+        'discount_amount',
+        'discount',
+        'voucherDiscount',
+      ]);
+    }
+  }
+
+  double _parseMoneyValue(Map<String, dynamic> data, List<String> keys) {
+    for (final key in keys) {
+      final value = data[key];
+      if (value == null) continue;
+      return double.tryParse(value.toString()) ?? 0.0;
+    }
+    return 0.0;
+  }
+
+  Map<String, dynamic> _computeAnalytics(List<OrderModel> orders, List<ProductModel> products) {
+    double grossRevenue = 0.0;
     double overallCost = 0.0;
     double totalShippingCollected = 0.0;
     double totalDiscountsGiven = 0.0;
@@ -128,20 +167,11 @@ class _ReportsPageState extends State<ReportsPage> {
       );
     }
 
-    // 2. Compute Raw Firestore Doc Financial Breakdown
-    for (var doc in rawOrderDocs) {
-      final data = doc.data() as Map<String, dynamic>? ?? {};
-      final String status = data['orderStatus'] ?? '';
-
-      // Tanging completed orders lang ang isasama sa totoong kita
-      if (status.toLowerCase() == 'completed') {
-        totalShippingCollected += (data['shippingFee'] ?? 0.0).toDouble();
-        totalDiscountsGiven += (data['discountAmount'] ?? 0.0).toDouble();
-      }
-    }
-
-    // 3. Compute Palay Sales & Cost
+    // 2. Compute Sales, Cost, Shipping, at Discount sa FILTERED ORDERS pa rin
     for (var order in orders) {
+      totalShippingCollected += _orderShippingFees[order.id] ?? 0.0;
+      totalDiscountsGiven += _orderDiscounts[order.id] ?? 0.0;
+
       for (var item in order.items) {
         double itemSellingPrice = item.pricePerUnit;
         final int qty = item.quantity;
@@ -158,7 +188,7 @@ class _ReportsPageState extends State<ReportsPage> {
 
         double lineCost = costPerKg * qty;
 
-        overallRevenue += lineRevenue;
+        grossRevenue += lineRevenue;
         overallCost += lineCost;
         totalKgSold += qty;
 
@@ -173,13 +203,18 @@ class _ReportsPageState extends State<ReportsPage> {
       }
     }
 
-    // Profit = (Benta sa Palay - Puhunan) + Shipping Fees Collected - Discounts
-    final overallProfit = (overallRevenue - overallCost) + totalShippingCollected - totalDiscountsGiven;
+    // Pumasok na Benta sa Palay = Gross Sales (e.g. 20k) - Discounts (e.g. 2k) = 18k
+    final double netRevenue = grossRevenue - totalDiscountsGiven;
+
+    // Malinis na Kita sa Palay (Net Profit) = Net Revenue sa Palay - Puhunan (HINDI kasama ang shipping fee)
+    final double overallProfit = netRevenue - overallCost;
+
     final topProducts = productStats.values.toList()
       ..sort((a, b) => b.totalRevenue.compareTo(a.totalRevenue));
 
     return {
-      'overallRevenue': overallRevenue,
+      'grossRevenue': grossRevenue,
+      'netRevenue': netRevenue,
       'overallCost': overallCost,
       'totalShippingCollected': totalShippingCollected,
       'totalDiscountsGiven': totalDiscountsGiven,
@@ -213,7 +248,8 @@ class _ReportsPageState extends State<ReportsPage> {
   }
 
   Widget _buildOverallSummaryCard(Map<String, dynamic> analytics) {
-    final double revenue = analytics['overallRevenue'];
+    final double netRevenue = analytics['netRevenue'];
+    final double grossRevenue = analytics['grossRevenue'];
     final double cost = analytics['overallCost'];
     final double shipping = analytics['totalShippingCollected'];
     final double discounts = analytics['totalDiscountsGiven'];
@@ -265,7 +301,7 @@ class _ReportsPageState extends State<ReportsPage> {
           const SizedBox(height: 12),
 
           Text(
-            isLoss ? "Kabuuang Lugi" : "Kabuuang Malinis na Kita (Net Profit)",
+            isLoss ? "Kabuuang Lugi sa Palay" : "Kabuuang Malinis na Kita (Net Profit)",
             style: const TextStyle(fontSize: 12, color: _textMuted),
           ),
           const SizedBox(height: 2),
@@ -286,19 +322,19 @@ class _ReportsPageState extends State<ReportsPage> {
                 children: [
                   Expanded(
                     child: _buildSummarySubTile(
-                      label: "Benta sa Palay",
-                      value: _formatCurrency(revenue),
-                      color: _textDark,
+                      label: "Pumasok na Benta",
+                      value: _formatCurrency(netRevenue),
+                      color: _primaryGreen,
                       icon: Icons.payments_outlined,
                     ),
                   ),
                   Container(height: 30, width: 1, color: _borderColor),
                   Expanded(
                     child: _buildSummarySubTile(
-                      label: "Koleksyon sa Delivery",
-                      value: _formatCurrency(shipping),
-                      color: Colors.blue.shade700,
-                      icon: Icons.local_shipping_outlined,
+                      label: "Puhunan sa Palay",
+                      value: _formatCurrency(cost),
+                      color: _textMuted,
+                      icon: Icons.shopping_bag_outlined,
                     ),
                   ),
                 ],
@@ -308,10 +344,10 @@ class _ReportsPageState extends State<ReportsPage> {
                 children: [
                   Expanded(
                     child: _buildSummarySubTile(
-                      label: "Puhunan sa Palay",
-                      value: _formatCurrency(cost),
-                      color: _textMuted,
-                      icon: Icons.shopping_bag_outlined,
+                      label: "Benta Bago Mag-Discount",
+                      value: _formatCurrency(grossRevenue),
+                      color: _textDark,
+                      icon: Icons.receipt_long_outlined,
                     ),
                   ),
                   Container(height: 30, width: 1, color: _borderColor),
@@ -321,6 +357,19 @@ class _ReportsPageState extends State<ReportsPage> {
                       value: "-${_formatCurrency(discounts)}",
                       color: _dangerRed,
                       icon: Icons.discount_outlined,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildSummarySubTile(
+                      label: "Bayad sa Courier (Shipping)",
+                      value: _formatCurrency(shipping),
+                      color: Colors.blue.shade700,
+                      icon: Icons.local_shipping_outlined,
                     ),
                   ),
                 ],

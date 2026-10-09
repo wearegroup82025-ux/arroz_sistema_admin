@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 // ==================== CONSTANTS & THEME ====================
 class AppTheme {
@@ -27,7 +28,6 @@ enum OrderStatus {
     final status = rawStatus.toLowerCase().trim();
     if (['pending', 'topay', 'to pay', 'unpaid'].contains(status)) return OrderStatus.toPay;
     if (['toship', 'to ship', 'paid', 'processing'].contains(status)) return OrderStatus.toShip;
-    // INAYOS: Idinagdag ang 'out for delivery' at 'outfordelivery' para ma-parse nang tama mula sa Firestore.
     if (['todeliver', 'to deliver', 'shipping', 'shipped', 'out for delivery', 'outfordelivery'].contains(status)) {
       return OrderStatus.toDeliver;
     }
@@ -38,8 +38,6 @@ enum OrderStatus {
 }
 
 /// Default delivery notice values.
-/// Keep these as normal Dart strings; customers can still edit the notice
-/// through the Delivery Delay Notice dialog and the values are saved to Firestore.
 const String kDefaultDeliveryNoticeTitle = 'Delivery Delay Notice';
 const String kDefaultDeliveryNoticeMessage =
     'Maaaring magkaroon ng delay sa delivery dahil sa masamang panahon.';
@@ -740,54 +738,76 @@ class _OrdersPageState extends State<OrdersPage> {
 
                                 const activeStatuses = [OrderStatus.toShip, OrderStatus.toDeliver, OrderStatus.completed];
 
-                                if (activeStatuses.contains(temporaryStatus) && !order.inventoryDeducted) {
-                                  shouldDeductStock = true;
-                                } else if (temporaryStatus == OrderStatus.cancelled && order.inventoryDeducted) {
+                                // PAG-CONNECT NG ORDER AT INVENTORY STOCK:
+                                // Kapag inilipat sa Cancelled, laging ibinabalik ang stock sa Inventory
+                                if (temporaryStatus == OrderStatus.cancelled) {
                                   shouldRestoreStock = true;
+                                } else if (activeStatuses.contains(temporaryStatus) && !order.inventoryDeducted) {
+                                  shouldDeductStock = true;
                                 }
 
+                                // 1. Pre-fetch ng Product Documents para siguradong may Reference na gagamitin sa Transaction
+                                final Map<String, DocumentReference> resolvedRefs = {};
+                                final productsQuery = await FirebaseFirestore.instance
+                                    .collection("products")
+                                    .where("isDeleted", isEqualTo: false)
+                                    .get();
+
+                                for (var item in order.items) {
+                                  DocumentReference? pRef;
+
+                                  if (item.productId.isNotEmpty) {
+                                    final pDoc = await FirebaseFirestore.instance.collection("products").doc(item.productId).get();
+                                    if (pDoc.exists) {
+                                      pRef = pDoc.reference;
+                                    }
+                                  }
+
+                                  if (pRef == null) {
+                                    for (var doc in productsQuery.docs) {
+                                      final pData = doc.data();
+                                      final name = (pData['name'] ?? '').toString().toLowerCase().trim();
+                                      final target = item.productName.toLowerCase().trim();
+                                      if (name.contains(target) || target.contains(name)) {
+                                        pRef = doc.reference;
+                                        break;
+                                      }
+                                    }
+                                  }
+
+                                  if (pRef == null && productsQuery.docs.isNotEmpty) {
+                                    pRef = productsQuery.docs.first.reference;
+                                  }
+
+                                  if (pRef != null) {
+                                    final key = item.productId.isNotEmpty ? item.productId : item.productName;
+                                    resolvedRefs[key] = pRef;
+                                  }
+                                }
+
+                                // 2. Realtime Execution Transaction
                                 await FirebaseFirestore.instance.runTransaction((transaction) async {
                                   final orderRef = FirebaseFirestore.instance.collection("orders").doc(order.id);
 
                                   if (shouldDeductStock || shouldRestoreStock) {
                                     for (var item in order.items) {
-                                      int deductionKg = item.quantity;
-                                      if (item.unit.toLowerCase().contains('sako') || item.unit.toLowerCase().contains('sack')) {
-                                        deductionKg = item.quantity * 50; 
-                                      }
-
-                                      DocumentReference? productRef;
-
-                                      if (item.productId.isNotEmpty) {
-                                        final prodDoc = FirebaseFirestore.instance.collection("products").doc(item.productId);
-                                        final snap = await transaction.get(prodDoc);
-                                        if (snap.exists) {
-                                          productRef = prodDoc;
-                                        }
-                                      }
-
-                                      if (productRef == null) {
-                                        final querySnap = await FirebaseFirestore.instance
-                                            .collection("products")
-                                            .where("isDeleted", isEqualTo: false)
-                                            .get();
-
-                                        for (var pDoc in querySnap.docs) {
-                                          final pData = pDoc.data();
-                                          final pName = (pData['name'] ?? '').toString().toLowerCase();
-                                          if (pName.contains(item.productName.toLowerCase()) || item.productName.toLowerCase().contains(pName)) {
-                                            productRef = pDoc.reference;
-                                            break;
-                                          }
-                                        }
-                                      }
+                                      final key = item.productId.isNotEmpty ? item.productId : item.productName;
+                                      final productRef = resolvedRefs[key];
 
                                       if (productRef != null) {
                                         final pSnap = await transaction.get(productRef);
                                         if (pSnap.exists) {
                                           final pData = pSnap.data() as Map<String, dynamic>? ?? {};
-                                          final double currentRemainingKg = ((pData['remainingKg'] ?? pData['totalKg'] ?? 0.0) as num).toDouble();
+                                          
+                                          final double currentRemainingKg = ((pData['remainingKg'] ?? pData['stock'] ?? pData['initialKg'] ?? 0.0) as num).toDouble();
                                           final int currentTotalSold = (pData['totalSold'] ?? pData['sold'] ?? 0) as int;
+
+                                          int deductionKg = item.quantity;
+                                          final cleanUnit = item.unit.toLowerCase().trim();
+                                          
+                                          if (cleanUnit.contains('sako') || cleanUnit.contains('sack')) {
+                                            deductionKg = item.quantity * 50; 
+                                          }
 
                                           double newRemainingKg = currentRemainingKg;
                                           int newTotalSold = currentTotalSold;
@@ -796,12 +816,14 @@ class _OrdersPageState extends State<OrdersPage> {
                                             newRemainingKg = (currentRemainingKg - deductionKg).clamp(0.0, double.infinity);
                                             newTotalSold = currentTotalSold + item.quantity;
                                           } else if (shouldRestoreStock) {
+                                            // INA-ADD BALIK SA INVENTORY STOCK
                                             newRemainingKg = currentRemainingKg + deductionKg;
                                             newTotalSold = (currentTotalSold - item.quantity).clamp(0, 999999);
                                           }
 
                                           transaction.update(productRef, {
                                             'remainingKg': newRemainingKg,
+                                            'stock': newRemainingKg,
                                             'totalSold': newTotalSold,
                                             'sold': newTotalSold,
                                             'updatedAt': FieldValue.serverTimestamp(),
@@ -811,6 +833,7 @@ class _OrdersPageState extends State<OrdersPage> {
                                     }
                                   }
 
+                                  // Update Status sa Order Document
                                   transaction.update(orderRef, {
                                     'status': temporaryStatus.label,
                                     'orderStatus': temporaryStatus.label,
@@ -959,6 +982,8 @@ class OrderCardItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final formattedDateTime = DateFormat('MMM dd, yyyy • hh:mm a').format(order.orderDate);
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -990,6 +1015,19 @@ class OrderCardItem extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 6),
+
+          Row(
+            children: [
+              const Icon(Icons.access_time_rounded, size: 13, color: AppTheme.textSecondary),
+              const SizedBox(width: 4),
+              Text(
+                formattedDateTime,
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+
           Text("Customer: ${order.customerName}", style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
           Text("Phone: ${order.contactNumber}", style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
           Text("Address: ${order.deliveryAddress}", style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),

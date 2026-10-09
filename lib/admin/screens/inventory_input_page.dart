@@ -388,13 +388,14 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
           else
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
+              clipBehavior: Clip.none,
               child: Row(
                 children: [
                   ...images.asMap().entries.map((entry) {
                     final photoIndex = entry.key;
                     final image = entry.value;
                     return Padding(
-                      padding: const EdgeInsets.only(right: 6),
+                      padding: const EdgeInsets.only(right: 8, top: 4),
                       child: Stack(
                         clipBehavior: Clip.none,
                         children: [
@@ -513,22 +514,22 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
       return InputDecoration(
         labelText: label,
         labelStyle: const TextStyle(
-          fontSize: 13,
+          fontSize: 12,
           color: _textSecondary,
         ),
         prefixIcon: icon == null
             ? null
             : Icon(
                 icon,
-                size: 18,
+                size: 16,
                 color: iconColor ?? _textSecondary,
               ),
         filled: true,
         fillColor: green ? _primaryGreenSoft.withOpacity(0.28) : Colors.white,
         isDense: true,
         contentPadding: const EdgeInsets.symmetric(
-          horizontal: 10,
-          vertical: 10,
+          horizontal: 8,
+          vertical: 8,
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
@@ -601,7 +602,7 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
         bottom: true,
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 800), // tablet & desktop container limit
+            constraints: const BoxConstraints(maxWidth: 800),
             child: Form(
               key: _formKey,
               child: SingleChildScrollView(
@@ -763,7 +764,7 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                                           value: e,
                                           child: Text(
                                             e,
-                                            style: const TextStyle(fontSize: 13),
+                                            style: const TextStyle(fontSize: 12),
                                           ),
                                         ),
                                       )
@@ -779,7 +780,7 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                               Expanded(
                                 child: TextFormField(
                                   controller: totalCostController,
-                                  style: const TextStyle(fontSize: 13),
+                                  style: const TextStyle(fontSize: 12),
                                   keyboardType:
                                       const TextInputType.numberWithOptions(
                                     decimal: true,
@@ -887,7 +888,7 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                                                   child: Text(
                                                     c,
                                                     style: const TextStyle(
-                                                      fontSize: 12,
+                                                      fontSize: 11,
                                                     ),
                                                   ),
                                                 ),
@@ -902,12 +903,12 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                                           },
                                         ),
                                       ),
-                                      const SizedBox(width: 6),
+                                      const SizedBox(width: 4),
                                       Expanded(
                                         flex: 2,
                                         child: TextFormField(
                                           controller: item.kgController,
-                                          style: const TextStyle(fontSize: 12),
+                                          style: const TextStyle(fontSize: 11),
                                           keyboardType:
                                               const TextInputType.numberWithOptions(
                                             decimal: true,
@@ -920,7 +921,7 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                                           ),
                                         ),
                                       ),
-                                      const SizedBox(width: 6),
+                                      const SizedBox(width: 4),
                                       Expanded(
                                         flex: 2,
                                         child: TextFormField(
@@ -937,7 +938,7 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                                           style: const TextStyle(
                                             fontWeight: FontWeight.w800,
                                             color: _primaryGreen,
-                                            fontSize: 12,
+                                            fontSize: 11,
                                           ),
                                           decoration: compactDecoration(
                                             label: "SRP / kg",
@@ -947,14 +948,14 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                                       ),
                                       if (breakdownItems.length > 1)
                                         Padding(
-                                          padding: const EdgeInsets.only(left: 4, top: 4),
+                                          padding: const EdgeInsets.only(left: 2, top: 4),
                                           child: IconButton(
                                             constraints: const BoxConstraints(),
                                             padding: EdgeInsets.zero,
                                             icon: const Icon(
                                               Icons.remove_circle_outline,
                                               color: _dangerRed,
-                                              size: 20,
+                                              size: 18,
                                             ),
                                             onPressed: () {
                                               setState(() {
@@ -1131,7 +1132,7 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
                             horizontal: 24,
                             vertical: 12,
                           ),
-                          minimumSize: const Size(180, 42), // Sakto lang ang laki sa kahit anong device
+                          minimumSize: const Size(180, 42),
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(8),
@@ -1338,7 +1339,7 @@ class _InventoryInputPageState extends State<InventoryInputPage> {
         Text(
           value,
           style: TextStyle(
-            fontSize: 13,
+            fontSize: 12,
             color: valueColor,
             fontWeight: FontWeight.w800,
           ),
