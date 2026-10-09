@@ -10,7 +10,7 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'firebase_options.dart';
-import 'services/notification/notification_service.dart';
+import 'services/notification/notification_service_admin.dart';
 
 import 'user/screens/login_page.dart';
 import 'user/screens/homeuser_page.dart';

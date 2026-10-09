@@ -124,7 +124,7 @@ class _InventoryPageState extends State<InventoryPage> {
           if (result is String && result.isNotEmpty) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(result),
+                content: Text(result, style: const TextStyle(fontSize: 16)),
                 backgroundColor: _dangerRed,
                 duration: const Duration(seconds: 8),
               ),
@@ -133,18 +133,19 @@ class _InventoryPageState extends State<InventoryPage> {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text(
-                  "Matagumpay na na-save ang ani at mga larawan sa inventory.",
+                  "Successfully saved ang ani at images sa Inventory!",
+                  style: TextStyle(fontSize: 16),
                 ),
                 backgroundColor: _primaryGreen,
               ),
             );
           }
         },
-        icon: const Icon(Icons.add_box_rounded, color: Colors.white, size: 20),
+        icon: const Icon(Icons.add_box_rounded, color: Colors.white, size: 28),
         label: const Text(
-          "Mag-input ng Ani & Puhunan",
+          "+ Mag-input ng Ani & Puhunan",
           style: TextStyle(
-              color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+              color: Colors.white, fontWeight: FontWeight.bold, fontSize: 17),
         ),
       ),
       body: SafeArea(
@@ -155,7 +156,7 @@ class _InventoryPageState extends State<InventoryPage> {
               return const Center(
                 child: Text("May error sa database.",
                     style: TextStyle(
-                        color: _dangerRed, fontWeight: FontWeight.bold)),
+                        color: _dangerRed, fontWeight: FontWeight.bold, fontSize: 17)),
               );
             }
             if (snapshot.connectionState == ConnectionState.waiting) {
@@ -216,16 +217,17 @@ class _InventoryPageState extends State<InventoryPage> {
                       return TextField(
                         controller: _searchController,
                         onChanged: (val) => _searchQueryNotifier.value = val,
+                        style: const TextStyle(fontSize: 16),
                         decoration: InputDecoration(
                           hintText: "Maghanap ng uri (e.g. Hybrid, Hectare 1)...",
                           hintStyle: const TextStyle(
-                              fontSize: 12, color: _textSecondary),
+                              fontSize: 15, color: _textSecondary),
                           prefixIcon: const Icon(Icons.search_rounded,
-                              color: _textSecondary, size: 18),
+                              color: _textSecondary, size: 26),
                           suffixIcon: queryValue.isNotEmpty
                               ? IconButton(
                                   icon: const Icon(Icons.clear,
-                                      size: 16, color: _textSecondary),
+                                      size: 24, color: _textSecondary),
                                   onPressed: () {
                                     _searchController.clear();
                                     _searchQueryNotifier.value = "";
@@ -235,7 +237,7 @@ class _InventoryPageState extends State<InventoryPage> {
                           filled: true,
                           fillColor: _cardBg,
                           contentPadding:
-                              const EdgeInsets.symmetric(vertical: 8),
+                              const EdgeInsets.symmetric(vertical: 14),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10),
                             borderSide: const BorderSide(color: _borderLine),
@@ -267,9 +269,9 @@ class _InventoryPageState extends State<InventoryPage> {
 
                       if (activeDocs.isEmpty) {
                         return const Center(
-                          child: Text("Walang nahanap na record sa inbentaryo.",
+                          child: Text("Walang nahanap na record sa Inventory.",
                               style: TextStyle(
-                                  color: _textSecondary, fontSize: 13)),
+                                  color: _textSecondary, fontSize: 16)),
                         );
                       }
 
@@ -316,7 +318,7 @@ class _InventoryPageState extends State<InventoryPage> {
     required int totalInitialKg,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: const BoxDecoration(
         color: _cardBg,
         border: Border(bottom: BorderSide(color: _borderLine)),
@@ -330,45 +332,45 @@ class _InventoryPageState extends State<InventoryPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text("Smart Farm Inventory",
+                    Text("Farm Inventory",
                         style: TextStyle(
-                            fontSize: 17,
+                            fontSize: 22,
                             fontWeight: FontWeight.bold,
                             color: _textPrimary)),
                     SizedBox(height: 2),
-                    Text("Inaasahang Puhunan at Kikitain sa Ani",
+                    Text("Puhunan / Capital at Tubo / Profit sa Ani",
                         style:
-                            TextStyle(fontSize: 11, color: _textSecondary)),
+                            TextStyle(fontSize: 14, color: _textSecondary)),
                   ],
                 ),
               ),
               IconButton(
                 constraints: const BoxConstraints(),
                 padding: EdgeInsets.zero,
-                tooltip: "Inventory Archive",
+                tooltip: "Archive",
                 icon: const Icon(Icons.history_toggle_off_rounded,
-                    color: _infoBlue, size: 24),
+                    color: _infoBlue, size: 30),
                 onPressed: () => _showHistoryModal(context),
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             physics: const BouncingScrollPhysics(),
             child: Row(
               children: [
                 _buildMetricCardFixed(
-                    "Inaasahang Benta",
+                    "Benta / Revenue",
                     _formatCurrency(totalValue),
                     Icons.account_balance_wallet_outlined,
                     _infoBlue),
                 const SizedBox(width: 8),
-                _buildMetricCardFixed("Current Stock", "$totalStockKg / $totalInitialKg kg",
+                _buildMetricCardFixed("Stock / Kilos", "$totalStockKg / $totalInitialKg kg",
                     Icons.scale_outlined, _primaryGreen),
                 const SizedBox(width: 8),
                 _buildMetricCardFixed(
-                    "Inaasahang Tubó",
+                    "Tubo / Profit",
                     _formatCurrency(totalProfit),
                     Icons.trending_up_rounded,
                     totalProfit >= 0 ? _primaryGreen : _dangerRed),
@@ -383,8 +385,8 @@ class _InventoryPageState extends State<InventoryPage> {
   Widget _buildMetricCardFixed(
       String label, String value, IconData icon, Color accentColor) {
     return Container(
-      width: 125,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      width: 155,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
         color: _surfaceBg,
         borderRadius: BorderRadius.circular(10),
@@ -395,27 +397,27 @@ class _InventoryPageState extends State<InventoryPage> {
         children: [
           Row(
             children: [
-              Icon(icon, size: 12, color: accentColor),
+              Icon(icon, size: 18, color: accentColor),
               const SizedBox(width: 4),
               Expanded(
                 child: Text(
                   label,
                   style: const TextStyle(
-                      fontSize: 9,
+                      fontSize: 12,
                       color: _textSecondary,
-                      fontWeight: FontWeight.w600),
+                      fontWeight: FontWeight.bold),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           FittedBox(
             fit: BoxFit.scaleDown,
             child: Text(
               value,
               style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 17,
                   fontWeight: FontWeight.bold,
                   color: accentColor),
             ),
@@ -447,13 +449,13 @@ class _InventoryPageState extends State<InventoryPage> {
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
           initiallyExpanded: true,
-          tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+          tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           leading: const Icon(Icons.folder_special_rounded,
-              color: _primaryGreen, size: 26),
+              color: _primaryGreen, size: 32),
           title: Text(
             hectareGroup,
             style: const TextStyle(
-                fontSize: 14,
+                fontSize: 18,
                 fontWeight: FontWeight.bold,
                 color: _textPrimary),
           ),
@@ -462,7 +464,7 @@ class _InventoryPageState extends State<InventoryPage> {
             alignment: Alignment.centerLeft,
             child: Text(
               "${batchList.length} Batch(es) | Stock: ${folderRemainingKg.toStringAsFixed(0)}/${folderInitialKg.toStringAsFixed(0)} kg",
-              style: const TextStyle(fontSize: 10, color: _textSecondary),
+              style: const TextStyle(fontSize: 13, color: _textSecondary),
             ),
           ),
           childrenPadding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
@@ -474,7 +476,6 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
-  // --- INAYOS AT PINAGANDANG BATCH CARD ---
   Widget _buildBatchCardWithSeparatedConditions(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>? ?? {};
 
@@ -490,7 +491,6 @@ class _InventoryPageState extends State<InventoryPage> {
         ((data['remainingKg'] ?? initialKg) as num).toDouble();
     final double soldKg = initialKg - remainingKg;
 
-    // Gross at Profit computations
     double totalExpectedGross = 0.0;
     for (var b in breakdownsData) {
       final double bKg = ((b['kg'] ?? 0.0) as num).toDouble();
@@ -512,7 +512,7 @@ class _InventoryPageState extends State<InventoryPage> {
 
     return Container(
       margin: const EdgeInsets.only(top: 8),
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: _surfaceBg,
         borderRadius: BorderRadius.circular(12),
@@ -521,23 +521,22 @@ class _InventoryPageState extends State<InventoryPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // HEADER ROW (NILAGAY DIN ANG CURRENT STOCK DITO PARA MADALING MAKITA NI FARMER)
           Row(
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
-                  width: 44,
-                  height: 44,
+                  width: 55,
+                  height: 55,
                   color: Colors.grey.shade200,
                   child: imageUrl.isNotEmpty
                       ? (imageUrl.startsWith('http')
-                          ? Image.network(imageUrl, fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.agriculture, color: Colors.grey))
-                          : Image.file(File(imageUrl), fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.agriculture, color: Colors.grey)))
-                      : const Icon(Icons.agriculture, color: Colors.grey),
+                          ? Image.network(imageUrl, fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.agriculture, color: Colors.grey, size: 30))
+                          : Image.file(File(imageUrl), fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.agriculture, color: Colors.grey, size: 30)))
+                      : const Icon(Icons.agriculture, color: Colors.grey, size: 30),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -545,20 +544,19 @@ class _InventoryPageState extends State<InventoryPage> {
                     Text(
                       name,
                       style: const TextStyle(
-                          fontSize: 13,
+                          fontSize: 16,
                           fontWeight: FontWeight.bold,
                           color: _textPrimary),
                     ),
                     Text(
                       "Code: $productCode | ${_formatDate(createdAt)} ($daysOld araw)",
                       style: const TextStyle(
-                          fontSize: 9, color: _textSecondary),
+                          fontSize: 12, color: _textSecondary),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
               ),
-              // CURRENT STOCK HIGHLIGHT SA ITTAAS
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
@@ -570,11 +568,11 @@ class _InventoryPageState extends State<InventoryPage> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     const Text("Natitirang Stock",
-                        style: TextStyle(fontSize: 8, color: _primaryGreen, fontWeight: FontWeight.bold)),
+                        style: TextStyle(fontSize: 11, color: _primaryGreen, fontWeight: FontWeight.bold)),
                     Text(
                       "${remainingKg.toStringAsFixed(0)} kg left",
                       style: const TextStyle(
-                        fontSize: 11,
+                        fontSize: 14,
                         fontWeight: FontWeight.w900,
                         color: _primaryGreen,
                       ),
@@ -586,14 +584,14 @@ class _InventoryPageState extends State<InventoryPage> {
                 constraints: const BoxConstraints(),
                 padding: const EdgeInsets.symmetric(horizontal: 2),
                 icon: const Icon(Icons.edit_note_rounded,
-                    size: 20, color: _infoBlue),
+                    size: 26, color: _infoBlue),
                 onPressed: () => _showEditProductModal(context, doc),
               ),
               IconButton(
                 constraints: const BoxConstraints(),
                 padding: const EdgeInsets.symmetric(horizontal: 2),
                 icon: const Icon(Icons.archive_outlined,
-                    size: 18, color: _textSecondary),
+                    size: 24, color: _textSecondary),
                 onPressed: () =>
                     _confirmDeleteProduct(context, doc.id, name, productCode),
               )
@@ -601,7 +599,6 @@ class _InventoryPageState extends State<InventoryPage> {
           ),
           const SizedBox(height: 10),
 
-          // MALINIS AT MAS IMPORMATIBONG KONDISYON LIST (NANDITO NA ANG SRP/KG AT STOCK RATIO)
           ...breakdownsData.map((b) {
             final String cond = b['condition'] ?? "N/A";
             final double bKg = ((b['kg'] ?? 0.0) as num).toDouble();
@@ -611,7 +608,7 @@ class _InventoryPageState extends State<InventoryPage> {
 
             return Container(
               margin: const EdgeInsets.only(bottom: 6),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               decoration: BoxDecoration(
                 color: _cardBg,
                 borderRadius: BorderRadius.circular(8),
@@ -629,13 +626,13 @@ class _InventoryPageState extends State<InventoryPage> {
                           isDry
                               ? Icons.wb_sunny_rounded
                               : Icons.water_drop_rounded,
-                          size: 14,
+                          size: 18,
                           color: isDry ? _warningOrange : _infoBlue),
                       const SizedBox(width: 6),
                       Text(
                         cond,
                         style: TextStyle(
-                          fontSize: 11,
+                          fontSize: 14,
                           fontWeight: FontWeight.bold,
                           color: isDry ? _warningOrange : _infoBlue,
                         ),
@@ -647,14 +644,14 @@ class _InventoryPageState extends State<InventoryPage> {
                       Text(
                         "SRP: ₱${bSrp.toStringAsFixed(2)}/kg",
                         style: const TextStyle(
-                          fontSize: 11,
+                          fontSize: 14,
                           fontWeight: FontWeight.bold,
                           color: _primaryGreen,
                         ),
                       ),
                       const SizedBox(width: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
                           color: _surfaceBg,
                           borderRadius: BorderRadius.circular(4),
@@ -662,7 +659,7 @@ class _InventoryPageState extends State<InventoryPage> {
                         child: Text(
                           "${bKg.toStringAsFixed(0)} kg",
                           style: const TextStyle(
-                              fontSize: 10,
+                              fontSize: 13,
                               fontWeight: FontWeight.w600,
                               color: _textSecondary),
                         ),
@@ -676,9 +673,8 @@ class _InventoryPageState extends State<InventoryPage> {
 
           const SizedBox(height: 4),
 
-          // KABUUANG COMPUTATION AT KITA BOX (SOLO & KUMPLETO)
           Container(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: _infoBlueBg,
               borderRadius: BorderRadius.circular(10),
@@ -689,26 +685,25 @@ class _InventoryPageState extends State<InventoryPage> {
               children: [
                 const Row(
                   children: [
-                    Icon(Icons.analytics_rounded, size: 14, color: _infoBlue),
-                    SizedBox(width: 4),
-                    Text("KABUUANG COMPUTATION AT KITA",
+                    Icon(Icons.analytics_rounded, size: 18, color: _infoBlue),
+                    SizedBox(width: 6),
+                    Text("KABUUANG COMPUTATION AT TUBO / PROFIT",
                         style: TextStyle(
-                            fontSize: 10,
+                            fontSize: 13,
                             fontWeight: FontWeight.bold,
                             color: _infoBlue)),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
 
-                // KABUUANG STOCKS AT PUHUNAN
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     _buildSummaryColumn(
-                        "Current Stock / Total",
+                        "Stock / Total",
                         "${remainingKg.toStringAsFixed(0)} / ${initialKg.toStringAsFixed(0)} kg",
                         _infoBlue),
-                    _buildSummaryColumn("Kabuuang Puhunan",
+                    _buildSummaryColumn("Puhunan / Capital",
                         "₱${totalCost.toStringAsFixed(2)}", _warningOrange),
                     _buildSummaryColumn(
                         "Puhunan / kg",
@@ -717,11 +712,10 @@ class _InventoryPageState extends State<InventoryPage> {
                   ],
                 ),
                 const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 6.0),
+                  padding: EdgeInsets.symmetric(vertical: 8.0),
                   child: Divider(height: 1, color: Color(0xFFCBD5E1)),
                 ),
 
-                // BENTA AT KITA COMPUTATIONS
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -729,21 +723,21 @@ class _InventoryPageState extends State<InventoryPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text("Inaasahang Benta (Gross)",
+                          const Text("Tinatayang Benta (Gross)",
                               style: TextStyle(
-                                  fontSize: 8, color: _textSecondary, fontWeight: FontWeight.w600)),
+                                  fontSize: 11, color: _textSecondary, fontWeight: FontWeight.w600)),
                           FittedBox(
                             fit: BoxFit.scaleDown,
                             child: Text(_formatCurrency(totalExpectedGross),
                                 style: const TextStyle(
-                                    fontSize: 12,
+                                    fontSize: 15,
                                     fontWeight: FontWeight.bold,
                                     color: _textPrimary)),
                           ),
                           const SizedBox(height: 2),
-                          Text("Aktwal Nabenta: ${_formatCurrency(currentGrossSold)}",
+                          Text("Kasalukuyang benta: ${_formatCurrency(currentGrossSold)}",
                               style: const TextStyle(
-                                  fontSize: 8,
+                                  fontSize: 11,
                                   fontWeight: FontWeight.w600,
                                   color: _infoBlue)),
                         ],
@@ -753,9 +747,9 @@ class _InventoryPageState extends State<InventoryPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          const Text("INAASAHANG TOTAL TUBÓ",
+                          const Text("Tinatayang Tubo / Profit",
                               style: TextStyle(
-                                  fontSize: 8,
+                                  fontSize: 11,
                                   fontWeight: FontWeight.bold,
                                   color: _primaryGreen)),
                           FittedBox(
@@ -765,7 +759,7 @@ class _InventoryPageState extends State<InventoryPage> {
                                   ? "+${_formatCurrency(totalExpectedProfit)}"
                                   : "-${_formatCurrency(totalExpectedProfit.abs())}",
                               style: TextStyle(
-                                fontSize: 12,
+                                fontSize: 15,
                                 fontWeight: FontWeight.w900,
                                 color: totalExpectedProfit >= 0
                                     ? _primaryGreen
@@ -775,9 +769,9 @@ class _InventoryPageState extends State<InventoryPage> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            "Kasalukuyang Tubó (Nabenta): ${_formatCurrency(currentProfitSold)}",
+                            "Kasalukuyang Tubo: ${_formatCurrency(currentProfitSold)}",
                             style: TextStyle(
-                              fontSize: 8,
+                              fontSize: 11,
                               fontWeight: FontWeight.bold,
                               color: currentProfitSold >= 0
                                   ? _primaryGreen
@@ -801,11 +795,11 @@ class _InventoryPageState extends State<InventoryPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontSize: 8, color: _textSecondary)),
+        Text(label, style: const TextStyle(fontSize: 11, color: _textSecondary, fontWeight: FontWeight.w600)),
         const SizedBox(height: 2),
         Text(value,
             style: TextStyle(
-                fontSize: 10, fontWeight: FontWeight.bold, color: color)),
+                fontSize: 13, fontWeight: FontWeight.bold, color: color)),
       ],
     );
   }
@@ -819,15 +813,15 @@ class _InventoryPageState extends State<InventoryPage> {
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: const Text("I-archive ang Batch?",
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           content: Text(
-              "Ililipat ang $name ($code) sa Inventory Archive. Pwede mo itong i-restore o tuluyang burahin doon.",
-              style: const TextStyle(fontSize: 12, color: _textSecondary)),
+              "Ililipat ang $name ($code) sa Archive. Pwede mo itong i-restore o permanenteng burahin doon.",
+              style: const TextStyle(fontSize: 15, color: _textSecondary)),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text("I-cancel",
-                  style: TextStyle(color: _textSecondary)),
+              child: const Text("Cancel",
+                  style: TextStyle(color: _textSecondary, fontSize: 15)),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
@@ -846,9 +840,9 @@ class _InventoryPageState extends State<InventoryPage> {
                 });
                 nav.pop();
               },
-              child: const Text("I-archive",
+              child: const Text("Archive",
                   style: TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.bold)),
+                      color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
             ),
           ],
         );
@@ -866,17 +860,17 @@ class _InventoryPageState extends State<InventoryPage> {
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: const Text("Permanenteng Burahin?",
               style: TextStyle(
-                  fontSize: 15,
+                  fontSize: 18,
                   fontWeight: FontWeight.bold,
                   color: _dangerRed)),
           content: Text(
-              "Sigurado ka bang gusto mong permanenteng burahin ang $name? Hindi na ito mababawi kailanman sa database.",
-              style: const TextStyle(fontSize: 12, color: _textSecondary)),
+              "Sigurado ka bang gusto mong permanenteng burahin ang $name? Hindi na ito mababawi kailanman.",
+              style: const TextStyle(fontSize: 15, color: _textSecondary)),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text("I-cancel",
-                  style: TextStyle(color: _textSecondary)),
+              child: const Text("Cancel",
+                  style: TextStyle(color: _textSecondary, fontSize: 15)),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
@@ -894,7 +888,7 @@ class _InventoryPageState extends State<InventoryPage> {
               },
               child: const Text("Burahin Na",
                   style: TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.bold)),
+                      color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
             ),
           ],
         );
@@ -928,12 +922,12 @@ class _InventoryPageState extends State<InventoryPage> {
             children: [
               Text(name,
                   style: const TextStyle(
-                      fontSize: 15,
+                      fontSize: 18,
                       fontWeight: FontWeight.bold,
                       color: _textPrimary)),
               Text("Code: $code",
                   style: const TextStyle(
-                      fontSize: 11,
+                      fontSize: 14,
                       color: _infoBlue,
                       fontWeight: FontWeight.w600)),
             ],
@@ -946,7 +940,7 @@ class _InventoryPageState extends State<InventoryPage> {
                 const Divider(),
                 const Text("Breakdown kada Kondisyon:",
                     style: TextStyle(
-                        fontSize: 11,
+                        fontSize: 14,
                         fontWeight: FontWeight.bold,
                         color: _textSecondary)),
                 const SizedBox(height: 6),
@@ -963,10 +957,10 @@ class _InventoryPageState extends State<InventoryPage> {
                       children: [
                         Text("• $cond",
                             style: const TextStyle(
-                                fontSize: 11,
+                                fontSize: 14,
                                 fontWeight: FontWeight.bold,
                                 color: _textPrimary)),
-                        _buildArchiveDetailRow(" Ani", "${bKg.toStringAsFixed(0)} kg"),
+                        _buildArchiveDetailRow(" Kilos / Ani", "${bKg.toStringAsFixed(0)} kg"),
                         _buildArchiveDetailRow(
                             " Target SRP", "₱${bSrp.toStringAsFixed(2)}/kg"),
                         _buildArchiveDetailRow(
@@ -977,13 +971,13 @@ class _InventoryPageState extends State<InventoryPage> {
                 }),
                 const Divider(),
                 _buildArchiveDetailRow(
-                    "Kabuuang Puhunan", "₱${totalCost.toStringAsFixed(2)}",
+                    "Puhunan / Capital", "₱${totalCost.toStringAsFixed(2)}",
                     isBold: true),
                 _buildArchiveDetailRow(
-                    "Inaasahang Gross", _formatCurrency(totalRevenue),
+                    "Estimated Gross Benta", _formatCurrency(totalRevenue),
                     isBold: true),
                 _buildArchiveDetailRow(
-                    "Inaasahang Tubó", _formatCurrency(totalProfit),
+                    "Estimated Tubo / Profit", _formatCurrency(totalProfit),
                     isBold: true,
                     color: totalProfit >= 0 ? _primaryGreen : _dangerRed),
               ],
@@ -992,9 +986,9 @@ class _InventoryPageState extends State<InventoryPage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text("Isara",
+              child: const Text("Close",
                   style: TextStyle(
-                      color: _primaryGreen, fontWeight: FontWeight.bold)),
+                      color: _primaryGreen, fontWeight: FontWeight.bold, fontSize: 15)),
             ),
           ],
         );
@@ -1011,12 +1005,12 @@ class _InventoryPageState extends State<InventoryPage> {
         children: [
           Text(label,
               style: TextStyle(
-                  fontSize: 10,
+                  fontSize: 13,
                   color: _textSecondary,
                   fontWeight: isBold ? FontWeight.bold : FontWeight.normal)),
           Text(value,
               style: TextStyle(
-                  fontSize: 10,
+                  fontSize: 13,
                   color: color,
                   fontWeight: isBold ? FontWeight.bold : FontWeight.w600)),
         ],
@@ -1043,25 +1037,25 @@ class _InventoryPageState extends State<InventoryPage> {
                 children: [
                   const Row(
                     children: [
-                      Icon(Icons.history_toggle_off_rounded, color: _infoBlue),
-                      SizedBox(width: 6),
-                      Text("Inventory Archive",
+                      Icon(Icons.history_toggle_off_rounded, color: _infoBlue, size: 28),
+                      SizedBox(width: 8),
+                      Text("Archive List",
                           style: TextStyle(
-                              fontSize: 15,
+                              fontSize: 18,
                               fontWeight: FontWeight.bold,
                               color: _textPrimary)),
                     ],
                   ),
                   IconButton(
                     icon: const Icon(Icons.close_rounded,
-                        color: _textSecondary),
+                        color: _textSecondary, size: 28),
                     onPressed: () => Navigator.pop(modalContext),
                   ),
                 ],
               ),
               const Text(
-                  "Nakatala dito ang mga in-archive na batch. Pwede mong tingnan ang details, i-restore, o tuluyang burahin.",
-                  style: TextStyle(fontSize: 10, color: _textSecondary)),
+                  "Nakatala dito ang mga in-archive na batch. Pwede mong tingnan ang details, i-restore, o permanenteng burahin.",
+                  style: TextStyle(fontSize: 13, color: _textSecondary)),
               const Divider(height: 16),
               Expanded(
                 child: StreamBuilder<QuerySnapshot>(
@@ -1071,7 +1065,7 @@ class _InventoryPageState extends State<InventoryPage> {
                   builder: (context, snapshot) {
                     if (snapshot.hasError) {
                       return const Center(
-                          child: Text("May error sa pag-load ng history."));
+                          child: Text("May error sa pag-load ng history.", style: TextStyle(fontSize: 15)));
                     }
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return const Center(
@@ -1086,9 +1080,9 @@ class _InventoryPageState extends State<InventoryPage> {
 
                     if (historyDocs.isEmpty) {
                       return const Center(
-                        child: Text("Walang laman ang inventory archive.",
+                        child: Text("Walang laman ang Archive.",
                             style: TextStyle(
-                                color: _textSecondary, fontSize: 12)),
+                                color: _textSecondary, fontSize: 15)),
                       );
                     }
 
@@ -1106,7 +1100,7 @@ class _InventoryPageState extends State<InventoryPage> {
                             data['deletedAt'] as Timestamp?;
 
                         return Container(
-                          padding: const EdgeInsets.all(10),
+                          padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
                             color: _surfaceBg,
                             borderRadius: BorderRadius.circular(10),
@@ -1121,18 +1115,18 @@ class _InventoryPageState extends State<InventoryPage> {
                                     Text(name,
                                         style: const TextStyle(
                                             fontWeight: FontWeight.bold,
-                                            fontSize: 12,
+                                            fontSize: 15,
                                             color: _textPrimary)),
                                     const SizedBox(height: 2),
                                     Text("Code: $code",
                                         style: const TextStyle(
-                                            fontSize: 10,
+                                            fontSize: 12,
                                             color: _infoBlue,
                                             fontWeight: FontWeight.w600)),
                                     Text(
-                                        "Na-archive: ${_formatDate(delTime?.toDate())}",
+                                        "In-archive noong: ${_formatDate(delTime?.toDate())}",
                                         style: const TextStyle(
-                                            fontSize: 9,
+                                            fontSize: 12,
                                             color: _textSecondary)),
                                   ],
                                 ),
@@ -1148,7 +1142,7 @@ class _InventoryPageState extends State<InventoryPage> {
                                     icon: const Icon(
                                         Icons.info_outline_rounded,
                                         color: _infoBlue,
-                                        size: 20),
+                                        size: 26),
                                     onPressed: () =>
                                         _showArchivedDetailsModal(
                                             context, data),
@@ -1157,11 +1151,11 @@ class _InventoryPageState extends State<InventoryPage> {
                                     constraints: const BoxConstraints(),
                                     padding:
                                         const EdgeInsets.symmetric(horizontal: 4),
-                                    tooltip: "I-restore sa Active Inventory",
+                                    tooltip: "I-restore sa Inventory",
                                     icon: const Icon(
                                         Icons.restore_from_trash_rounded,
                                         color: _primaryGreen,
-                                        size: 20),
+                                        size: 26),
                                     onPressed: () async {
                                       await FirebaseFirestore.instance
                                           .collection("products")
@@ -1172,7 +1166,7 @@ class _InventoryPageState extends State<InventoryPage> {
                                             .showSnackBar(
                                           SnackBar(
                                               content:
-                                                  Text("$name is restored!"),
+                                                  Text("Na-restore na ang $name!", style: const TextStyle(fontSize: 15)),
                                               backgroundColor: _primaryGreen),
                                         );
                                       }
@@ -1186,7 +1180,7 @@ class _InventoryPageState extends State<InventoryPage> {
                                     icon: const Icon(
                                         Icons.delete_forever_rounded,
                                         color: _dangerRed,
-                                        size: 20),
+                                        size: 26),
                                     onPressed: () => _confirmPermanentDelete(
                                         context, doc.id, name),
                                   ),
@@ -1222,14 +1216,14 @@ class _InventoryPageState extends State<InventoryPage> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             const Text("Mga Larawan ng Produkto",
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _textPrimary)),
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: _textPrimary)),
             Text("$total/9",
-                style: const TextStyle(fontSize: 10, color: _textSecondary, fontWeight: FontWeight.w600)),
+                style: const TextStyle(fontSize: 13, color: _textSecondary, fontWeight: FontWeight.w600)),
           ],
         ),
         const SizedBox(height: 4),
         const Text("Tanggalin ang luma, magdagdag ng bago, o magpalit ng main photo.",
-            style: TextStyle(fontSize: 10, color: _textSecondary)),
+            style: TextStyle(fontSize: 12, color: _textSecondary)),
         const SizedBox(height: 8),
         SizedBox(
           height: 105,
@@ -1258,9 +1252,9 @@ class _InventoryPageState extends State<InventoryPage> {
                     child: const Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.add_photo_alternate_outlined, color: _primaryGreen, size: 28),
+                        Icon(Icons.add_photo_alternate_outlined, color: _primaryGreen, size: 32),
                         SizedBox(height: 4),
-                        Text("Magdagdag", style: TextStyle(fontSize: 10, color: _primaryGreen, fontWeight: FontWeight.bold)),
+                        Text("Magdagdag", style: TextStyle(fontSize: 13, color: _primaryGreen, fontWeight: FontWeight.bold)),
                       ],
                     ),
                   ),
@@ -1290,10 +1284,10 @@ class _InventoryPageState extends State<InventoryPage> {
                       child: GestureDetector(
                         onTap: () => setModalState(() => existingUrls.removeAt(index)),
                         child: Container(
-                          width: 25,
-                          height: 25,
+                          width: 26,
+                          height: 26,
                           decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
-                          child: const Icon(Icons.close, color: Colors.white, size: 16),
+                          child: const Icon(Icons.close, color: Colors.white, size: 18),
                         ),
                       ),
                     ),
@@ -1304,7 +1298,7 @@ class _InventoryPageState extends State<InventoryPage> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                           decoration: BoxDecoration(color: _primaryGreen, borderRadius: BorderRadius.circular(5)),
-                          child: const Text("MAIN", style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold)),
+                          child: const Text("MAIN", style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
                         ),
                       ),
                   ],
@@ -1325,10 +1319,10 @@ class _InventoryPageState extends State<InventoryPage> {
                     child: GestureDetector(
                       onTap: () => setModalState(() => newImages.removeAt(fileIndex)),
                       child: Container(
-                        width: 25,
-                        height: 25,
+                        width: 26,
+                        height: 26,
                         decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
-                        child: const Icon(Icons.close, color: Colors.white, size: 16),
+                        child: const Icon(Icons.close, color: Colors.white, size: 18),
                       ),
                     ),
                   ),
@@ -1436,20 +1430,20 @@ class _InventoryPageState extends State<InventoryPage> {
                           const Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text("I-edit ang Batch Information",
+                              Text("I-edit ang Batch Info",
                                   style: TextStyle(
-                                      fontSize: 15,
+                                      fontSize: 18,
                                       fontWeight: FontWeight.bold,
                                       color: _textPrimary)),
-                              Text("Baguhin ang anumang maling na-input na data",
+                              Text("Baguhin ang anumang maling na-input",
                                   style: TextStyle(
-                                      fontSize: 10, color: _textSecondary)),
+                                      fontSize: 13, color: _textSecondary)),
                             ],
                           ),
                           IconButton(
                             onPressed: () => Navigator.pop(modalContext),
                             icon: const Icon(Icons.close_rounded,
-                                color: _textSecondary),
+                                color: _textSecondary, size: 28),
                           )
                         ],
                       ),
@@ -1464,9 +1458,9 @@ class _InventoryPageState extends State<InventoryPage> {
                       const SizedBox(height: 16),
 
                       const Text(
-                        "Deskripsyon ng Produkto",
+                        "Description / Detalye ng Produkto",
                         style: TextStyle(
-                          fontSize: 11,
+                          fontSize: 14,
                           fontWeight: FontWeight.bold,
                           color: _textPrimary,
                         ),
@@ -1474,18 +1468,19 @@ class _InventoryPageState extends State<InventoryPage> {
                       const SizedBox(height: 6),
                       TextFormField(
                         controller: descriptionController,
-                        maxLines: 5,
+                        maxLines: 4,
                         maxLength: 1000,
+                        style: const TextStyle(fontSize: 14),
                         textCapitalization: TextCapitalization.sentences,
                         decoration: InputDecoration(
-                          hintText: "Ilagay ang impormasyon tungkol sa produkto...",
-                          hintStyle: const TextStyle(fontSize: 11, color: _textSecondary),
+                          hintText: "Ilagay ang karagdagang detalye...",
+                          hintStyle: const TextStyle(fontSize: 14, color: _textSecondary),
                           filled: true,
                           fillColor: _surfaceBg,
                           alignLabelWithHint: true,
                           prefixIcon: const Padding(
-                            padding: EdgeInsets.only(bottom: 65),
-                            child: Icon(Icons.description_outlined, color: _primaryGreen, size: 20),
+                            padding: EdgeInsets.only(bottom: 50),
+                            child: Icon(Icons.description_outlined, color: _primaryGreen, size: 24),
                           ),
                           contentPadding: const EdgeInsets.all(12),
                           enabledBorder: OutlineInputBorder(
@@ -1502,7 +1497,7 @@ class _InventoryPageState extends State<InventoryPage> {
 
                       const Text("1. Hectare:",
                           style: TextStyle(
-                              fontSize: 11,
+                              fontSize: 14,
                               fontWeight: FontWeight.bold,
                               color: _textPrimary)),
                       const SizedBox(height: 6),
@@ -1516,7 +1511,7 @@ class _InventoryPageState extends State<InventoryPage> {
                               child: Container(
                                 margin: const EdgeInsets.only(right: 6),
                                 padding:
-                                    const EdgeInsets.symmetric(vertical: 8),
+                                    const EdgeInsets.symmetric(vertical: 10),
                                 decoration: BoxDecoration(
                                   color:
                                       isSel ? _primaryGreenSoft : _surfaceBg,
@@ -1530,7 +1525,7 @@ class _InventoryPageState extends State<InventoryPage> {
                                     h,
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
-                                      fontSize: 12,
+                                      fontSize: 15,
                                       color: isSel
                                           ? _primaryGreen
                                           : _textSecondary,
@@ -1542,11 +1537,11 @@ class _InventoryPageState extends State<InventoryPage> {
                           );
                         }).toList(),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 14),
 
-                      const Text("2. Uri ng Binhi & Puhunan sa Buong Hectare:",
+                      const Text("2. Uri ng Binhi & Puhunan / Capital:",
                           style: TextStyle(
-                              fontSize: 11,
+                              fontSize: 14,
                               fontWeight: FontWeight.bold,
                               color: _textPrimary)),
                       const SizedBox(height: 6),
@@ -1557,11 +1552,11 @@ class _InventoryPageState extends State<InventoryPage> {
                               value: selectedType,
                               decoration: InputDecoration(
                                 labelText: "Uri ng Binhi",
-                                labelStyle: const TextStyle(fontSize: 11),
+                                labelStyle: const TextStyle(fontSize: 13),
                                 filled: true,
                                 fillColor: _surfaceBg,
                                 contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 6),
+                                    horizontal: 10, vertical: 8),
                                 enabledBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(8),
                                     borderSide:
@@ -1576,16 +1571,17 @@ class _InventoryPageState extends State<InventoryPage> {
                                       value: e,
                                       child: Text(e,
                                           style:
-                                              const TextStyle(fontSize: 11))))
+                                              const TextStyle(fontSize: 14))))
                                   .toList(),
                               onChanged: (val) =>
                                   setModalState(() => selectedType = val!),
                             ),
                           ),
-                          const SizedBox(width: 6),
+                          const SizedBox(width: 8),
                           Expanded(
                             child: TextFormField(
                               controller: totalCostController,
+                              style: const TextStyle(fontSize: 14),
                               keyboardType:
                                   const TextInputType.numberWithOptions(
                                       decimal: true),
@@ -1593,14 +1589,14 @@ class _InventoryPageState extends State<InventoryPage> {
                                   (v == null || v.isEmpty) ? "Kailangan" : null,
                               onChanged: (_) => setModalState(() {}),
                               decoration: InputDecoration(
-                                labelText: "Puhunan",
-                                labelStyle: const TextStyle(fontSize: 11),
+                                labelText: "Puhunan / Capital",
+                                labelStyle: const TextStyle(fontSize: 13),
                                 prefixIcon: const Icon(Icons.payments_outlined,
-                                    size: 14, color: _warningOrange),
+                                    size: 18, color: _warningOrange),
                                 filled: true,
                                 fillColor: _surfaceBg,
                                 contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 6),
+                                    horizontal: 10, vertical: 8),
                                 enabledBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(8),
                                     borderSide:
@@ -1614,14 +1610,14 @@ class _InventoryPageState extends State<InventoryPage> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 14),
 
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text("3. Klasipikasyon / Kondisyon:",
+                          const Text("3. Condition / Uri ng Palay:",
                               style: TextStyle(
-                                  fontSize: 11,
+                                  fontSize: 14,
                                   fontWeight: FontWeight.bold,
                                   color: _textPrimary)),
                           TextButton.icon(
@@ -1644,12 +1640,12 @@ class _InventoryPageState extends State<InventoryPage> {
                               });
                             },
                             icon: const Icon(Icons.add_circle_outline_rounded,
-                                size: 16, color: _primaryGreen),
+                                size: 20, color: _primaryGreen),
                             label: const Text("+ Magdagdag",
                                 style: TextStyle(
                                     color: _primaryGreen,
                                     fontWeight: FontWeight.bold,
-                                    fontSize: 11)),
+                                    fontSize: 14)),
                           )
                         ],
                       ),
@@ -1671,7 +1667,7 @@ class _InventoryPageState extends State<InventoryPage> {
 
                         return Container(
                           margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.all(8),
+                          padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
                             color: _surfaceBg,
                             borderRadius: BorderRadius.circular(10),
@@ -1686,14 +1682,14 @@ class _InventoryPageState extends State<InventoryPage> {
                                     child: DropdownButtonFormField<String>(
                                       value: item.condition,
                                       decoration: InputDecoration(
-                                        labelText: "Kondisyon",
+                                        labelText: "Condition",
                                         labelStyle:
-                                            const TextStyle(fontSize: 10),
+                                            const TextStyle(fontSize: 12),
                                         filled: true,
                                         fillColor: Colors.white,
                                         contentPadding:
                                             const EdgeInsets.symmetric(
-                                                horizontal: 6, vertical: 4),
+                                                horizontal: 8, vertical: 6),
                                         enabledBorder: OutlineInputBorder(
                                             borderRadius:
                                                 BorderRadius.circular(6),
@@ -1710,17 +1706,18 @@ class _InventoryPageState extends State<InventoryPage> {
                                               value: c,
                                               child: Text(c,
                                                   style: const TextStyle(
-                                                      fontSize: 10))))
+                                                      fontSize: 13))))
                                           .toList(),
                                       onChanged: (val) => setModalState(
                                           () => item.condition = val!),
                                     ),
                                   ),
-                                  const SizedBox(width: 4),
+                                  const SizedBox(width: 6),
                                   Expanded(
                                     flex: 2,
                                     child: TextFormField(
                                       controller: item.kgController,
+                                      style: const TextStyle(fontSize: 13),
                                       keyboardType:
                                           const TextInputType.numberWithOptions(
                                               decimal: true),
@@ -1728,14 +1725,14 @@ class _InventoryPageState extends State<InventoryPage> {
                                           (v == null || v.isEmpty) ? "Kg" : null,
                                       onChanged: (_) => setModalState(() {}),
                                       decoration: InputDecoration(
-                                        labelText: "Nakuha (kg)",
+                                        labelText: "Kilos (kg)",
                                         labelStyle:
-                                            const TextStyle(fontSize: 10),
+                                            const TextStyle(fontSize: 12),
                                         filled: true,
                                         fillColor: Colors.white,
                                         contentPadding:
                                             const EdgeInsets.symmetric(
-                                                horizontal: 6, vertical: 4),
+                                                horizontal: 8, vertical: 6),
                                         enabledBorder: OutlineInputBorder(
                                             borderRadius:
                                                 BorderRadius.circular(6),
@@ -1749,7 +1746,7 @@ class _InventoryPageState extends State<InventoryPage> {
                                       ),
                                     ),
                                   ),
-                                  const SizedBox(width: 4),
+                                  const SizedBox(width: 6),
                                   Expanded(
                                     flex: 2,
                                     child: TextFormField(
@@ -1765,17 +1762,17 @@ class _InventoryPageState extends State<InventoryPage> {
                                       style: const TextStyle(
                                           fontWeight: FontWeight.bold,
                                           color: _primaryGreen,
-                                          fontSize: 11),
+                                          fontSize: 13),
                                       decoration: InputDecoration(
                                         labelText: "SRP / kg",
                                         labelStyle:
-                                            const TextStyle(fontSize: 10),
+                                            const TextStyle(fontSize: 12),
                                         filled: true,
                                         fillColor: _primaryGreenSoft
                                             .withOpacity(0.3),
                                         contentPadding:
                                             const EdgeInsets.symmetric(
-                                                horizontal: 6, vertical: 4),
+                                                horizontal: 8, vertical: 6),
                                         enabledBorder: OutlineInputBorder(
                                             borderRadius:
                                                 BorderRadius.circular(6),
@@ -1793,11 +1790,11 @@ class _InventoryPageState extends State<InventoryPage> {
                                   if (breakdownItems.length > 1)
                                     IconButton(
                                       constraints: const BoxConstraints(),
-                                      padding: const EdgeInsets.only(left: 2),
+                                      padding: const EdgeInsets.only(left: 4),
                                       icon: const Icon(
                                           Icons.remove_circle_outline,
                                           color: _dangerRed,
-                                          size: 18),
+                                          size: 22),
                                       onPressed: () {
                                         setModalState(() {
                                           breakdownItems.removeAt(idx);
@@ -1807,7 +1804,7 @@ class _InventoryPageState extends State<InventoryPage> {
                                 ],
                               ),
                               if (itemKg > 0 && totalCost > 0) ...[
-                                const SizedBox(height: 4),
+                                const SizedBox(height: 6),
                                 Row(
                                   mainAxisAlignment:
                                       MainAxisAlignment.spaceBetween,
@@ -1815,12 +1812,12 @@ class _InventoryPageState extends State<InventoryPage> {
                                     Text(
                                         "Puhunan Share: ₱${itemAllocatedCost.toStringAsFixed(2)}",
                                         style: const TextStyle(
-                                            fontSize: 9,
+                                            fontSize: 12,
                                             color: _warningOrange)),
                                     Text(
-                                        "Tubó/kg: ₱${itemProfitPerKg.toStringAsFixed(2)}",
+                                        "Tubo / Profit/kg: ₱${itemProfitPerKg.toStringAsFixed(2)}",
                                         style: TextStyle(
-                                            fontSize: 9,
+                                            fontSize: 12,
                                             fontWeight: FontWeight.bold,
                                             color: itemProfitPerKg >= 0
                                                 ? _primaryGreen
@@ -1832,10 +1829,10 @@ class _InventoryPageState extends State<InventoryPage> {
                           ),
                         );
                       }),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 10),
 
                       Container(
-                        padding: const EdgeInsets.all(10),
+                        padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
                           color: _surfaceBg,
                           borderRadius: BorderRadius.circular(10),
@@ -1847,68 +1844,68 @@ class _InventoryPageState extends State<InventoryPage> {
                             const Row(
                               children: [
                                 Icon(Icons.calculate_outlined,
-                                    size: 14, color: _primaryGreen),
-                                SizedBox(width: 4),
+                                    size: 18, color: _primaryGreen),
+                                SizedBox(width: 6),
                                 Text(
-                                  "Na-update na Tantiya ng System",
+                                  "Computation Details",
                                   style: TextStyle(
-                                      fontSize: 11,
+                                      fontSize: 14,
                                       fontWeight: FontWeight.bold,
                                       color: _textPrimary),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 6),
+                            const SizedBox(height: 8),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                    "Kabuuang Ani: ${sumKg.toStringAsFixed(0)} kg",
+                                    "Kabuuang Kilos: ${sumKg.toStringAsFixed(0)} kg",
                                     style: const TextStyle(
-                                        fontSize: 10,
+                                        fontSize: 13,
                                         fontWeight: FontWeight.w600,
                                         color: _textPrimary)),
                                 Text(
                                     "Avg Puhunan/kg: ₱${overallCostPerKg.toStringAsFixed(2)}",
                                     style: const TextStyle(
-                                        fontSize: 10,
+                                        fontSize: 13,
                                         fontWeight: FontWeight.w600,
                                         color: _warningOrange)),
                               ],
                             ),
-                            const SizedBox(height: 2),
+                            const SizedBox(height: 4),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                    "Inaasahang Gross: ₱${totalRevenue.toStringAsFixed(2)}",
+                                    "Estimated Gross: ₱${totalRevenue.toStringAsFixed(2)}",
                                     style: const TextStyle(
-                                        fontSize: 10,
+                                        fontSize: 13,
                                         fontWeight: FontWeight.w600,
                                         color: _infoBlue)),
                                 Text(
-                                    "Avg Tubó/kg: ₱${(overallRevenuePerKg - overallCostPerKg).toStringAsFixed(2)}",
+                                    "Avg Tubo/kg: ₱${(overallRevenuePerKg - overallCostPerKg).toStringAsFixed(2)}",
                                     style: TextStyle(
-                                        fontSize: 10,
+                                        fontSize: 13,
                                         fontWeight: FontWeight.bold,
                                         color: totalProfit >= 0
                                             ? _primaryGreen
                                             : _dangerRed)),
                               ],
                             ),
-                            const Divider(height: 8, color: Colors.black12),
+                            const Divider(height: 12, color: Colors.black12),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                const Text("Inaasahang Malinis na Tubó:",
+                                const Text("Estimated Tubo / Profit:",
                                     style: TextStyle(
-                                        fontSize: 10,
+                                        fontSize: 13,
                                         fontWeight: FontWeight.bold,
                                         color: _textPrimary)),
                                 Text(
                                   "₱${totalProfit.toStringAsFixed(2)}",
                                   style: TextStyle(
-                                    fontSize: 13,
+                                    fontSize: 17,
                                     fontWeight: FontWeight.w900,
                                     color: totalProfit >= 0
                                         ? _primaryGreen
@@ -1924,7 +1921,7 @@ class _InventoryPageState extends State<InventoryPage> {
 
                       SizedBox(
                         width: double.infinity,
-                        height: 44,
+                        height: 50,
                         child: ElevatedButton(
                           style: ElevatedButton.styleFrom(
                             backgroundColor: _infoBlue,
@@ -2002,7 +1999,7 @@ class _InventoryPageState extends State<InventoryPage> {
                                   if (context.mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
-                                        content: Text("Hindi ma-upload ang bagong larawan: $e"),
+                                        content: Text("Hindi ma-upload ang larawan: $e", style: const TextStyle(fontSize: 15)),
                                         backgroundColor: _dangerRed,
                                         duration: const Duration(seconds: 8),
                                       ),
@@ -2028,11 +2025,11 @@ class _InventoryPageState extends State<InventoryPage> {
                               nav.pop();
                             }
                           },
-                          child: const Text("I-update ang Batch Data",
+                          child: const Text("Save Changes",
                               style: TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.bold,
-                                  fontSize: 13)),
+                                  fontSize: 16)),
                         ),
                       )
                     ],

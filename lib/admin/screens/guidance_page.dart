@@ -11,13 +11,13 @@ import '../../services/weather/weather_api_service.dart';
 import '../../services/weather/weather_repository_impl.dart';
 
 /// IMPORTANT:
-/// The app intentionally exposes only two choices:
+/// Dalawa lang ang pagpipilian:
 ///   1. Inbred
 ///   2. Hybrid
 ///
-/// Baseline values (DA-PhilRice):
-/// - Inbred: PSB Rc82 = 110 days
-/// - Hybrid: Mestiso 20 / NSIC Rc204H = 111 days
+/// Karaniwang bilang ng araw (DA-PhilRice):
+/// - Inbred: PSB Rc82 = 110 araw
+/// - Hybrid: Mestiso 20 / NSIC Rc204H = 111 araw
 
 enum RiceType {
   inbred,
@@ -31,8 +31,8 @@ enum RiceType {
   int get maturityDays => this == RiceType.inbred ? 110 : 111;
 
   String get maturityNote => this == RiceType.inbred
-      ? 'Baseline: 110 araw (PSB Rc82, PhilRice)'
-      : 'Baseline: 111 araw (Mestiso 20/NSIC Rc204H, PhilRice)';
+      ? 'Kadalasan: 110 araw bago anihin (PSB Rc82, PhilRice)'
+      : 'Kadalasan: 111 araw bago anihin (Mestiso 20/NSIC Rc204H, PhilRice)';
 }
 
 enum RiceStage {
@@ -48,15 +48,15 @@ enum RiceStage {
       case RiceStage.notStarted:
         return 'Hindi pa Nagtatanim';
       case RiceStage.establishment:
-        return 'Pagtatatag ng Tanim';
+        return 'Bagong Tanim / Muling Pagpapatubo';
       case RiceStage.vegetative:
-        return 'Vegetative / Pagsusuwi';
+        return 'Pagpapasuwi at Paglaki ng Palay';
       case RiceStage.reproductive:
-        return 'Reproductive / Panicle at Bulaklak';
+        return 'Pag-uuhay at Pagbubulaklak';
       case RiceStage.ripening:
-        return 'Pagkahinog';
+        return 'Pagpapadilaw at Pagkahinog';
       case RiceStage.harvest:
-        return 'Panahon ng Pag-aani';
+        return 'Panahon na ng Pag-aani';
     }
   }
 
@@ -372,7 +372,7 @@ class _GuidancePageState extends State<GuidancePage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'GABAY SA PALAY',
+              'GABAY SA PAGSASAKA',
               style: TextStyle(
                 color: Color(0xFF64748B),
                 fontSize: 10,
@@ -487,32 +487,12 @@ class _GuidancePageState extends State<GuidancePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Icon(Icons.eco_rounded, color: Colors.white),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  !hasDate
-                      ? 'Pumili ng petsa ng tanim'
-                      : isFuture
-                          ? 'Nakatakdang magtanim'
-                          : 'Araw $_cropAgeDays ng palay',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ),
           const SizedBox(height: 8),
           Text(
             !hasDate
-                ? 'Piliin ang aktuwal na petsa ng pagtatanim.'
+                ? 'Pumili ng tamang petsa kung kailan nagtanim.'
                 : '${_formatDate(_plantingDate!)} • ${_selectedType.label} • '
-                    '${_selectedType.maturityDays} araw na baseline',
+                    'Kadalasan ${_selectedType.maturityDays} araw bago anihin',
             style: const TextStyle(
               color: Colors.white,
               fontSize: 12,
@@ -522,8 +502,8 @@ class _GuidancePageState extends State<GuidancePage> {
             const SizedBox(height: 8),
             Text(
               isFuture
-                  ? 'Magsisimula ang Day 1 sa mismong napiling petsa.'
-                  : 'Kasalukuyang yugto: ${_selectedStage.label}',
+                  ? 'Magsisimula ang Day 1 sa napiling petsa.'
+                  : 'Lagay ng palay ngayon: ${_selectedStage.label}',
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 12,
@@ -551,7 +531,7 @@ class _GuidancePageState extends State<GuidancePage> {
           ),
           const SizedBox(height: 5),
           const Text(
-            'Puwede mong baguhin ang petsa anumang oras. Ang Day, yugto, at maturity target ay awtomatikong nire-recalculate.',
+            'Puwede mong palitan ang petsa kahit kailan. Kusang magbabago ang bilang ng araw at estado ng palay.',
             style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
           ),
           const SizedBox(height: 12),
@@ -563,7 +543,7 @@ class _GuidancePageState extends State<GuidancePage> {
               label: Text(
                 _plantingDate == null
                     ? 'Pumili ng Petsa'
-                    : 'Baguhin ang Petsa (${_formatDate(_plantingDate!)})',
+                    : 'Palitan ang Petsa (${_formatDate(_plantingDate!)})',
               ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF059669),
@@ -639,7 +619,7 @@ class _GuidancePageState extends State<GuidancePage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            '🌱 Awtomatikong Yugto ng Tanim',
+            '🌱 Tinatayang Tagal ng Pagpapalaki',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.bold,
@@ -675,7 +655,7 @@ class _GuidancePageState extends State<GuidancePage> {
                 const SizedBox(width: 8),
                 Flexible(
                   child: Text(
-                    'Day $_cropAgeDays / ${_profile.maturityDays}',
+                    'Ika-$_cropAgeDays araw / ${_profile.maturityDays} araw',
                     textAlign: TextAlign.end,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
@@ -699,7 +679,7 @@ class _GuidancePageState extends State<GuidancePage> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Target maturity: ${_profile.maturityDays} araw '
+            'Inaasahang anihan: pagkatapos ng ${_profile.maturityDays} araw '
             '(${_selectedType.referenceVariety})',
             style: const TextStyle(
               fontSize: 11,
@@ -718,9 +698,9 @@ class _GuidancePageState extends State<GuidancePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Mga Gagawin • ${_selectedStage.label}',
-            style: const TextStyle(
+          const Text(
+            'Mga Dapat Gawin',
+            style: TextStyle(
               fontWeight: FontWeight.bold,
               fontSize: 14,
               color: Color(0xFF0F172A),
@@ -775,38 +755,38 @@ class _GuidancePageState extends State<GuidancePage> {
     switch (stage) {
       case RiceStage.notStarted:
         return [
-          'Pumili muna ng aktuwal na petsa ng pagtatanim.',
-          'Tiyaking tama ang napiling uri: Inbred o Hybrid.',
+          'Pumili muna ng petsa kung kailan magtatanim.',
+          'Tiyaking tama ang uri ng palay: Inbred o Hybrid.',
         ];
 
       case RiceStage.establishment:
         return [
-          'Bantayan ang batang palay laban sa golden apple snail at iba pang peste.',
-          'Panatilihing maayos ang kondisyon ng tubig at field establishment.',
+          'Bantayan ang murang palay sa kuhol at iba pang peste.',
+          'Siguraduhing sapat ang tubig sa pilapil at bukid.',
         ];
 
       case RiceStage.vegetative:
         return [
-          'Regular na obserbahan ang pagsusuwi at kulay ng dahon.',
-          'Gamitin ang Leaf Color Chart (LCC) kung bahagi ito ng iyong nutrient-management recommendation.',
+          'Tingnan palagi ang pagsusuwi at kulay ng dahon ng palay.',
+          'Gamitin ang Leaf Color Chart (LCC) para sa tamang pag-abono.',
         ];
 
       case RiceStage.reproductive:
         return [
-          'Bantayan ang panicle initiation, pagbuo ng uhay, at pamumulaklak.',
-          'Iangkop ang nitrogen management sa variety, crop establishment, tubig, lupa, at klima.',
+          'Bantayan ang paglilitawan ng uhay at pagbubulaklak ng palay.',
+          'I-adjust ang paglalagay ng Urea/Nitrogen batay sa lagay ng tubig at panahon.',
         ];
 
       case RiceStage.ripening:
         return [
-          'Bantayan ang paghinog ng butil at kondisyon ng taniman.',
-          'Ihanda ang harvesting at drying equipment bago umabot sa maturity target.',
+          'Tingnan ang pagpapadilaw ng mga butil sa bukid.',
+          'Ihanda na ang gagamiting pangararo, thresher, o pamatang bago ang anihan.',
         ];
 
       case RiceStage.harvest:
         return [
-          'Suriin ang maturity ng pananim bago mag-ani; huwag umasa sa calendar date lamang.',
-          'Ihanda ang agarang pagpapatuyo pagkatapos ng ani.',
+          'Tingnan nang mabuti kung talagang hinog na ang palay bago anihin; huwag lang umasa sa bilang ng araw.',
+          'Ihanda agad ang patuyuan o bilao pagkatapos mag-ani.',
         ];
     }
   }
@@ -870,10 +850,12 @@ class _PlantingDateDialogState extends State<_PlantingDateDialog> {
   }
 
   Map<String, dynamic> _getPlantingSuitability(DateTime date) {
+    final today = DateTime.now();
     final harvestDate = date.add(Duration(days: widget.profile.maturityDays));
+    final daysFromToday = date.difference(DateTime(today.year, today.month, today.day)).inDays;
 
-    // 1. Weather Forecast Check para sa napiling araw
-    if (widget.weatherData != null) {
+    // 1. Weather Forecast Check (Para LAMANG sa susunod na 7 araw, hindi sa buong taon)
+    if (widget.weatherData != null && daysFromToday >= 0 && daysFromToday <= 7) {
       final condition = widget.weatherData!.condition?.toLowerCase() ?? '';
       if (condition.contains('rain') ||
           condition.contains('storm') ||
@@ -883,7 +865,7 @@ class _PlantingDateDialogState extends State<_PlantingDateDialog> {
           'isGood': false,
           'color': const Color(0xFFEF4444), // RED
           'reason':
-              'HINDI ADVISABLE: May inaasahang malakas na ulan o bagyo na pwedeng makasira o mahanaw ang binhi.',
+              'HINDI ADVISABLE: May masamang panahon o ulan na inaasahan sa mga susunod na araw na pwedeng makasira sa binhi.',
         };
       }
     }
@@ -894,7 +876,7 @@ class _PlantingDateDialogState extends State<_PlantingDateDialog> {
         'isGood': false,
         'color': const Color(0xFFEF4444), // RED
         'reason':
-            'HINDI ADVISABLE (Tagtuyot): Peak ng matinding init sa Capalangan. Mabilis matuyo ang patubig sa bukid at maaaring ma-heat stress ang palay.',
+            'HINDI ADVISABLE (Tagtuyot): Sobrang init sa Capalangan kapag ganitong buwan. Mabilis matuyo ang tubig at pwedeng mamatay sa init ang palay.',
       };
     }
 
@@ -904,7 +886,7 @@ class _PlantingDateDialogState extends State<_PlantingDateDialog> {
         'isGood': false,
         'color': const Color(0xFFEF4444), // RED
         'reason':
-            'HINDI ADVISABLE (Peligro sa Baha): Ang crop duration (${_formatShortDate(date)} - ${_formatShortDate(harvestDate)}) ay tatapat sa peak ng Habagat at Bagyo sa Pampanga. Malaki ang posibilidad na malunod ang palay.',
+            'HINDI ADVISABLE (Delikado sa Baha): Ang panahon ng pagpapalaki (${_formatShortDate(date)} - ${_formatShortDate(harvestDate)}) ay tatapat sa malakas na Habagat at bagyo sa Pampanga. Malaki ang tsansa na malunod ang tanim.',
       };
     }
 
@@ -914,7 +896,7 @@ class _PlantingDateDialogState extends State<_PlantingDateDialog> {
         'isGood': false,
         'color': const Color(0xFFEF4444), // RED
         'reason':
-            'HINDI ADVISABLE: Ang pag-aani (${_formatShortDate(harvestDate)}) ay tatapat sa panahon ng bagyo at pag-apaw ng tubig sa Pampanga.',
+            'HINDI ADVISABLE: Ang anihan (${_formatShortDate(harvestDate)}) ay tatapat sa tag-ulan at pag-apaw ng tubig sa Pampanga.',
       };
     }
 
@@ -924,17 +906,17 @@ class _PlantingDateDialogState extends State<_PlantingDateDialog> {
         'isGood': true,
         'color': const Color(0xFF059669), // GREEN
         'reason':
-            'MAGANDANG MAGTANIM (Unang Tanim): Sapat ang ulan para sa pagpapatatag at makakahabol sa pag-ani (${_formatShortDate(harvestDate)}) bago ang matinding baha ng Agosto.',
+            'MAGANDANG MAGTANIM (Unang Tanim): Tama lang ang ulan para sa pagpapatubo at makakaabot sa anihan (${_formatShortDate(harvestDate)}) bago dumating ang malalaking baha ng Agosto.',
       };
     }
 
-    // 6. PANGALAWANG TANIM / DRY SEASON (Nobyembre hanggang Pebrero)
-    if (date.month >= 11 || date.month <= 2) {
+    // 6. PANGALAWANG TANIM / DRY SEASON (Oktubre hanggang Pebrero)
+    if (date.month >= 10 || date.month <= 2) {
       return {
         'isGood': true,
         'color': const Color(0xFF059669), // GREEN
         'reason':
-            'MAGANDANG MAGTANIM (Dry Season): Ligtas sa baha at bagyo. Aani ng ${_formatShortDate(harvestDate)}. Siguraduhin lamang ang sapat na irigasyon.',
+            'MAGANDANG MAGTANIM (Dry Season): Ligtas sa baha at bagyo. Maaani sa ${_formatShortDate(harvestDate)}. Siguraduhin lang na may sapat na patubig.',
       };
     }
 
@@ -943,7 +925,7 @@ class _PlantingDateDialogState extends State<_PlantingDateDialog> {
       'isGood': true,
       'color': const Color(0xFF059669), // GREEN
       'reason':
-          'MAGANDANG MAGTANIM: Maayos ang panahon para sa pagpapalago ng palay hanggang sa pag-ani (${_formatShortDate(harvestDate)}).',
+          'MAGANDANG MAGTANIM: Maayos ang panahon para sa pagpapalago ng palay hanggang sa anihan (${_formatShortDate(harvestDate)}).',
     };
   }
 
@@ -975,7 +957,7 @@ class _PlantingDateDialogState extends State<_PlantingDateDialog> {
           content: Text(
             'Ang napili mong petsa (${_formatShortDate(date)}) ay HINDI ADVISABLE dahil:\n\n'
             '${suitability['reason']}\n\n'
-            'Sigurado ka bang gusto mo pa ring itakda ang petsang ito?',
+            'Sigurado ka bang gusto mo pa ring piliin ang petsang ito?',
             style: const TextStyle(fontSize: 13, color: Color(0xFF334155)),
           ),
           actions: [
@@ -1115,7 +1097,6 @@ class _PlantingDateDialogState extends State<_PlantingDateDialog> {
 
                     return InkWell(
                       onTap: () {
-                        // Unang pindot: I-preview lang muna ang impormasyon
                         setState(() {
                           _previewDate = date;
                         });

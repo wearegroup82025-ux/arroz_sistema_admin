@@ -15,13 +15,13 @@ import '../../services/weather/weather_repository_impl.dart';
 
 // Pages
 import 'inventory_page.dart';
-import 'admin_order_page.dart'; // Dito nanggagaling ang OrderStatus at OrderStatus.parse()
+import 'admin_order_page.dart';
 import 'reports_page.dart';
 import 'weather_page.dart';
 import 'guidance_page.dart';
-import 'notification_page.dart';
+import 'notification_page_admin.dart';
 import 'user_management_page.dart';
-import '../../services/notification/notification_service.dart';
+import '../../services/notification/notification_service_admin.dart';
 import 'admin_chat_page.dart';
 
 class DashboardPage extends StatefulWidget {
@@ -42,7 +42,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   static const int _adminTimeoutSeconds = 15 * 60;
 
-  // Modern Enterprise Palette
+  // Palette
   static const Color _bg = Color(0xffF8FAFC);
   static const Color _cardBg = Color(0xffFFFFFF);
   static const Color _primary = Color(0xff059669);
@@ -51,7 +51,6 @@ class _DashboardPageState extends State<DashboardPage> {
   static const Color _border = Color(0xffE2E8F0);
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  final TextEditingController _messageController = TextEditingController();
 
   StreamSubscription? _inventorySub;
   StreamSubscription? _ordersSub;
@@ -60,6 +59,7 @@ class _DashboardPageState extends State<DashboardPage> {
   late final WeatherRepository _weatherRepository;
   late Future<WeatherEntity> _weatherFuture;
 
+  // Fixed coordinates para sa Capalangan, Apalit, Pampanga
   static const double latitude = 14.9540;
   static const double longitude = 120.7594;
 
@@ -76,6 +76,7 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   void _fetchLiveWeather() {
+    if (!mounted) return;
     setState(() {
       _weatherFuture = _weatherRepository.getWeatherByCoordinates(latitude, longitude);
     });
@@ -95,8 +96,8 @@ class _DashboardPageState extends State<DashboardPage> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Text("Session Expired"),
-        content: const Text("Na-auto logout ka dahil sa kawalan ng galaw bilang Admin."),
+        title: const Text("Naka-logout Muna"),
+        content: const Text("Nakalimutan niyo po bang bukas ito? Naka-logout na po muna para safe ang inyong account."),
         actions: [
           TextButton(
             onPressed: () {
@@ -118,7 +119,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Naka-logout na ang session."),
+          content: Text("Naka-logout na po kayo."),
           backgroundColor: Colors.redAccent,
         ),
       );
@@ -130,13 +131,15 @@ class _DashboardPageState extends State<DashboardPage> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Nagka-error sa pag-logout: $e")),
+        const SnackBar(content: Text("Pasensya na, nagka-problema sa pag-logout.")),
       );
     }
   }
 
   void _initRealtimeListeners() {
+    // Inayos ang listener para maiwasan ang freezing sa pag-bootup ng app sa mobile
     _inventorySub = FirebaseFirestore.instance.collection('products').snapshots().listen((snap) {
+      if (!mounted) return;
       for (var change in snap.docChanges) {
         if (change.type == DocumentChangeType.modified || change.type == DocumentChangeType.added) {
           final data = change.doc.data();
@@ -147,41 +150,43 @@ class _DashboardPageState extends State<DashboardPage> {
             if (stockVal <= lowThreshold) {
               _sendSystemNotification(
                 title: "⚠️ Low Stock Alert",
-                body: "Mababa na ang stock ng '${data['name'] ?? data['productName'] ?? 'Rice'}'.",
+                body: "⚠️ Paalala: Paubos na po ang supply ng '${data['name'] ?? data['productName'] ?? 'Bigas'}'.",
                 channelId: NotificationService.channelAlerts,
               );
             }
           }
         }
       }
-    });
+    }, onError: (err) => print("Inventory sub error: $err"));
 
     _ordersSub = FirebaseFirestore.instance.collection('orders').snapshots().listen((snap) {
+      if (!mounted) return;
       for (var change in snap.docChanges) {
         if (change.type == DocumentChangeType.added) {
           final data = change.doc.data();
           if (data == null) continue;
           _sendSystemNotification(
-            title: "🛍️ Bagong Order",
-            body: "Order mula kay ${data['customerName'] ?? data['clientName'] ?? 'Customer'}.",
+            title: "🛍️ Bagong Bili",
+            body: "🛍️ May bagong bumibili! Order mula kay ${data['customerName'] ?? data['clientName'] ?? 'Customer'}.",
             channelId: NotificationService.channelOrders,
           );
         }
       }
-    });
+    }, onError: (err) => print("Orders sub error: $err"));
 
     _weatherSub = FirebaseFirestore.instance.collection('weather_alerts').snapshots().listen((snap) {
+      if (!mounted) return;
       for (var change in snap.docChanges) {
         final data = change.doc.data();
         if (data != null && (data['isTyphoonWarning'] ?? false)) {
           _sendSystemNotification(
-            title: "🚨 SOS: PAPARATING NA BAGYO",
-            body: "Babala: ${data['typhoonName'] ?? 'Bagyo'} sa sakahan.",
+            title: "🚨 BABALA SA BAGYO",
+            body: "🚨 May paparating na bagyong ${data['typhoonName'] ?? 'Bagyo'}. Mag-ingat po sa sakahan!",
             channelId: NotificationService.channelTyphoonSOS,
           );
         }
       }
-    });
+    }, onError: (err) => print("Weather sub error: $err"));
   }
 
   Future<void> _sendSystemNotification({
@@ -189,13 +194,20 @@ class _DashboardPageState extends State<DashboardPage> {
     required String body,
     required String channelId,
   }) async {
-    NotificationService.showNotification(title: title, body: body, channelId: channelId);
-    await FirebaseFirestore.instance.collection('notifications').add({
-      'title': title,
-      'body': body,
-      'isRead': false,
-      'timestamp': FieldValue.serverTimestamp(),
-    });
+    try {
+      NotificationService.showNotification(title: title, body: body, channelId: channelId);
+    } catch (_) {
+      // Pinipigilan ang pag-crash kapag kulang ang mobile local notification permission
+    }
+    
+    try {
+      await FirebaseFirestore.instance.collection('notifications').add({
+        'title': title,
+        'body': body,
+        'isRead': false,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+    } catch (_) {}
   }
 
   @override
@@ -204,7 +216,6 @@ class _DashboardPageState extends State<DashboardPage> {
     _inventorySub?.cancel();
     _ordersSub?.cancel();
     _weatherSub?.cancel();
-    _messageController.dispose();
     super.dispose();
   }
 
@@ -212,14 +223,14 @@ class _DashboardPageState extends State<DashboardPage> {
     final list = [
       const _NavigationItem(Icons.grid_view_rounded, "Dashboard", null),
       const _NavigationItem(Icons.inventory_2_outlined, "Inventory", InventoryPage()),
-      const _NavigationItem(Icons.shopping_bag_outlined, "Orders", OrdersPage()),
-      const _NavigationItem(Icons.menu_book_outlined, "Guidance", GuidancePage()),
+      const _NavigationItem(Icons.shopping_bag_outlined, "Order/s", OrdersPage()),
+      const _NavigationItem(Icons.menu_book_outlined, "Gabay sa Pagtatanim", GuidancePage()),
       const _NavigationItem(Icons.analytics_outlined, "Reports", ReportsPage()),
-      const _NavigationItem(Icons.cloud_outlined, "Weather", WeatherPage()),
+      const _NavigationItem(Icons.cloud_outlined, "Weather Updates", WeatherPage()),
     ];
 
     if (widget.userRole == 'admin') {
-      list.add(const _NavigationItem(Icons.admin_panel_settings_outlined, "Users", UserManagementPage()));
+      list.add(const _NavigationItem(Icons.admin_panel_settings_outlined, "User Management", UserManagementPage()));
     }
 
     return list;
@@ -247,7 +258,8 @@ class _DashboardPageState extends State<DashboardPage> {
           return Scaffold(
             key: _scaffoldKey,
             backgroundColor: _bg,
-            endDrawer: _buildDrawer(),
+            drawer: !isDesktop ? _buildDrawer() : null,
+            endDrawer: isDesktop ? _buildDrawer() : null,
             body: SafeArea(
               child: isDesktop
                   ? Row(
@@ -259,7 +271,8 @@ class _DashboardPageState extends State<DashboardPage> {
                             children: [
                               _buildHeader(true),
                               Expanded(
-                                child: Center(
+                                child: Align(
+                                  alignment: Alignment.topCenter,
                                   child: ConstrainedBox(
                                     constraints: const BoxConstraints(maxWidth: 1440),
                                     child: activeBody,
@@ -275,7 +288,7 @@ class _DashboardPageState extends State<DashboardPage> {
                       children: [
                         _buildHeader(false),
                         Expanded(child: activeBody),
-                        _buildUniversalNavBar(false),
+                        _buildUniversalNavBar(),
                       ],
                     ),
             ),
@@ -287,10 +300,10 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _buildHeader(bool isDesktop) {
     return Container(
-      constraints: BoxConstraints(minHeight: isDesktop ? 64 : 58),
+      constraints: BoxConstraints(minHeight: isDesktop ? 60 : 56),
       padding: EdgeInsets.symmetric(
         horizontal: isDesktop ? 24 : 12,
-        vertical: isDesktop ? 8 : 6,
+        vertical: isDesktop ? 6 : 4,
       ),
       decoration: const BoxDecoration(
         color: _cardBg,
@@ -298,6 +311,11 @@ class _DashboardPageState extends State<DashboardPage> {
       ),
       child: Row(
         children: [
+          if (!isDesktop)
+            IconButton(
+              icon: const Icon(Icons.menu_rounded, color: _textMain),
+              onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+            ),
           Expanded(
             child: Row(
               children: [
@@ -358,7 +376,13 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
           const SizedBox(width: 4),
           GestureDetector(
-            onTap: () => _scaffoldKey.currentState?.openEndDrawer(),
+            onTap: () {
+              if (isDesktop) {
+                _scaffoldKey.currentState?.openEndDrawer();
+              } else {
+                _scaffoldKey.currentState?.openDrawer();
+              }
+            },
             child: const CircleAvatar(
               radius: 14,
               backgroundColor: _border,
@@ -371,35 +395,26 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Widget _buildDashboardHome(bool isDesktop, bool isTablet) {
-    final horizontalPadding = isDesktop
-        ? 28.0
-        : isTablet
-            ? 22.0
-            : 14.0;
+    final horizontalPadding = isDesktop ? 24.0 : (isTablet ? 18.0 : 12.0);
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return SingleChildScrollView(
-          padding: EdgeInsets.symmetric(
-            horizontal: horizontalPadding,
-            vertical: isDesktop ? 24 : 16,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-          Flex(
-            direction: isTablet || isDesktop
-                ? Axis.horizontal
-                : Axis.vertical,
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      padding: EdgeInsets.symmetric(
+        horizontal: horizontalPadding,
+        vertical: isDesktop ? 16 : 12,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Flexible(
+              const Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      "Admin Command Center",
+                      "Dashboard",
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: _textMain,
@@ -409,7 +424,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     ),
                     SizedBox(height: 2),
                     Text(
-                      "Live metrics & operational status",
+                      "Araw-araw na Lagay ng Sakahan",
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: _textSub,
@@ -419,7 +434,6 @@ class _DashboardPageState extends State<DashboardPage> {
                   ],
                 ),
               ),
-              SizedBox(height: isTablet || isDesktop ? 0 : 10),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
@@ -428,6 +442,7 @@ class _DashboardPageState extends State<DashboardPage> {
                   border: Border.all(color: _primary.withOpacity(0.3)),
                 ),
                 child: const Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(Icons.circle, color: _primary, size: 8),
                     SizedBox(width: 4),
@@ -437,26 +452,25 @@ class _DashboardPageState extends State<DashboardPage> {
               )
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
 
           _buildGoogleStyleWeatherCard(),
-          const SizedBox(height: 18),
+          const SizedBox(height: 16),
 
-          const Text("Operations & Metrics Overview", style: TextStyle(color: _textMain, fontSize: 15, fontWeight: FontWeight.bold)),
+          const Text("Buod ng Sakahan", style: TextStyle(color: _textMain, fontSize: 15, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
 
-          // RESPONSIVE INTERACTIVE KPI GRID
           GridView(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: isDesktop ? 280 : (isTablet ? 250 : 180),
-              mainAxisExtent: isDesktop ? 128 : (isTablet ? 132 : 136),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: isDesktop ? 4 : (isTablet ? 3 : 2),
               crossAxisSpacing: 10,
               mainAxisSpacing: 10,
+              mainAxisExtent: 130, // Tinitiyak na kasya ang teksto sa lahat ng mobile devices
             ),
             children: [
-              // 1. INVENTORY MODULE KPI (KILOGRAMS)
+              // 1. INVENTORY MODULE
               StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance.collection('products').snapshots(),
                 builder: (context, snapshot) {
@@ -478,20 +492,20 @@ class _DashboardPageState extends State<DashboardPage> {
                   }
 
                   return _buildInteractiveKpiCard(
-                    categoryLabel: "INVENTORY",
-                    title: "Total Rice Stocks",
+                    categoryLabel: "Inventory",
+                    title: "Bigas at Supply",
                     value: "${totalStockKg.toStringAsFixed(0)} kg",
-                    subtitle: hasLowStock ? "Low Stock Alert!" : "Optimal Supply Level",
+                    subtitle: hasLowStock ? "⚠️ Paubos na!" : "Sapat ang supply",
                     icon: Icons.inventory_2_rounded,
                     color: Colors.blue,
                     hasAlert: hasLowStock,
-                    alertText: "LOW",
+                    alertText: "KULANG",
                     onTap: () => setState(() => _currentMenuIndex = 1),
                   );
                 },
               ),
 
-              // 2. ORDERS MODULE KPI (INAYOS NA LOGIC)
+              // 2. ORDERS MODULE
               StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance.collection('orders').snapshots(),
                 builder: (context, snapshot) {
@@ -500,12 +514,9 @@ class _DashboardPageState extends State<DashboardPage> {
                   if (snapshot.hasData) {
                     for (var doc in snapshot.data!.docs) {
                       final data = doc.data() as Map<String, dynamic>;
-                      
-                      // Ginagamit ang OrderStatus.parse() para sa patas at tamang pagkilala sa status
                       final rawStatus = (data['orderStatus'] ?? data['status'] ?? '').toString();
                       final parsedStatus = OrderStatus.parse(rawStatus);
 
-                      // Bilangin lang kung ang status ay talagang OrderStatus.toPay
                       if (parsedStatus == OrderStatus.toPay) {
                         toPayCount++;
                       }
@@ -513,29 +524,28 @@ class _DashboardPageState extends State<DashboardPage> {
                   }
 
                   return _buildInteractiveKpiCard(
-                    categoryLabel: "ORDERS",
-                    title: "New Orders (To Pay)",
-                    value: "$toPayCount Orders",
-                    subtitle: toPayCount > 0 ? "Awaiting Payment" : "No Pending Orders",
+                    categoryLabel: "Order/s",
+                    title: "Bagong Bili",
+                    value: "$toPayCount Order",
+                    subtitle: toPayCount > 0 ? "Kailangan Bayaran" : "Walang nakatambak",
                     icon: Icons.shopping_bag_rounded,
                     color: Colors.orange,
                     hasAlert: toPayCount > 0,
-                    alertText: "$toPayCount TO PAY",
+                    alertText: "$toPayCount KILOS",
                     onTap: () => setState(() => _currentMenuIndex = 2),
                   );
                 },
               ),
 
-              // 3. GUIDANCE MODULE KPI
-              // Parehong Firestore document ang sinusulatan ng GuidancePage.
+              // 3. GUIDANCE MODULE
               StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
                 stream: FirebaseFirestore.instance
                     .collection('crop_tracker')
                     .doc('active_crop')
                     .snapshots(),
                 builder: (context, snapshot) {
-                  String cropAgeText = "No Active Crop";
-                  String conditionText = "Pumili ng planting date sa Guidance";
+                  String cropAgeText = "Walang Tanim";
+                  String conditionText = "Pumili sa Gabay";
                   bool hasWarning = false;
 
                   final data = snapshot.data?.data();
@@ -557,22 +567,20 @@ class _DashboardPageState extends State<DashboardPage> {
                       plantingDate.day,
                     );
 
-                    // Automatic na nagbabago ang age base sa saved planting date.
                     final calculatedDays = today.difference(pDate).inDays;
                     final days = calculatedDays < 0 ? 0 : calculatedDays;
 
                     if (days == 0) {
-                      cropAgeText = "Day 0";
+                      cropAgeText = "Araw 0";
                     } else if (days <= 15) {
-                      cropAgeText = "Vegetative (Day $days)";
+                      cropAgeText = "Lumalaki (Day $days)";
                     } else if (days <= 60) {
-                      cropAgeText = "Reproductive (Day $days)";
+                      cropAgeText = "Naglalaman (Day $days)";
                     } else {
-                      cropAgeText = "Ripening (Day $days)";
+                      cropAgeText = "Edad ng palay (Day $days)";
                     }
 
-                    conditionText =
-                        "Petsa ng tanim: ${pDate.month}/${pDate.day}/${pDate.year}";
+                    conditionText = "${pDate.month}/${pDate.day}/${pDate.year}";
 
                     if (data?['warning'] != null &&
                         data!['warning'].toString().isNotEmpty) {
@@ -582,20 +590,20 @@ class _DashboardPageState extends State<DashboardPage> {
                   }
 
                   return _buildInteractiveKpiCard(
-                    categoryLabel: "GUIDANCE",
-                    title: "Crop Health Status",
+                    categoryLabel: "Gabay",
+                    title: "Kalagayan ng Tanim",
                     value: cropAgeText,
                     subtitle: conditionText,
                     icon: Icons.eco_rounded,
                     color: Colors.teal,
                     hasAlert: hasWarning,
-                    alertText: "ALERT",
+                    alertText: "ALERTO",
                     onTap: () => setState(() => _currentMenuIndex = 3),
                   );
                 },
               ),
 
-              // 4. REPORTS MODULE KPI
+              // 4. REPORTS MODULE
               StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance.collection('orders').snapshots(),
                 builder: (context, snapshot) {
@@ -625,10 +633,10 @@ class _DashboardPageState extends State<DashboardPage> {
                   }
 
                   return _buildInteractiveKpiCard(
-                    categoryLabel: "REPORTS",
-                    title: "Completed Revenue",
-                    value: "₱${totalCompletedRevenue.toStringAsFixed(2)}",
-                    subtitle: "100% Realtime Sales",
+                    categoryLabel: "Reports",
+                    title: "Total Revenue",
+                    value: "₱${totalCompletedRevenue.toStringAsFixed(0)}",
+                    subtitle: "Nakuha sa benta",
                     icon: Icons.analytics_rounded,
                     color: Colors.green,
                     hasAlert: false,
@@ -638,7 +646,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 },
               ),
 
-              // 5. USER MANAGEMENT MODULE KPI
+              // 5. USER MANAGEMENT MODULE
               StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance.collection('users').snapshots(),
                 builder: (context, snapshot) {
@@ -654,14 +662,14 @@ class _DashboardPageState extends State<DashboardPage> {
                   }
 
                   return _buildInteractiveKpiCard(
-                    categoryLabel: "USERS",
-                    title: "Registered Users",
-                    value: "$totalUsers Accounts",
-                    subtitle: "Active System Users",
+                    categoryLabel: "User",
+                    title: "Mga Account",
+                    value: "$totalUsers Users",
+                    subtitle: "Gamit ang System",
                     icon: Icons.people_alt_rounded,
                     color: Colors.indigo,
                     hasAlert: hasNewUser,
-                    alertText: "NEW",
+                    alertText: "BAGO",
                     onTap: () {
                       if (widget.userRole == 'admin') {
                         setState(() => _currentMenuIndex = 6);
@@ -672,10 +680,8 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
             ],
           ),
-          ],
-      )
-        );
-      },
+        ],
+      ),
     );
   }
 
@@ -693,86 +699,83 @@ class _DashboardPageState extends State<DashboardPage> {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
-      child: Stack(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: _cardBg,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: hasAlert ? Colors.redAccent.withOpacity(0.5) : _border),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.02),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
-                ),
-              ],
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: _cardBg,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: hasAlert ? Colors.redAccent.withOpacity(0.5) : _border),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.02),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(5),
-                          decoration: BoxDecoration(
-                            color: color.withOpacity(0.12),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Icon(icon, size: 16, color: color),
+                Expanded(
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: color.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(6),
                         ),
-                        const SizedBox(width: 6),
-                        Text(
+                        child: Icon(icon, size: 14, color: color),
+                      ),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
                           categoryLabel,
-                          style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold),
                         ),
-                      ],
-                    ),
-                    const Icon(Icons.arrow_forward_ios_rounded, size: 10, color: _textSub),
-                  ],
+                      ),
+                    ],
+                  ),
                 ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      value,
-                      style: const TextStyle(color: _textMain, fontSize: 15, fontWeight: FontWeight.bold),
-                      overflow: TextOverflow.ellipsis,
+                if (hasAlert)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: Colors.redAccent,
+                      borderRadius: BorderRadius.circular(6),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: TextStyle(color: hasAlert ? Colors.redAccent : _textSub, fontSize: 10, fontWeight: FontWeight.w500),
-                      overflow: TextOverflow.ellipsis,
+                    child: Text(
+                      alertText,
+                      style: const TextStyle(color: Colors.white, fontSize: 7, fontWeight: FontWeight.bold),
                     ),
-                  ],
+                  )
+                else
+                  const Icon(Icons.arrow_forward_ios_rounded, size: 10, color: _textSub),
+              ],
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  value,
+                  style: const TextStyle(color: _textMain, fontSize: 14, fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(color: hasAlert ? Colors.redAccent : _textSub, fontSize: 10, fontWeight: FontWeight.w500),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
-          ),
-
-          if (hasAlert)
-            Positioned(
-              top: 8,
-              right: 24,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.redAccent,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  alertText,
-                  style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -783,28 +786,36 @@ class _DashboardPageState extends State<DashboardPage> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return Container(
-            height: 120,
+            height: 90,
             decoration: BoxDecoration(
               color: const Color(0xff047857),
               borderRadius: BorderRadius.circular(14),
             ),
-            child: const Center(child: CircularProgressIndicator(color: Colors.white)),
+            child: const Center(child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)),
           );
         }
 
         if (snapshot.hasError || !snapshot.hasData) {
           return Container(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: const Color(0xff047857),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Row(
               children: [
-                const Icon(Icons.cloud_off_rounded, color: Colors.white),
-                const SizedBox(width: 10),
-                const Expanded(child: Text("Offline / Weather Unavailable", style: TextStyle(color: Colors.white, fontSize: 12))),
-                IconButton(icon: const Icon(Icons.refresh, color: Colors.white, size: 18), onPressed: _fetchLiveWeather),
+                const Icon(Icons.cloud_off_rounded, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    "Walang koneksyon / hindi makuha ang lagay ng panahon",
+                    style: TextStyle(color: Colors.white, fontSize: 11),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh, color: Colors.white, size: 18),
+                  onPressed: _fetchLiveWeather,
+                ),
               ],
             ),
           );
@@ -816,7 +827,7 @@ class _DashboardPageState extends State<DashboardPage> {
           onTap: () => setState(() => _currentMenuIndex = 5),
           borderRadius: BorderRadius.circular(14),
           child: Container(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
                 colors: [Color(0xff065F46), Color(0xff047857)],
@@ -827,7 +838,7 @@ class _DashboardPageState extends State<DashboardPage> {
               boxShadow: [
                 BoxShadow(
                   color: const Color(0xff059669).withOpacity(0.2),
-                  blurRadius: 10,
+                  blurRadius: 8,
                   offset: const Offset(0, 3),
                 ),
               ],
@@ -839,55 +850,44 @@ class _DashboardPageState extends State<DashboardPage> {
                   children: [
                     const Row(
                       children: [
-                        Icon(Icons.location_on_rounded, color: Colors.white70, size: 14),
+                        Icon(Icons.location_on_rounded, color: Colors.white70, size: 12),
                         SizedBox(width: 4),
-                        Text("Capalangan, Pampanga", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                        Text("Capalangan, Pampanga", style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
                       ],
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(6)),
-                      child: const Text("WEATHER MODULE", style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold)),
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(4)),
+                      child: const Text("PANAHON", style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold)),
                     )
                   ],
                 ),
-                const SizedBox(height: 10),
-                LayoutBuilder(
-                  builder: (context, weatherConstraints) {
-                    final compact = weatherConstraints.maxWidth < 420;
-                    return Flex(
-                      direction: compact ? Axis.vertical : Axis.horizontal,
-                      crossAxisAlignment: compact
-                          ? CrossAxisAlignment.start
-                          : CrossAxisAlignment.center,
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
                       children: [
-                        Row(
-                          children: [
-                            _getWeatherIcon(weather.condition),
-                            const SizedBox(width: 10),
-                            Text(
-                              "${weather.temperature.toStringAsFixed(1)}°C",
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 28,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
+                        _getWeatherIcon(weather.condition),
+                        const SizedBox(width: 8),
+                        Text(
+                          "${weather.temperature.toStringAsFixed(1)}°C",
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                        if (compact) const SizedBox(height: 10),
-                        Column(
+                      ],
+                    ),
+                    Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text(weather.condition, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                        Text("Humidity: ${weather.humidity}%", style: const TextStyle(color: Colors.white70, fontSize: 10)),
-                        Text("Feels Like: ${weather.feelsLike}°C", style: const TextStyle(color: Colors.white70, fontSize: 10)),
+                        Text(weather.condition, style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                        Text("Alinsangan: ${weather.humidity}%", style: const TextStyle(color: Colors.white70, fontSize: 9)),
                       ],
-                        ),
-                      ],
-                    );
-                  },
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -899,9 +899,9 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _getWeatherIcon(String condition) {
     final lower = condition.toLowerCase();
-    if (lower.contains('rain')) return const Icon(Icons.grain_rounded, color: Color(0xff93C5FD), size: 32);
-    if (lower.contains('cloud')) return const Icon(Icons.cloud_queue_rounded, color: Colors.white70, size: 32);
-    return const Icon(Icons.wb_sunny_rounded, color: Color(0xffFDE047), size: 32);
+    if (lower.contains('rain')) return const Icon(Icons.grain_rounded, color: Color(0xff93C5FD), size: 26);
+    if (lower.contains('cloud')) return const Icon(Icons.cloud_queue_rounded, color: Colors.white70, size: 26);
+    return const Icon(Icons.wb_sunny_rounded, color: Color(0xffFDE047), size: 26);
   }
 
   Widget _buildDesktopSidebar(
@@ -1053,17 +1053,20 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildUniversalNavBar(bool isDesktop) {
+  Widget _buildUniversalNavBar() {
     final primaryItems = [
       {'index': 0, 'icon': Icons.grid_view_rounded, 'label': 'Dashboard'},
-      {'index': 1, 'icon': Icons.inventory_2_outlined, 'label': 'Inventory'},
-      {'index': 2, 'icon': Icons.shopping_bag_outlined, 'label': 'Orders'},
-      {'index': 3, 'icon': Icons.menu_book_outlined, 'label': 'Guidance'},
+      {'index': 1, 'icon': Icons.inventory_2_outlined, 'label': 'Imbak'},
+      {'index': 2, 'icon': Icons.shopping_bag_outlined, 'label': 'Benta'},
+      {'index': 3, 'icon': Icons.menu_book_outlined, 'label': 'Gabay'},
     ];
 
     return Container(
-      decoration: const BoxDecoration(color: _cardBg, border: Border(top: BorderSide(color: _border))),
-      padding: EdgeInsets.symmetric(horizontal: isDesktop ? 40 : 4, vertical: 4),
+      decoration: const BoxDecoration(
+        color: _cardBg,
+        border: Border(top: BorderSide(color: _border)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
@@ -1075,9 +1078,16 @@ class _DashboardPageState extends State<DashboardPage> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(item['icon'] as IconData, color: isSelected ? _primary : _textSub, size: 18),
+                    Icon(item['icon'] as IconData, color: isSelected ? _primary : _textSub, size: 20),
                     const SizedBox(height: 2),
-                    Text(item['label'] as String, style: TextStyle(color: isSelected ? _primary : _textSub, fontSize: 10, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+                    Text(
+                      item['label'] as String,
+                      style: TextStyle(
+                        color: isSelected ? _primary : _textSub,
+                        fontSize: 10,
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1089,15 +1099,15 @@ class _DashboardPageState extends State<DashboardPage> {
               icon: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.more_horiz_rounded, color: _currentMenuIndex >= 4 ? _primary : _textSub, size: 18),
+                  Icon(Icons.more_horiz_rounded, color: _currentMenuIndex >= 4 ? _primary : _textSub, size: 20),
                   const SizedBox(height: 2),
-                  Text('More', style: TextStyle(color: _currentMenuIndex >= 4 ? _primary : _textSub, fontSize: 10)),
+                  Text('Iba pa', style: TextStyle(color: _currentMenuIndex >= 4 ? _primary : _textSub, fontSize: 10)),
                 ],
               ),
               itemBuilder: (context) => [
-                const PopupMenuItem(value: 4, child: Text("Reports")),
-                const PopupMenuItem(value: 5, child: Text("Weather Forecast")),
-                if (widget.userRole == 'admin') const PopupMenuItem(value: 6, child: Text("Managing Accounts")),
+                const PopupMenuItem(value: 4, child: Text("Kikitain at Ulat")),
+                const PopupMenuItem(value: 5, child: Text("Ulat ng Panahon")),
+                if (widget.userRole == 'admin') const PopupMenuItem(value: 6, child: Text("Mga Tao sa System")),
               ],
             ),
           ),
@@ -1114,13 +1124,13 @@ class _DashboardPageState extends State<DashboardPage> {
           children: [
             const UserAccountsDrawerHeader(
               decoration: BoxDecoration(color: _bg),
-              accountName: Text("System Admin", style: TextStyle(color: _textMain, fontWeight: FontWeight.bold)),
+              accountName: Text("Tagapamahala (Admin)", style: TextStyle(color: _textMain, fontWeight: FontWeight.bold)),
               accountEmail: Text("admin@arrozsistema.com", style: TextStyle(color: _textSub)),
               currentAccountPicture: CircleAvatar(backgroundColor: _primary, child: Icon(Icons.person, color: Colors.white)),
             ),
             ListTile(
               leading: const Icon(Icons.grid_view_rounded),
-              title: const Text("Dashboard Overview"),
+              title: const Text("Dashboard"),
               onTap: () {
                 Navigator.pop(context);
                 setState(() => _currentMenuIndex = 0);
@@ -1136,15 +1146,15 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
             ListTile(
               leading: const Icon(Icons.shopping_bag_outlined),
-              title: const Text("Orders"),
+              title: const Text("Order/s"),
               onTap: () {
                 Navigator.pop(context);
-                setState(() => _currentMenuIndex = 0);
+                setState(() => _currentMenuIndex = 2);
               },
             ),
             ListTile(
               leading: const Icon(Icons.menu_book_outlined),
-              title: const Text("Guidance Hub"),
+              title: const Text("Gabay sa Pagtatanim"),
               onTap: () {
                 Navigator.pop(context);
                 setState(() => _currentMenuIndex = 3);
@@ -1160,7 +1170,7 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
             ListTile(
               leading: const Icon(Icons.cloud_outlined),
-              title: const Text("Weather Forecast"),
+              title: const Text("Ulat ng Panahon"),
               onTap: () {
                 Navigator.pop(context);
                 setState(() => _currentMenuIndex = 5);
@@ -1169,7 +1179,7 @@ class _DashboardPageState extends State<DashboardPage> {
             if (widget.userRole == 'admin')
               ListTile(
                 leading: const Icon(Icons.admin_panel_settings_outlined),
-                title: const Text("User Management"),
+                title: const Text("User/s"),
                 onTap: () {
                   Navigator.pop(context);
                   setState(() => _currentMenuIndex = 6);

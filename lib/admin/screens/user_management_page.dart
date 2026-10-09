@@ -10,7 +10,7 @@ class UserManagementPage extends StatefulWidget {
 
 class _UserManagementPageState extends State<UserManagementPage> {
   String _searchQuery = "";
-  // Selected Tab: 0 = Active Users, 1 = Blocklist
+  // Selected Tab: 0 = Active Users, 1 = Blacklisted
   int _selectedTabIndex = 0;
 
   static const Color primaryBlue = Color(0xff1E40AF);
@@ -295,7 +295,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
                     const SizedBox(height: 12),
                     _buildModalInfoTile(Icons.email_outlined, "Email Address", data['email'] ?? 'Walang Email'),
                     _buildModalInfoTile(Icons.phone_outlined, "Contact Number", phone),
-                    _buildModalInfoTile(Icons.location_on_outlined, "Primary Address", directAddress.isEmpty ? 'Walang Naka-save na Address' : directAddress),
+                    
                     _buildModalInfoTile(
                       Icons.shield_outlined,
                       "Account Status",
@@ -481,7 +481,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
       ),
       body: Column(
         children: [
-          // SEARCH BAR AT MAIN TAB SWITCHER (Active vs Blocklist)
+          // SEARCH BAR AT MAIN TAB SWITCHER (Active vs Blacklisted)
           Container(
             padding: const EdgeInsets.all(16),
             color: Colors.white,
@@ -512,7 +512,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
                 ),
                 const SizedBox(height: 14),
 
-                // TAB SELECTION (Active Users vs Blocklist)
+                // TAB SELECTION (Active Users vs Blacklisted)
                 Container(
                   height: 44,
                   padding: const EdgeInsets.all(4),
@@ -568,7 +568,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
                         ),
                       ),
 
-                      // TAB 2: Blocklist
+                      // TAB 2: Blacklisted
                       Expanded(
                         child: GestureDetector(
                           onTap: () {
@@ -600,7 +600,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
-                                  "Blocklist",
+                                  "Blacklisted",
                                   style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: _selectedTabIndex == 1 ? FontWeight.bold : FontWeight.w500,
@@ -636,7 +636,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
 
                 // Strictly Filter based on Tab Selection:
                 // Tab Index 0 = Active Users (isBlocked == false)
-                // Tab Index 1 = Blocklist (isBlocked == true)
+                // Tab Index 1 = Blacklisted (isBlocked == true)
                 final filteredDocs = snapshot.data!.docs.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
                   final name = (data['fullName'] ?? data['name'] ?? '').toString().toLowerCase();
@@ -650,7 +650,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
                     // Active Users List
                     return matchesSearch && !isBlocked;
                   } else {
-                    // Blocklist
+                    // Blacklisted
                     return matchesSearch && isBlocked;
                   }
                 }).toList();
@@ -837,8 +837,8 @@ class _UserManagementPageState extends State<UserManagementPage> {
                               context: context,
                               title: isBlocked ? "I-unblock ang User?" : "I-block ang User?",
                               content: isBlocked
-                                  ? "Mawawala si $name sa Blocklist at mababalik sa Active Users."
-                                  : "Mapupunta si $name sa Blocklist at malilimitahan ang kanyang account access.",
+                                  ? "Mawawala si $name sa Blacklisted at mababalik sa Active Users."
+                                  : "Mapupunta si $name sa Blacklisted at malilimitahan ang kanyang account access.",
                               actionColor: isBlocked ? Colors.green.shade700 : Colors.orange.shade800,
                               confirmLabel: isBlocked ? "Unblock" : "Block",
                               onConfirm: () async {
@@ -851,7 +851,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
                                       content: Text(
                                         isBlocked
                                             ? "Na-unblock na si $name at pinalipat sa Active Users."
-                                            : "Na-block na si $name at inilipat sa Blocklist.",
+                                            : "Na-block na si $name at inilipat sa Blacklisted.",
                                       ),
                                       backgroundColor: isBlocked ? Colors.green : Colors.red,
                                     ),
