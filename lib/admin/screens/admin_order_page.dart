@@ -138,8 +138,19 @@ class OrderModel {
       parsedItems = list.map((i) => OrderItem.fromMap(i as Map<String, dynamic>)).toList();
     }
 
+    final rawPaymentMethod = (data['paymentMethod'] ?? data['paymentType'] ?? 'COD').toString();
     final rawStatus = (data['orderStatus'] ?? data['status'] ?? '').toString();
-    final OrderStatus parsedStatus = OrderStatus.parse(rawStatus);
+    
+    // Auto-parse to To Ship if GCash and status is empty/toPay
+    OrderStatus parsedStatus;
+    if (rawStatus.isEmpty && rawPaymentMethod.toLowerCase().contains('gcash')) {
+      parsedStatus = OrderStatus.toShip;
+    } else {
+      parsedStatus = OrderStatus.parse(rawStatus);
+      if (rawPaymentMethod.toLowerCase().contains('gcash') && parsedStatus == OrderStatus.toPay) {
+        parsedStatus = OrderStatus.toShip;
+      }
+    }
 
     double calculatedTotal = double.tryParse(data['totalAmount']?.toString() ?? data['totalPrice']?.toString() ?? data['total']?.toString() ?? '0') ?? 0.0;
     if (calculatedTotal == 0.0 && parsedItems.isNotEmpty) {
@@ -162,7 +173,7 @@ class OrderModel {
           data['contact'] ??
           data['contactNo'] ??
           'No Contact',
-      paymentMethod: data['paymentMethod'] ?? data['paymentType'] ?? 'COD',
+      paymentMethod: rawPaymentMethod,
       paymentRef: data['paymentRef'] ??
           data['referenceNumber'] ??
           data['refNumber'] ??
@@ -175,7 +186,7 @@ class OrderModel {
       status: parsedStatus,
       totalAmount: calculatedTotal,
       orderDate: rawTimestamp?.toDate() ?? DateTime.now(),
-      inventoryDeducted: data['inventoryDeducted'] ?? false,
+      inventoryDeducted: data['inventoryDeducted'] ?? (parsedStatus == OrderStatus.toShip || parsedStatus == OrderStatus.toDeliver || parsedStatus == OrderStatus.completed),
     );
   }
 }
@@ -1031,6 +1042,9 @@ class OrderCardItem extends StatelessWidget {
           Text("Customer: ${order.customerName}", style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
           Text("Phone: ${order.contactNumber}", style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
           Text("Address: ${order.deliveryAddress}", style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+          Text("Payment Method: ${order.paymentMethod}", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.primaryBlue)),
+          if (order.paymentRef.isNotEmpty)
+            Text("Reference No: ${order.paymentRef}", style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
           const Divider(height: 16),
           ...order.items.map((item) => Padding(
                 padding: const EdgeInsets.symmetric(vertical: 2.0),
